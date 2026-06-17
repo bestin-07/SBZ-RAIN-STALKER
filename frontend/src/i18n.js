@@ -30,6 +30,7 @@ const translations = {
     locating:    'WIRD ERMITTELT',
     privacy:     'Standort bleibt in deinem Browser. Wir speichern nichts.',
     made_with_love: 'Für Salzburg, mit Liebe',
+    recenter:       'Auf meinen Standort zentrieren',
 
     info_title: 'Über Gemma Raus',
     info_p1: 'Gemma Raus zeigt dir genau wann du rausgehen kannst, an deinem GPS-Standort. Regen, Temperatur und Wind werden berücksichtigt.',
@@ -114,6 +115,7 @@ const translations = {
     locating:    'LOCATING',
     privacy:     'location stays in your browser. nothing is stored on our end.',
     made_with_love: 'For Salzburg, with love',
+    recenter:       'Center on my location',
 
     info_title: 'About Gemma Raus',
     info_p1: 'Gemma Raus tells you exactly when to head outside at your GPS location. Rain, temperature and wind are all considered.',

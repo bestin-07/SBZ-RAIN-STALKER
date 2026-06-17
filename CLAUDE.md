@@ -144,7 +144,7 @@ else → STUCK INSIDE (no gap in 3h)
 | `frontend/src/i18n.js` | All DE/EN strings |
 | `frontend/src/components/Header.jsx` | Top bar (always rendered, even before location granted) |
 | `frontend/src/components/GapBanner.jsx` | Main status display |
-| `frontend/src/components/RadarMap.jsx` | Leaflet + DWD WMS + RainViewer |
+| `frontend/src/components/RadarMap.jsx` | Leaflet base map + RainViewer overlay + nearby-town precip dots + "recenter on me" `flyTo` button |
 | `frontend/src/components/InfoPanel.jsx` | Guide + about + data sources |
 | `frontend/public/sw.js` | Service worker, cache name `gemma-raus-v2` |
 | `backend/main.py` | Push notifications, accuracy tracking |

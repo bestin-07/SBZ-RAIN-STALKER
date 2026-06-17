@@ -17,19 +17,19 @@ export default function Header({
 
   return (
     <header className="shrink-0 border-b border-border">
-      <div className="flex items-center justify-between px-4 pt-safe pb-3">
-        <span className="font-display font-bold text-xs tracking-[0.2em] uppercase text-primary">
+      <div className="flex items-center justify-between px-4 pt-safe pb-4">
+        <span className="font-display font-bold text-sm tracking-[0.2em] uppercase text-primary">
           GEMMA RAUS
         </span>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
           {acc30 !== null && acc30 !== undefined && (
-            <span className="font-mono text-xs text-muted">
+            <span className="font-mono text-xs text-muted mr-1">
               {acc30}{t('pct_accurate')}
             </span>
           )}
           {lastUpdated && (
-            <span className="font-mono text-xs text-muted">
+            <span className="font-mono text-xs text-muted mr-1">
               {formatTime(lastUpdated)}
             </span>
           )}
@@ -37,17 +37,17 @@ export default function Header({
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="font-mono text-sm text-muted hover:text-primary transition-colors disabled:opacity-30"
+            className="font-mono text-xl text-muted hover:text-primary transition-colors disabled:opacity-30 w-10 h-10 flex items-center justify-center leading-none"
             aria-label="refresh"
           >
             {loading ? '·' : '↺'}
           </button>
 
-          <div className="w-px h-3 bg-border" />
+          <div className="w-px h-5 bg-border mx-0.5" />
 
           <button
             onClick={onLangToggle}
-            className="font-mono text-xs text-muted hover:text-primary transition-colors leading-none"
+            className="font-mono text-sm text-muted hover:text-primary transition-colors w-10 h-10 flex items-center justify-center leading-none"
             aria-label="switch language"
           >
             {lang === 'de' ? 'EN' : 'DE'}
@@ -55,7 +55,7 @@ export default function Header({
 
           <button
             onClick={onThemeToggle}
-            className="font-mono text-base text-muted hover:text-primary transition-colors leading-none"
+            className="font-mono text-xl text-muted hover:text-primary transition-colors w-10 h-10 flex items-center justify-center leading-none"
             aria-label="toggle theme"
           >
             {theme === 'dark' ? '☾' : '☀'}
@@ -65,7 +65,7 @@ export default function Header({
             <button
               onClick={onNotifyToggle}
               disabled={notifyState === 'denied'}
-              className="font-mono text-base text-muted hover:text-primary transition-colors leading-none disabled:opacity-40"
+              className="font-mono text-xl text-muted hover:text-primary transition-colors disabled:opacity-40 w-10 h-10 flex items-center justify-center leading-none"
               aria-label="toggle notifications"
               title={notifyState === 'denied' ? t('notify_denied') : ''}
             >
@@ -75,7 +75,7 @@ export default function Header({
 
           <button
             onClick={onInfo}
-            className="font-mono text-xs text-muted hover:text-primary transition-colors w-4 h-4 flex items-center justify-center border border-border rounded-full leading-none"
+            className="font-mono text-sm text-muted hover:text-primary transition-colors w-7 h-7 flex items-center justify-center border border-border rounded-full leading-none"
             aria-label="guide"
           >
             ?

@@ -229,11 +229,35 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
     }
   }, [areaPrecip, t])
 
+  // Smoothly fly back to the user's location (e.g. after they've panned away).
+  const recenter = () => {
+    if (mapRef.current && location) {
+      mapRef.current.flyTo([location.lat, location.lon], ZOOM, { duration: 0.8 })
+    }
+  }
+
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 min-h-0"
-      style={{ zIndex: 0 }}
-    />
+    <div className="relative flex-1 min-h-0">
+      <div ref={containerRef} className="absolute inset-0" style={{ zIndex: 0 }} />
+      {location && (
+        <button
+          onClick={recenter}
+          aria-label={t ? t('recenter') : 'Center on my location'}
+          className="absolute bottom-4 right-4 z-[1000] w-11 h-11 flex items-center justify-center
+                     rounded-full bg-surface/90 backdrop-blur border border-border text-primary
+                     shadow-lg hover:bg-surface active:scale-95 transition"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="7" />
+            <line x1="12" y1="1"  x2="12" y2="4" />
+            <line x1="12" y1="20" x2="12" y2="23" />
+            <line x1="1"  y1="12" x2="4"  y2="12" />
+            <line x1="20" y1="12" x2="23" y2="12" />
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+      )}
+    </div>
   )
 }
