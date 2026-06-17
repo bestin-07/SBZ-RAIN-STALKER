@@ -33,6 +33,15 @@ export default function InfoPanel({ open, onClose, t }) {
             <DataRow label={t('src_accuracy')} value={t('fact_03')} />
           </div>
 
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3 mt-8">
+            {t('privacy_title')}
+          </div>
+          <div className="space-y-2 mb-8 border-l-2 border-border pl-4">
+            {['privacy_1','privacy_2','privacy_3','privacy_basis'].map(k => (
+              <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
+            ))}
+          </div>
+
           <button
             onClick={onClose}
             className="font-display font-bold text-sm tracking-[0.15em] uppercase px-6 py-3 bg-primary text-bg transition-opacity hover:opacity-80"

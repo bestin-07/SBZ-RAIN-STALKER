@@ -39,6 +39,18 @@ const translations = {
     src_radar:    'Radar',
     src_accuracy: 'Genauigkeit',
     outside_sbz: 'Du bist außerhalb von Salzburg — Radarkarte zeigt möglicherweise falsche Region',
+
+    notify_on:  '◉',
+    notify_off: '◎',
+    notify_denied: 'blockiert',
+    notify_unsupported: 'kein Push',
+
+    privacy_title: 'Datenschutz',
+    privacy_1: 'Dein GPS-Standort verlässt deinen Browser nur als Koordinaten direkt an Open-Meteo (Schweiz, FADP-konform). Wir erhalten und speichern deinen Standort nicht.',
+    privacy_2: 'Im Browser werden ausschließlich Design- und Spracheinstellungen gespeichert. Keine Tracking-Cookies, kein Benutzerkonto.',
+    privacy_3: 'Für Push-Benachrichtigungen speichern wir ein anonymes Browser-Token ohne Standortbezug. Abmelden jederzeit möglich.',
+    privacy_basis: 'Rechtsgrundlage: berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO) für die Wetterabfrage; Einwilligung für Push.',
+
     close: 'SCHLIESSEN',
   },
   en: {
@@ -81,6 +93,18 @@ const translations = {
     src_radar:    'Radar',
     src_accuracy: 'Accuracy',
     outside_sbz: 'You are outside Salzburg — radar map may show the wrong region',
+
+    notify_on:  '◉',
+    notify_off: '◎',
+    notify_denied: 'blocked',
+    notify_unsupported: 'no push',
+
+    privacy_title: 'Privacy',
+    privacy_1: 'Your GPS coordinates leave your browser only as a direct request to Open-Meteo (Switzerland, FADP-compliant). We never receive or store your location.',
+    privacy_2: 'Only theme and language preferences are saved locally in your browser. No tracking cookies, no account.',
+    privacy_3: 'For push notifications we store an anonymous browser token with no location attached. Unsubscribe at any time.',
+    privacy_basis: 'Legal basis: legitimate interest (Art. 6(1)(f) GDPR) for weather lookup; consent for push notifications.',
+
     close: 'CLOSE',
   },
 }

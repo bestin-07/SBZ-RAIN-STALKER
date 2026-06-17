@@ -3,6 +3,7 @@ export default function Header({
   theme, onThemeToggle,
   lang, onLangToggle,
   onInfo,
+  notifyState, onNotifyToggle,
   t,
 }) {
   const acc30 = accuracy?.['30min']?.accuracy
@@ -58,6 +59,18 @@ export default function Header({
         >
           {theme === 'dark' ? '☾' : '☀'}
         </button>
+
+        {notifyState !== 'unsupported' && (
+          <button
+            onClick={onNotifyToggle}
+            disabled={notifyState === 'denied'}
+            className="font-mono text-base text-muted hover:text-primary transition-colors leading-none disabled:opacity-40"
+            aria-label="toggle notifications"
+            title={notifyState === 'denied' ? t('notify_denied') : notifyState === 'subscribed' ? t('notify_on') : t('notify_off')}
+          >
+            {notifyState === 'subscribed' ? t('notify_on') : t('notify_off')}
+          </button>
+        )}
 
         <button
           onClick={onInfo}

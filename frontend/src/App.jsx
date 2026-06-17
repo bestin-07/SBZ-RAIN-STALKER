@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip } from './api'
 import { detectGaps, getStatus } from './gaps'
 import { useI18n } from './i18n'
@@ -36,9 +36,75 @@ export default function App() {
   const [theme, setTheme] = useState(() => saved('theme', 'light'))
   const [lang, setLang] = useState(() => saved('lang', 'de'))
   const [infoOpen, setInfoOpen] = useState(false)
+  const [notifyState, setNotifyState] = useState('idle') // idle | subscribed | denied | unsupported
+  const installPromptRef = useRef(null)
 
   const t = useI18n(lang)
   const status = getStatus(currentPrecip, gaps, t)
+
+  // PWA install prompt capture
+  useEffect(() => {
+    const handler = e => { e.preventDefault(); installPromptRef.current = e }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  // Check existing push subscription state
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setNotifyState('unsupported')
+      return
+    }
+    if (Notification.permission === 'denied') { setNotifyState('denied'); return }
+    navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription()).then(sub => {
+      if (sub) setNotifyState('subscribed')
+    })
+  }, [])
+
+  const toggleNotifications = useCallback(async () => {
+    if (notifyState === 'unsupported' || notifyState === 'denied') return
+
+    if (notifyState === 'subscribed') {
+      // Unsubscribe
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/subscribe`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        })
+        await sub.unsubscribe()
+      }
+      setNotifyState('idle')
+      return
+    }
+
+    // Subscribe
+    try {
+      const keyRes = await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/vapid-public-key`)
+      if (!keyRes.ok) return
+      const { publicKey } = await keyRes.json()
+
+      const perm = await Notification.requestPermission()
+      if (perm !== 'granted') { setNotifyState('denied'); return }
+
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: publicKey,
+      })
+
+      await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sub),
+      })
+      setNotifyState('subscribed')
+    } catch (e) {
+      console.error('Push subscribe failed', e)
+    }
+  }, [notifyState])
 
   // Apply theme class + meta color
   useEffect(() => {
@@ -124,6 +190,8 @@ export default function App() {
         lang={lang}
         onLangToggle={() => setLang(prev => prev === 'de' ? 'en' : 'de')}
         onInfo={() => setInfoOpen(true)}
+        notifyState={notifyState}
+        onNotifyToggle={toggleNotifications}
         t={t}
       />
       {location && isOutsideSalzburg(location) && (
