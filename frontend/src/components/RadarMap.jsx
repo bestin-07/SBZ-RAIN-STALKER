@@ -118,10 +118,9 @@ export default function RadarMap({ location, areaPrecip, theme }) {
         // "Zoom Level Not Supported" errors in Alpine terrain at high zoom.
         rvLayersRef.current = frames.map((frame, i) => {
           const layer = L.tileLayer(
-            `${host}${frame.path}/512/{z}/{x}/{y}/4/1_1.png`,
+            `${host}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`,
             {
-              tileSize: 512,
-              zoomOffset: -1,
+              maxNativeZoom: 9,
               opacity: i === frames.length - 1 ? 0.5 : 0,
               zIndex: 200,
               attribution: '© RainViewer',

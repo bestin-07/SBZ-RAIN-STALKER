@@ -6,13 +6,22 @@ export function detectGaps(times, precips) {
   const now = Math.floor(Date.now() / 1000)
   const cutoff = now + LOOK_AHEAD
 
-  const slots = times
+  // Include up to one 15-min slot in the past so we can always identify the
+  // "current" slot (the 15-min slot we're currently inside).
+  const allSlots = times
     .map((t, i) => ({ t, p: precips[i] ?? 99 }))
-    .filter(s => s.t >= now - 300 && s.t <= cutoff)
+    .filter(s => s.t >= now - 15 * 60 && s.t <= cutoff)
 
-  if (!slots.length) return { currentPrecip: null, gaps: [] }
+  if (!allSlots.length) return { currentPrecip: null, gaps: [] }
 
-  const currentPrecip = slots[0].p
+  // Slot closest to now = the interval we're actually inside right now
+  const nowSlot = allSlots.reduce((best, s) =>
+    Math.abs(s.t - now) < Math.abs(best.t - now) ? s : best
+  )
+  const currentPrecip = nowSlot.p
+
+  // Gap detection only on slots from nowSlot forward
+  const slots = allSlots.filter(s => s.t >= nowSlot.t)
 
   const gaps = []
   let gapStart = null
@@ -71,6 +80,13 @@ function getWeatherNote(weather, t) {
   return null
 }
 
+function precipByCode(code) {
+  if (code === null || code === undefined || code < 0) return false
+  return (code >= 51 && code <= 67) ||
+         (code >= 71 && code <= 77) ||
+         (code >= 80 && code <= 99)
+}
+
 export function getStatus(currentPrecip, gaps, weather, t = k => k) {
   const weatherNote = getWeatherNote(weather, t)
 
@@ -78,7 +94,7 @@ export function getStatus(currentPrecip, gaps, weather, t = k => k) {
     return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null }
   }
 
-  const isDry = currentPrecip < DRY_THRESHOLD
+  const isDry = currentPrecip < DRY_THRESHOLD && !precipByCode(weather?.code)
   const nextGap = gaps[0]
 
   if (isDry) {
