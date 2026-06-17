@@ -180,8 +180,14 @@ Live-confirmed 2026-06: the metadata endpoint returns `{ ..., stations: [...] }`
 ### Backend push & accuracy now use the nowcast (aligned with the app)
 `backend/main.py` previously computed push alerts and accuracy from Open-Meteo only — the lagging model — so it could miss convective rain and fire stale alerts. It now mirrors the frontend: `fetch_timeline()` prefers the GeoSphere 1 km/15-min nowcast (Open-Meteo fallback) for the forward timeline, and `fetch_now_precip()` uses nearest TAWES stations (Open-Meteo current fallback) for the live reading. `check_and_push` anchors a real "now" slot from TAWES before running `_analyze_forecast`; `run_cycle` stores nowcast predictions and verifies them against TAWES actuals. **24/7 caveat:** this only runs continuously if the Railway service stays awake (always-on plan); Web Push still reaches closed browsers via the service worker, subject to OS battery throttling.
 
-### Geolocation requires a user gesture (Safari/Firefox)
-Do **not** auto-request `getCurrentPosition` on mount — Safari and Firefox suppress or never show the permission prompt unless the call originates from a user gesture (Chrome is lenient, which masked this). The request is triggered only by the "GET MY LOCATION" button in `LocationPrompt`; App tracks a `locating` state for the button's loading label.
+### Geolocation: user gesture + denied-state handling (Safari/Firefox)
+Do **not** auto-request `getCurrentPosition` on mount — Safari and Firefox suppress or never show the permission prompt unless the call originates from a user gesture (Chrome is lenient, which masked this). The request is triggered only by the "GET MY LOCATION" button; App tracks a `locating` state for the button's loading label.
+
+If the prompt still never appears, the permission is usually pre-**blocked/dismissed** (Firefox won't re-ask once dismissed) or the page isn't a secure context (HTTPS / localhost — a plain-http LAN IP silently fails). App handles this:
+- On mount, `navigator.permissions.query({name:'geolocation'})` detects a pre-`denied` state and shows help immediately rather than waiting for a click that won't prompt.
+- Error codes are mapped (`denied`/`timeout`/`unavailable`/`unsupported`) to specific messages.
+- `LocationPrompt` shows **browser-specific instructions** (`detectBrowser()` → `loc_help_{ios|firefox|chrome|safari|generic}`) to re-enable location.
+- A **"Use Salzburg center" fallback** (`useDefaultLocation`, 47.8009/13.0448) lets the app work even if GPS never resolves.
 
 ### Nearby-town dots & API rate limits
 `fetchAreaPrecip()` shows precip for the 12 surrounding towns. It uses a **single batched Open-Meteo request** (comma-separated `latitude`/`longitude` → array response in order), not 12 separate calls — gentler on the rate limit and it no longer drops towns when individual calls get throttled (the old behaviour made the dots "disappear"). It always returns every AREA (precip `null` on failure) so dots render consistently. **All weather/radar calls are client-side (browser → Open-Meteo / GeoSphere directly); none go through the Railway backend**, so public-API rate limits apply per user IP, not to our server. The backend only calls Open-Meteo for its own 5 accuracy points every 5 min.

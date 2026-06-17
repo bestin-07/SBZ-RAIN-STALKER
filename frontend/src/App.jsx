@@ -124,7 +124,7 @@ export default function App() {
 
   const requestLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setLocationError('location not supported')
+      setLocationError('unsupported')
       return
     }
     setLocating(true)
@@ -134,12 +134,28 @@ export default function App() {
         setLocationError(null)
         setLocating(false)
       },
-      () => {
-        setLocationError('location access denied')
+      err => {
         setLocating(false)
+        // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
+        setLocationError(err.code === 1 ? 'denied' : err.code === 3 ? 'timeout' : 'unavailable')
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     )
+  }, [])
+
+  // Fallback so the app is usable even if GPS never resolves (Salzburg centre).
+  const useDefaultLocation = useCallback(() => {
+    setLocation({ lat: 47.8009, lon: 13.0448 })
+    setLocationError(null)
+  }, [])
+
+  // Detect a pre-blocked permission up front so we can show help immediately
+  // instead of making the user wait for a click that won't prompt (Firefox/Chrome).
+  useEffect(() => {
+    if (!navigator.permissions?.query) return
+    navigator.permissions.query({ name: 'geolocation' })
+      .then(p => { if (p.state === 'denied') setLocationError('denied') })
+      .catch(() => {})
   }, [])
 
   const loadData = useCallback(async () => {
@@ -256,6 +272,7 @@ export default function App() {
           loading={locating}
           error={locationError}
           onRequest={requestLocation}
+          onUseDefault={useDefaultLocation}
           t={t}
         />
       ) : (

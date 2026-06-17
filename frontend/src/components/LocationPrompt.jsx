@@ -1,4 +1,19 @@
-export default function LocationPrompt({ onRequest, error, loading, t }) {
+function detectBrowser() {
+  const ua = navigator.userAgent
+  const ios = /iPad|iPhone|iPod/.test(ua) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  if (ios) return 'ios'
+  if (/Firefox\//.test(ua)) return 'firefox'
+  if (/Edg\//.test(ua) || /Chrome\//.test(ua)) return 'chrome'
+  if (/Safari\//.test(ua)) return 'safari'
+  return 'generic'
+}
+
+const ERR_KEY = { denied: 'loc_denied', timeout: 'loc_timeout',
+                  unavailable: 'loc_unavailable', unsupported: 'location_not_supported' }
+
+export default function LocationPrompt({ onRequest, onUseDefault, error, loading, t }) {
+  const helpKey = `loc_help_${detectBrowser()}`
   return (
     <div className="min-h-screen bg-bg flex flex-col items-start justify-center px-6 pb-safe md:items-center">
       {/* Bounded column: left-aligned editorial look on mobile, centered on desktop */}
@@ -19,19 +34,35 @@ export default function LocationPrompt({ onRequest, error, loading, t }) {
         </div>
 
         {error && (
-          <div className="font-mono text-xs text-stuck mb-6 border border-stuck px-3 py-2">
-            {error === 'location access denied' ? t('location_denied') : t('location_not_supported')}
-            {' '}{t('try_again')}
+          <div className="mb-6 w-full max-w-sm">
+            <div className="font-mono text-xs text-stuck mb-3 border border-stuck px-3 py-2">
+              {t(ERR_KEY[error] ?? 'loc_unavailable')}
+            </div>
+            <div className="font-mono text-xs text-muted leading-relaxed border-l-2 border-border pl-4">
+              <div className="text-primary mb-1">{t('loc_help_title')}</div>
+              {t(helpKey)}
+            </div>
           </div>
         )}
 
-        <button
-          onClick={onRequest}
-          disabled={loading}
-          className="font-display font-bold text-sm tracking-[0.15em] uppercase px-8 py-4 bg-primary text-bg hover:opacity-90 transition-opacity disabled:opacity-40"
-        >
-          {loading ? t('locating') : t('get_location')}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={onRequest}
+            disabled={loading}
+            className="font-display font-bold text-sm tracking-[0.15em] uppercase px-8 py-4 bg-primary text-bg hover:opacity-90 transition-opacity disabled:opacity-40"
+          >
+            {loading ? t('locating') : t('get_location')}
+          </button>
+
+          {error && onUseDefault && (
+            <button
+              onClick={onUseDefault}
+              className="font-mono text-xs tracking-wide uppercase px-5 py-4 border border-border text-muted hover:text-primary hover:border-primary transition-colors"
+            >
+              {t('loc_use_default')}
+            </button>
+          )}
+        </div>
 
         <div className="font-mono text-xs text-muted mt-4 max-w-xs leading-relaxed">
           {t('privacy')}
