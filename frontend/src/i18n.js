@@ -3,8 +3,9 @@ const translations = {
     GO_NOW:    'JETZT RAUS',
     WAIT_MIN:  'NOCH {min} MIN',
     STUCK:     'DRINNEN BLEIBEN',
-    dry_for:   'noch {min} Minuten trocken',
-    no_rain:   'kein Regen an deinem Standort',
+    dry_for:      'noch {min} Minuten trocken',
+    dry_for_over: 'mehr als {min} Minuten trocken',
+    no_rain:      'kein Regen an deinem Standort',
     then_clear:'dann {min} Minuten trocken',
     no_gap:    'keine Lücke in den nächsten 3 Stunden',
 
@@ -62,8 +63,9 @@ const translations = {
     GO_NOW:    'GO NOW',
     WAIT_MIN:  'WAIT {min} MIN',
     STUCK:     'STUCK INSIDE',
-    dry_for:   'dry for {min} more minutes',
-    no_rain:   'no rain at your location',
+    dry_for:      'dry for {min} more minutes',
+    dry_for_over: 'dry for more than {min} minutes',
+    no_rain:      'no rain at your location',
     then_clear:'then {min} minutes clear',
     no_gap:    'no gap in the next 3 hours',
 

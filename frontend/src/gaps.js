@@ -31,6 +31,7 @@ export function detectGaps(times, precips) {
           startsAt: gapStart.t,
           startsInMinutes: Math.max(0, Math.round((gapStart.t - now) / 60)),
           durationMinutes: gapCount * 15,
+          opensEnded: false,
         })
       }
       gapStart = null
@@ -43,6 +44,7 @@ export function detectGaps(times, precips) {
       startsAt: gapStart.t,
       startsInMinutes: Math.max(0, Math.round((gapStart.t - now) / 60)),
       durationMinutes: gapCount * 15,
+      opensEnded: true,
     })
   }
 
@@ -62,7 +64,9 @@ export function getStatus(currentPrecip, gaps, t = k => k) {
       return {
         type: 'go',
         headline: t('GO_NOW'),
-        sub: t('dry_for', { min: nextGap.durationMinutes }),
+        sub: nextGap.opensEnded
+          ? t('dry_for_over', { min: nextGap.durationMinutes })
+          : t('dry_for', { min: nextGap.durationMinutes }),
       }
     }
     return {
