@@ -3,7 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const SALZBURG = [47.802, 13.045]
-const ZOOM = 12  // a touch closer to the user; RainViewer maxNativeZoom covers this
+const ZOOM = 13  // close-in on the user; radar overlay upscales from RainViewer's z7 max
 const BOUNDS = L.latLngBounds([47.50, 12.65], [48.10, 13.65])
 const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
 // Show RainViewer across the whole interactive zoom range. Tiles are native at
@@ -136,15 +136,17 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
         rvLayersRef.current = []
 
         rvLayersRef.current = frames.map((frame, i) => {
-          // 256px tiles, colour scheme 2 (universal blue) + smoothing. maxNativeZoom
-          // 12 lets RainViewer serve real tiles at the default city zoom instead of
-          // stretching one low-zoom tile (the "blurry / zoom not supported" look).
-          // Radar is natively ~1 km, so beyond this it's interpolated, not finer
-          // detail — the fine signal comes from the GeoSphere 1 km nowcast that
-          // drives the GO/WAIT status, not from this visual overlay.
+          // 256px tiles, colour scheme 2 (universal blue) + smoothing.
+          // RainViewer's radar tiles only exist up to **zoom 7** — at z8+ it
+          // returns a "Zoom Level Not Supported" placeholder PNG (verified by
+          // decoding the tiles). So maxNativeZoom MUST be 7; Leaflet then upscales
+          // the z7 tile for higher map zooms instead of fetching the placeholder.
+          // z7 is ~1.2 km/px, which is already near radar's native resolution, so
+          // little real detail is lost — the fine signal comes from the GeoSphere
+          // 1 km nowcast that drives the GO/WAIT status, not this visual overlay.
           const layer = L.tileLayer(
             `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`,
-            { maxNativeZoom: 12, opacity: 0, zIndex: 200, attribution: '© RainViewer' }
+            { maxNativeZoom: 7, opacity: 0, zIndex: 200, attribution: '© RainViewer' }
           )
           layer.addTo(mapRef.current)
           return layer

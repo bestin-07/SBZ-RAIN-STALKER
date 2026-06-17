@@ -182,8 +182,9 @@ Live-confirmed 2026-06: the metadata endpoint returns `{ ..., stations: [...] }`
 
 ### RainViewer Animated Radar — now the sole radar overlay
 `RadarMap.jsx` uses the RainViewer API for animated radar tiles (~40 min past + 2 nowcast frames). It is now the **only** radar overlay (DWD removed — see above).
-- `maxNativeZoom: 9` → z9 tiles are upscaled (slightly soft) above zoom 9 rather than disappearing.
-- `RV_MAX_ZOOM = 14` (was `10`). **This was the "map looks empty" bug:** the default map zoom is `11`, so the old `<= 10` gate hid RainViewer at the default view — and with DWD also blocked, the map showed no radar at all. The gate now spans the full interactive zoom range (minZoom 9 → maxZoom 14).
+- **`maxNativeZoom: 7` — do NOT raise this.** Verified 2026-06 by decoding the tile PNGs: RainViewer's radar tiles are real only up to **zoom 7**; at **z8 and above it returns a fixed "Zoom Level Not Supported" placeholder image** (a gray box `(0,0,0,140)` with white text — not a transparent/empty tile). Any `maxNativeZoom ≥ 8` makes Leaflet request that placeholder, which is exactly the "Zoom Level Not Supported" boxes that plagued the map. With `7`, Leaflet upscales the z7 tile for higher map zooms. z7 is ~1.2 km/px, already near radar's native resolution, so little real detail is lost.
+- Clear sky → RainViewer tiles are fully transparent → **no overlay is the correct, expected look** (not a bug).
+- `RV_MAX_ZOOM = 14` gates the animation opacity across the interactive zoom range (minZoom 9 → maxZoom 14). Default map `ZOOM = 13` (close on the user).
 - A `ResizeObserver` calls `map.invalidateSize()` on mount and resize, so the flex-mounted container (`flex-1 min-h-0`, with sibling banners that settle height after first paint) doesn't leave the base tiles blank.
 
 ---
