@@ -11,6 +11,13 @@ import os
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
+try:
+    from pywebpush import webpush, WebPushException
+    PUSH_AVAILABLE = True
+except ImportError:
+    PUSH_AVAILABLE = False
+    print("[push] pywebpush not available — push notifications disabled")
+
 POINTS = [
     {"name": "altstadt",   "lat": 47.7985, "lon": 13.0469},
     {"name": "bahnhof",    "lat": 47.8127, "lon": 13.0449},
@@ -116,7 +123,6 @@ def init_vapid():
 
 def _send_push_sync(endpoint: str, p256dh: str, auth: str, payload: dict) -> bool:
     """Returns False if the subscription is expired/gone and should be deleted."""
-    from pywebpush import webpush, WebPushException
     try:
         webpush(
             subscription_info={"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}},
@@ -134,7 +140,7 @@ def _send_push_sync(endpoint: str, p256dh: str, auth: str, payload: dict) -> boo
 
 
 async def push_to_all(payload: dict):
-    if not VAPID_PRIVATE_KEY:
+    if not PUSH_AVAILABLE or not VAPID_PRIVATE_KEY:
         return
     conn = sqlite3.connect(DB_PATH)
     subs = conn.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions").fetchall()
@@ -390,7 +396,10 @@ async def scheduler():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    init_vapid()
+    try:
+        init_vapid()
+    except Exception as e:
+        print(f"[vapid] init failed (push notifications disabled): {e}")
     task = asyncio.create_task(scheduler())
     yield
     task.cancel()
