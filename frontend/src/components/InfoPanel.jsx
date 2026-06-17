@@ -45,7 +45,7 @@ export default function InfoPanel({ open, onClose, t }) {
             {t('info_title')}
           </div>
           <div className="space-y-4 mb-8">
-            {['info_p1','info_p2','info_p3','info_p4','info_p5'].map(k => (
+            {['info_p1','info_p2','info_p3','info_p4','info_p5','info_p6'].map(k => (
               <p key={k} className="font-mono text-sm text-muted leading-relaxed">
                 {t(k)}
               </p>
@@ -58,7 +58,8 @@ export default function InfoPanel({ open, onClose, t }) {
           <div className="space-y-3 mb-10">
             <DataRow label={t('src_forecast')} value="Open-Meteo ICON-EU" />
             <DataRow label={t('src_radar')}    value="DWD / OPERA + RainViewer" />
-            <DataRow label={t('src_station')}  value="GeoSphere Austria TAWES · Salzburg Flughafen" />
+            <DataRow label={t('src_station')}  value="GeoSphere Austria TAWES · 3 nächste Stationen" />
+            <DataRow label={t('src_radar_pt')} value="DWD RADOLAN · live Punkt-Abfrage" />
             <DataRow label={t('src_accuracy')} value={t('fact_03')} />
           </div>
 
