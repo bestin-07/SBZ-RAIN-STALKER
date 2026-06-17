@@ -151,8 +151,12 @@ export default function App() {
         const times = data.minutely_15?.time ?? []
         const precips = data.minutely_15?.precipitation ?? []
         const { currentPrecip: cp, gaps: detectedGaps } = detectGaps(times, precips)
+        // current.precipitation = measured mm in the preceding hour (not a forecast).
+        // Use it as an override so active rain isn't masked by a stale forecast slot.
+        const measured = data.current?.precipitation ?? 0
+        const effectivePrecip = cp === null ? null : Math.max(cp, measured)
         setForecast({ times, precips })
-        setCurrentPrecip(cp)
+        setCurrentPrecip(effectivePrecip)
         setGaps(detectedGaps)
         setCurrentWeather({
           temp: data.current?.temperature_2m ?? null,
