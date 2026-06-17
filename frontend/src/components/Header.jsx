@@ -76,9 +76,9 @@ export default function Header({
           <button
             onClick={onInfo}
             className="font-mono text-xs text-muted hover:text-primary transition-colors w-4 h-4 flex items-center justify-center border border-border rounded-full leading-none"
-            aria-label="about"
+            aria-label="guide"
           >
-            i
+            ?
           </button>
         </div>
       </div>

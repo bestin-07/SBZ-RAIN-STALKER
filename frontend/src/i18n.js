@@ -59,6 +59,16 @@ const translations = {
 
     close: 'SCHLIESSEN',
 
+    guide_title:      'was bedeutet was',
+    guide_what_is:    '"gemma raus" ist österreichisch für "gehen wir raus!" ein satz der alles sagt.',
+    guide_green:      'gerade trocken. einfach raus jetzt.',
+    guide_yellow:     'es regnet gerade. aber eine trockene lücke kommt bald. app zeigt wie lange du noch warten musst.',
+    guide_red:        'keine trockene lücke in den nächsten 3 stunden. heute drinbleiben ist okay.',
+    guide_weather:    'unter dem status gibt es hinweise zu temperatur, wind oder schnee. immer basierend auf deinem standort.',
+    guide_ex_wait:    'NOCH 12 MIN',
+    guide_ex_stuck:   'BLEIB DRIN',
+    guide_disclaimer: 'Vorhersagen kommen von Open-Meteo (ICON-EU Modell) und Radar vom DWD. Beides Open Source und kostenlos. Alpen-Radar kann abweichen und Vorhersagen sind keine Garantie. Im Zweifel kurz aus dem Fenster schauen.',
+
     weather_perfect:   'ideales wetter heute. kein einziger grund drinzubleiben.',
     weather_hot:       '{temp}°C da draußen. sonnenbrille an und los!',
     weather_scorching: 'heiß! {temp}°C. sonnencreme wasser und dann gemma.',
@@ -127,6 +137,16 @@ const translations = {
     privacy_basis: 'Legal basis: legitimate interest (Art. 6(1)(f) GDPR) for weather lookup; consent for push notifications.',
 
     close: 'CLOSE',
+
+    guide_title:      'what does it all mean',
+    guide_what_is:    '"gemma raus" is austrian dialect for "let us go outside!" one phrase that says everything.',
+    guide_green:      'dry right now. just go.',
+    guide_yellow:     'raining now. but a dry window is coming soon. the app shows how long you need to wait.',
+    guide_red:        'no dry window in the next 3 hours. staying in today is totally fine.',
+    guide_weather:    'below the main status you get notes on temperature, wind or snow. always based on your location.',
+    guide_ex_wait:    'WAIT 12 MIN',
+    guide_ex_stuck:   'STUCK INSIDE',
+    guide_disclaimer: 'Forecasts from Open-Meteo (ICON-EU model), radar from DWD. Both are open source and free. Alpine radar can be imprecise and forecasts are not a guarantee. When in doubt look out the window.',
 
     weather_perfect:   'perfect out there. no excuse to stay in.',
     weather_hot:       '{temp}°C outside. shades and sunscreen first.',
