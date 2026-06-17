@@ -25,6 +25,7 @@ function isOutsideSalzburg(loc) {
 export default function App() {
   const [location, setLocation] = useState(null)
   const [locationError, setLocationError] = useState(null)
+  const [locating, setLocating] = useState(false)
   const [forecast, setForecast] = useState(null)
   const [accuracy, setAccuracy] = useState(null)
   const [currentPrecip, setCurrentPrecip] = useState(null)
@@ -126,12 +127,17 @@ export default function App() {
       setLocationError('location not supported')
       return
     }
+    setLocating(true)
     navigator.geolocation.getCurrentPosition(
       pos => {
         setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude })
         setLocationError(null)
+        setLocating(false)
       },
-      () => setLocationError('location access denied'),
+      () => {
+        setLocationError('location access denied')
+        setLocating(false)
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     )
   }, [])
@@ -190,7 +196,9 @@ export default function App() {
     }
   }, [location])
 
-  useEffect(() => { requestLocation() }, [])
+  // NOTE: do NOT auto-request geolocation on mount. Safari and Firefox suppress
+  // (or never show) the permission prompt unless the request originates from a
+  // user gesture — the "GET MY LOCATION" button in LocationPrompt provides it.
 
   useEffect(() => {
     if (!location) return
@@ -245,7 +253,7 @@ export default function App() {
 
       {!location ? (
         <LocationPrompt
-          loading={!locationError}
+          loading={locating}
           error={locationError}
           onRequest={requestLocation}
           t={t}

@@ -191,6 +191,113 @@ async def fetch_current_for_point(client: httpx.AsyncClient, point: dict):
 
 
 # ---------------------------------------------------------------------------
+# GeoSphere sources — mirror the frontend so push/accuracy use the same signal
+# (1 km / 15-min radar nowcast for the timeline, TAWES for the live reading)
+# instead of the lagging Open-Meteo model.
+# ---------------------------------------------------------------------------
+
+GEOSPHERE = "https://dataset.api.hub.geosphere.at/v1"
+_tawes_stations = None  # cached list of (id, lat, lon) for the session
+
+
+async def fetch_nowcast_timeline(client: httpx.AsyncClient, point: dict):
+    """GeoSphere nowcast: 1 km / 15-min, +3 h. Returns (times[unix], precips[mm])."""
+    r = await client.get(
+        f"{GEOSPHERE}/timeseries/forecast/nowcast-v1-15min-1km",
+        params={"parameters": "rr", "lat_lon": f"{point['lat']},{point['lon']}"},
+        timeout=10,
+    )
+    r.raise_for_status()
+    data = r.json()
+    ts = data.get("timestamps", [])
+    rr = data["features"][0]["properties"]["parameters"]["rr"]["data"]
+    if not ts or len(ts) != len(rr):
+        raise ValueError("unexpected nowcast response")
+    times = [int(datetime.fromisoformat(s).timestamp()) for s in ts]
+    precips = [float(v) if isinstance(v, (int, float)) else 0.0 for v in rr]
+    return times, precips
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    from math import radians, sin, cos, atan2, sqrt
+    r = radians
+    dlat, dlon = r(lat2 - lat1), r(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(r(lat1)) * cos(r(lat2)) * sin(dlon / 2) ** 2
+    return 6371 * 2 * atan2(sqrt(a), sqrt(1 - a))
+
+
+async def _load_tawes_stations(client: httpx.AsyncClient):
+    global _tawes_stations
+    if _tawes_stations is not None:
+        return _tawes_stations
+    try:
+        r = await client.get(f"{GEOSPHERE}/station/current/tawes-v1-10min/metadata", timeout=10)
+        r.raise_for_status()
+        out = []
+        for s in r.json().get("stations", []):
+            if s.get("is_active") is False:
+                continue
+            try:
+                out.append((str(s["id"]), float(s["lat"]), float(s["lon"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        _tawes_stations = out
+    except Exception:
+        _tawes_stations = []
+    return _tawes_stations
+
+
+async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
+    """Max RR (mm, last 10 min) across the nearest active TAWES stations + airport anchor."""
+    stations = await _load_tawes_stations(client)
+    if stations:
+        ids = [s[0] for s in sorted(stations, key=lambda s: _haversine_km(lat, lon, s[1], s[2]))[:n]]
+    else:
+        ids = ["11150"]
+    if "11150" not in ids:
+        ids.append("11150")
+    r = await client.get(
+        f"{GEOSPHERE}/station/current/tawes-v1-10min",
+        params={"parameters": "RR", "station_ids": ",".join(ids)},
+        timeout=10,
+    )
+    r.raise_for_status()
+    vals = []
+    for f in r.json().get("features", []):
+        try:
+            v = f["properties"]["parameters"]["RR"]["data"][0]
+            if isinstance(v, (int, float)):
+                vals.append(v)
+        except (KeyError, IndexError, TypeError):
+            continue
+    return max(vals) if vals else None
+
+
+async def fetch_timeline(client: httpx.AsyncClient, point: dict):
+    """Prefer the GeoSphere nowcast; fall back to Open-Meteo minutely_15."""
+    try:
+        return await fetch_nowcast_timeline(client, point)
+    except Exception:
+        data = await fetch_forecast_for_point(client, point)
+        return (data.get("minutely_15", {}).get("time", []),
+                data.get("minutely_15", {}).get("precipitation", []))
+
+
+async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
+    """Live 'now' precip: TAWES (actual obs) with Open-Meteo current as fallback."""
+    try:
+        v = await fetch_tawes_precip(client, point["lat"], point["lon"])
+        if v is not None:
+            return v
+    except Exception:
+        pass
+    try:
+        return await fetch_current_for_point(client, point) or 0
+    except Exception:
+        return 0
+
+
+# ---------------------------------------------------------------------------
 # Push notification logic
 # ---------------------------------------------------------------------------
 
@@ -283,13 +390,15 @@ def _build_payload(event: dict) -> dict:
 
 
 async def check_and_push(client: httpx.AsyncClient, now_ts: int):
-    # Gather data from all monitoring points
+    # Gather data from all monitoring points using the same signal as the app:
+    # the GeoSphere radar nowcast, anchored with a live TAWES "now" reading.
     events = []
     for point in POINTS:
         try:
-            data = await fetch_forecast_for_point(client, point)
-            times   = data.get("minutely_15", {}).get("time", [])
-            precips = data.get("minutely_15", {}).get("precipitation", [])
+            times, precips = await fetch_timeline(client, point)
+            now_precip = await fetch_now_precip(client, point)
+            times   = [now_ts] + list(times)
+            precips = [now_precip] + list(precips)
             ev = _analyze_forecast(times, precips, now_ts)
             if ev:
                 events.append(ev)
@@ -334,12 +443,10 @@ async def run_cycle():
     conn = sqlite3.connect(DB_PATH)
 
     async with httpx.AsyncClient() as client:
-        # Store new accuracy forecasts
+        # Store new accuracy forecasts from the radar nowcast (same as the app)
         for point in POINTS:
             try:
-                data = await fetch_forecast_for_point(client, point)
-                times   = data.get("minutely_15", {}).get("time", [])
-                precips = data.get("minutely_15", {}).get("precipitation", [])
+                times, precips = await fetch_timeline(client, point)
 
                 for horizon in [30, 60, 90]:
                     target_ts = now_ts + horizon * 60
@@ -365,7 +472,7 @@ async def run_cycle():
             if not point:
                 continue
             try:
-                actual = await fetch_current_for_point(client, point)
+                actual = await fetch_now_precip(client, point)  # TAWES actual obs
                 conn.execute(
                     "UPDATE forecasts SET actual_precip=?, verified=1 WHERE id=?",
                     (actual, row_id),
