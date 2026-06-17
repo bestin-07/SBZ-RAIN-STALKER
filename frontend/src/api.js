@@ -1,6 +1,6 @@
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast'
 const RAINVIEWER = 'https://api.rainviewer.com/public/weather-maps.json'
-const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
+const BACKEND = import.meta.env.VITE_BACKEND_URL ?? ''
 
 export async function fetchForecast(lat, lon) {
   const params = new URLSearchParams({

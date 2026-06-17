@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import httpx
 import asyncio
 import sqlite3
@@ -184,3 +186,8 @@ def get_accuracy():
 @app.get("/api/health")
 def health():
     return {"ok": True, "time": datetime.now(timezone.utc).isoformat()}
+
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
