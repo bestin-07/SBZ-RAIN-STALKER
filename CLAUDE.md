@@ -70,21 +70,21 @@ All 4 sources are queried in parallel on every refresh (every 5 minutes). The ap
 ### 2. GeoSphere Austria TAWES Stations (`api.js: fetchNearbyStationPrecip`)
 - **URL:** `https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min`
 - **Update cycle:** Every 10 minutes, actual measured precipitation (not a model)
-- **Param:** `parameters=RR&station_ids=<id1>,<id2>,<id3>`
+- **Param:** `parameters=RR&station_ids=<id1>,...,<id6>,11150`
 - **`RR`** = precipitation in mm over the last 10 minutes
-- **Station discovery:** `GET .../metadata` → array of ~270 stations with `id`, `lat`, `lon` → haversine sort → 3 nearest
+- **Station discovery:** `GET .../metadata` → `meta.stations` array of ~272 stations with `id`, `lat`, `lon`, `is_active` → drop inactive → haversine sort → **6 nearest**, plus airport anchor `11150` always appended
 - **Fallback:** Salzburg Airport station ID `11150` if metadata fails
 - **Response path:** `data.features[].properties.parameters.RR.data[0]`
-- **Known uncertainty:** Metadata response field names (`id`, `lat`, `lon`) verified via python-zamg source but not live-tested from remote environment. Defensive code handles both array and dict forms.
+- **Verified (2026-06):** Metadata structure live-confirmed — `meta.stations` is an array of objects with exactly `id`/`lat`/`lon`/`is_active`. The wider net (6 + anchor) exists so a hyper-local convective cell isn't missed when the 3 nearest stations are dry but a 4th–6th nearest (or the airport) is wet.
 
-### 3. DWD RADOLAN Radar Point (`api.js: fetchRadarPrecipAtPoint`)
-- **URL:** `https://maps.dwd.de/geoserver/dwd/wms` (same server as map tiles)
-- **Request:** `GetFeatureInfo` with `CRS:84`, `LAYERS: dwd:RX-Produkt`
-- **Update cycle:** Every 5 minutes — fastest available source
-- **Encoding:** `GRAY_INDEX` → `dBZ = GRAY_INDEX / 2 - 32.5`. Rain detected at `dBZ > 7` (≈ 0.1 mm/h)
-- **Returns:** `0.1` if rain detected, `0` if dry, `null` on error
-- **No-data flags:** `GRAY_INDEX >= 250` = no signal, returns `0` (not null)
-- **Known uncertainty:** CORS behavior of `GetFeatureInfo` from browser not confirmed. May silently return `null` every time. **This is the most likely reason rain still isn't detected.** Needs testing from a local browser with DevTools.
+### 3. GeoSphere INCA 1 km Nowcast (`api.js: fetchRadarPrecipAtPoint`)
+- **URL:** `https://dataset.api.hub.geosphere.at/v1/timeseries/historical/inca-v1-1h-1km`
+- **Param:** `parameters=RR&start=<-3h>&end=<now>&lat_lon=<lat>,<lon>`
+- **`RR`** = 1-hour precipitation sum in kg/m² (= mm) at the point's 1 km grid cell — radar+station blended analysis, independent of the Open-Meteo model
+- **Update cycle:** Hourly analysis, lags ~30–90 min (slower than TAWES, but spatially complete)
+- **Returns:** most recent non-null hourly value in mm, or `null` on failure
+- **Response path:** `data.features[0].properties.parameters.RR.data[]` → last valid entry
+- **Why this replaced DWD RADOLAN:** The previous source used DWD `GetFeatureInfo` on `maps.dwd.de`. Live-tested 2026-06: that endpoint returns **HTTP 403 (WAF "Access Denied")** from Austrian user networks (client IP A1 Telekom AT), with or without browser headers — so it returned `null` on every request for real users. **This was a primary cause of false "GO" during rain.** INCA is on the already-working GeoSphere host (no CORS, no WAF block). The DWD WMS *tile* overlay (`GetMap`) in `RadarMap.jsx` is a different request path and is unaffected.
 
 ### 4. Open-Meteo Current Measured (`App.jsx: loadData`)
 - `data.current.precipitation` — Open-Meteo's reported last-hour measured value
@@ -158,16 +158,14 @@ else → STUCK INSIDE (no gap in 3h)
 
 ## Known Issues / Technical Debt
 
-### DWD RADOLAN GetFeatureInfo CORS
-The `fetchRadarPrecipAtPoint()` function uses `GetFeatureInfo` on the DWD GeoServer. This works as a map tile source in Leaflet but `GetFeatureInfo` requests from the browser may be blocked by CORS. If so, this source silently returns `null` on every request. **Must test with browser DevTools (Network tab) to confirm.**
-
-Workaround if CORS fails: proxy the request through the backend (`/api/radar-point?lat=&lon=`).
+### DWD RADOLAN GetFeatureInfo — REMOVED (was WAF-blocked, not CORS)
+**Resolved 2026-06.** The old `fetchRadarPrecipAtPoint()` queried DWD `GetFeatureInfo`. Live testing showed it returns **HTTP 403 ("Access Denied", F5/edge WAF signature)** from Austrian user IPs — not a CORS issue, a server-side block that browser headers don't bypass. It returned `null` on every request, contributing nothing to the rain blend. It has been replaced by GeoSphere INCA (source #3 above). Do not reintroduce DWD GetFeatureInfo as a data source; the DWD WMS *tile* overlay in `RadarMap.jsx` is fine to keep (different request path).
 
 ### ICON-EU Model Lag
 The Open-Meteo ICON-EU model runs roughly hourly and can be 2-3h behind convective rain events in the Alps. On fast-moving summer storms, all model-based signals (minutely_15, current.precipitation, weather_code) can show `0` while it's actively raining. The TAWES stations and RADOLAN radar are meant to compensate — but only if those API calls succeed.
 
-### GeoSphere TAWES Metadata Format
-The metadata endpoint response format was inferred from the python-zamg library, not live-tested. If the field names differ (e.g. `stationid` vs `id`, `latitude` vs `lat`), dynamic station discovery silently falls back to `station_ids=11150` (Salzburg Airport).
+### GeoSphere TAWES Metadata Format — VERIFIED
+Live-confirmed 2026-06: the metadata endpoint returns `{ ..., stations: [...] }` where each station object has exactly `id` (string), `lat`, `lon`, `is_active` (bool). Discovery filters out inactive stations and falls back to `station_ids=11150` only if the whole metadata fetch fails.
 
 ### RainViewer Animated Radar
 `RadarMap.jsx` uses RainViewer API for animated radar tiles (past 2h animation). `maxNativeZoom: 9` and a `zoomend` guard at `RV_MAX_ZOOM = 10` prevent broken tiles at high zoom. The DWD WMS static overlay is the authoritative source; RainViewer is visual context only.
@@ -217,8 +215,8 @@ curl "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min?par
 # Test GeoSphere metadata
 curl "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min/metadata" | python3 -m json.tool | head -50
 
-# Test DWD RADOLAN GetFeatureInfo for Salzburg (lat=47.8, lon=13.04)
-curl "https://maps.dwd.de/geoserver/dwd/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=dwd:RX-Produkt&QUERY_LAYERS=dwd:RX-Produkt&CRS=CRS:84&BBOX=13.03,47.79,13.05,47.81&WIDTH=10&HEIGHT=10&I=5&J=5&INFO_FORMAT=application/json"
+# Test GeoSphere INCA 1km nowcast point (replaces DWD RADOLAN, which 403s)
+curl "https://dataset.api.hub.geosphere.at/v1/timeseries/historical/inca-v1-1h-1km?parameters=RR&start=2026-06-17T17:00&end=2026-06-17T20:00&lat_lon=47.8,13.04"
 
 # Test Open-Meteo for Salzburg
 curl "https://api.open-meteo.com/v1/forecast?latitude=47.8&longitude=13.04&current=precipitation,weather_code,temperature_2m,wind_speed_10m&minutely_15=precipitation&forecast_minutely_15=4&timeformat=unixtime&timezone=UTC"
@@ -257,10 +255,9 @@ When connecting Claude Code to a local remote development server (so API scripts
 1. Start the local dev server: `cd frontend && npm run dev`
 2. Start the backend: `cd backend && uvicorn main:app --reload`
 3. In Claude Code, use the local terminal to run `curl` tests against APIs
-4. Confirm DWD RADOLAN GetFeatureInfo CORS behavior (see Known Issues above)
-5. Confirm GeoSphere TAWES metadata field names
-6. Check browser DevTools Network tab to see actual API responses during rain events
+4. Check browser DevTools Network tab to see actual API responses during rain events
 
 The most critical thing to verify during the next rain event:
-- Does `maps.dwd.de/geoserver/dwd/wms?...GetFeatureInfo...` return `200` with `GRAY_INDEX` in the response, or is it blocked by CORS?
-- Does `dataset.api.hub.geosphere.at/.../tawes-v1-10min?parameters=RR&station_ids=...` return non-zero `RR` values?
+- Does `dataset.api.hub.geosphere.at/.../tawes-v1-10min?parameters=RR&station_ids=...` return non-zero `RR` values for the nearest stations (this is the fast 10-min signal)?
+- Does the INCA point query (`inca-v1-1h-1km?parameters=RR&lat_lon=...`) return a non-zero recent hourly sum?
+- (DWD GetFeatureInfo is no longer used — it 403s from Austrian networks. Don't reintroduce it.)

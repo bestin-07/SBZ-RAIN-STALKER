@@ -1,7 +1,15 @@
 const OPEN_METEO     = 'https://api.open-meteo.com/v1/forecast'
 const GEOSPHERE_TAWES = 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min'
-const DWD_WMS        = 'https://maps.dwd.de/geoserver/dwd/wms'
+// GeoSphere INCA: radar+station blended 1 km analysis grid. Replaces the DWD
+// RADOLAN WMS GetFeatureInfo source, which is WAF-blocked (HTTP 403) from
+// Austrian user networks and silently returned null on every request.
+const GEOSPHERE_INCA = 'https://dataset.api.hub.geosphere.at/v1/timeseries/historical/inca-v1-1h-1km'
 const BACKEND        = import.meta.env.VITE_BACKEND_URL ?? ''
+
+// Salzburg Airport (TAWES 11150) — central, reliable. Always queried as an
+// anchor so a hyper-local convective cell near the city is never missed even
+// if the user's nearest stations happen to be dry.
+const ANCHOR_STATION_ID = '11150'
 
 export const AREAS = [
   { name: "Hallein",         lat: 47.6835, lon: 13.0965 },
@@ -48,44 +56,50 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-async function tawesNearestIds(lat, lon, n = 3) {
+async function tawesNearestIds(lat, lon, n = 6) {
   if (!_tawesStations) {
     try {
       const r = await fetch(`${GEOSPHERE_TAWES}/metadata`, { signal: AbortSignal.timeout(8000) })
-      if (!r.ok) return ['11150']
+      if (!r.ok) return [ANCHOR_STATION_ID]
       const meta = await r.json()
       const raw = meta?.stations ?? []
-      // API returns array of station objects; fall back to dict form just in case
+      // Live metadata: meta.stations is an array of objects with id/lat/lon and
+      // an is_active flag. Drop decommissioned stations — they return null RR
+      // and would otherwise crowd out a live station from the nearest set.
       _tawesStations = (Array.isArray(raw)
-        ? raw.map(s => ({ id: String(s.id), lat: +s.lat, lon: +s.lon }))
+        ? raw.map(s => ({ id: String(s.id), lat: +s.lat, lon: +s.lon, active: s.is_active !== false }))
         : Object.entries(raw).map(([id, v]) => ({
             id,
             lat: Array.isArray(v) ? +v[0] : +v.lat,
             lon: Array.isArray(v) ? +v[1] : +v.lon,
+            active: true,
           }))
-      ).filter(s => s.id && isFinite(s.lat) && isFinite(s.lon))
+      ).filter(s => s.id && s.active && isFinite(s.lat) && isFinite(s.lon))
     } catch {
-      return ['11150']
+      return [ANCHOR_STATION_ID]
     }
   }
-  if (!_tawesStations.length) return ['11150']
-  return [..._tawesStations]
+  if (!_tawesStations.length) return [ANCHOR_STATION_ID]
+  const nearest = [..._tawesStations]
     .map(s => ({ id: s.id, dist: haversineKm(lat, lon, s.lat, s.lon) }))
     .sort((a, b) => a.dist - b.dist)
     .slice(0, n)
     .map(s => s.id)
+  // Always include the airport anchor so a cell over the city is caught even
+  // when the user's nearest stations are dry.
+  return nearest.includes(ANCHOR_STATION_ID) ? nearest : [...nearest, ANCHOR_STATION_ID]
 }
 
 export async function fetchNearbyStationPrecip(lat, lon) {
   try {
-    const ids = await tawesNearestIds(lat, lon, 3)
+    const ids = await tawesNearestIds(lat, lon, 6)
     const r = await fetch(
       `${GEOSPHERE_TAWES}?parameters=RR&station_ids=${ids.join(',')}`,
       { signal: AbortSignal.timeout(6000) }
     )
     if (!r.ok) return null
     const data = await r.json()
-    // Confirmed response path (python-zamg): features[].properties.parameters.RR.data[0]
+    // Confirmed response path (live): features[].properties.parameters.RR.data[0]
     const values = (data?.features ?? [])
       .map(f => f?.properties?.parameters?.RR?.data?.[0])
       .filter(v => typeof v === 'number' && !isNaN(v))
@@ -95,29 +109,33 @@ export async function fetchNearbyStationPrecip(lat, lon) {
   }
 }
 
-// ---- DWD RADOLAN — live radar point query via WMS GetFeatureInfo ----
-// Same source as the map overlay, but queried as a data value not a tile image.
-// GeoServer returns the raw RADOLAN byte value as GRAY_INDEX.
-// RADOLAN RX encoding: dBZ = GRAY_INDEX / 2 − 32.5; rain starts at ~7 dBZ.
-// Returns 0.1 (triggers "raining" threshold) if radar sees rain, else 0, else null.
+// ---- GeoSphere INCA — radar+station blended 1 km nowcast point value ----
+// Replaces the DWD RADOLAN WMS GetFeatureInfo source, which is WAF-blocked
+// (HTTP 403) from Austrian user networks. INCA is the same GeoSphere host as
+// TAWES (no CORS issues) and gives an actual analysed precipitation value at
+// the user's exact 1 km grid cell — independent of the Open-Meteo model that
+// lags fast convective alpine rain.
+// RR = 1-hour precipitation sum in kg/m² (= mm). Returns the most recent
+// hourly value in mm, or null on failure.
 export async function fetchRadarPrecipAtPoint(lat, lon) {
   try {
-    const m = 0.01 // ~1 km margin
+    // INCA hourly analysis lags ~30–90 min; ask for the last 3 h and take the
+    // most recent non-null hourly sum.
+    const now = new Date()
+    const start = new Date(now.getTime() - 3 * 3600 * 1000)
+    const iso = d => d.toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm
     const params = new URLSearchParams({
-      SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetFeatureInfo',
-      LAYERS: 'dwd:RX-Produkt', QUERY_LAYERS: 'dwd:RX-Produkt',
-      CRS: 'CRS:84',
-      BBOX: `${lon - m},${lat - m},${lon + m},${lat + m}`,
-      WIDTH: '10', HEIGHT: '10', I: '5', J: '5',
-      INFO_FORMAT: 'application/json',
+      parameters: 'RR',
+      start: iso(start),
+      end: iso(now),
+      lat_lon: `${lat},${lon}`,
     })
-    const r = await fetch(`${DWD_WMS}?${params}`, { signal: AbortSignal.timeout(5000) })
+    const r = await fetch(`${GEOSPHERE_INCA}?${params}`, { signal: AbortSignal.timeout(6000) })
     if (!r.ok) return null
     const data = await r.json()
-    const raw = data?.features?.[0]?.properties?.GRAY_INDEX
-    if (typeof raw !== 'number' || raw >= 250) return 0 // no-data / no-echo flags
-    const dBZ = raw / 2 - 32.5
-    return dBZ > 7 ? 0.1 : 0 // 7 dBZ ≈ 0.1 mm/h, detectable rain
+    const series = data?.features?.[0]?.properties?.parameters?.RR?.data ?? []
+    const valid = series.filter(v => typeof v === 'number' && !isNaN(v))
+    return valid.length ? valid[valid.length - 1] : null
   } catch {
     return null
   }

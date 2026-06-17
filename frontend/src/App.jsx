@@ -156,8 +156,9 @@ export default function App() {
         // Take the max across all sources — any single signal detecting rain wins:
         // 1. Open-Meteo minutely_15 slot  — ICON-EU forecast, can lag 2-3h on convective rain
         // 2. Open-Meteo current.precip    — model-measured last hour, same lag
-        // 3. GeoSphere TAWES nearest 3    — actual station obs, 10-min updates
-        // 4. DWD RADOLAN GetFeatureInfo   — live radar point value, 5-min updates
+        // 3. GeoSphere TAWES nearest 6+airport — actual station obs, 10-min updates
+        // 4. GeoSphere INCA 1km nowcast   — radar+station blended point value, hourly
+        //    (replaces DWD RADOLAN GetFeatureInfo, which is WAF-blocked in Austria)
         const measured     = data.current?.precipitation ?? 0
         const stationPrecip = stationResult?.status === 'fulfilled' ? (stationResult.value ?? 0) : 0
         const radarPrecip   = radarResult?.status   === 'fulfilled' ? (radarResult.value  ?? 0) : 0
