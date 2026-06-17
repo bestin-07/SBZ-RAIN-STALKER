@@ -1,5 +1,5 @@
-const CACHE = 'sbz-v1'
-const PRECACHE = ['/', '/index.html']
+const CACHE = 'gemma-raus-v2'
+const PRECACHE = ['/index.html']
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -17,7 +17,17 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.mode === 'navigate') {
-    e.respondWith(caches.match('/index.html').then(r => r || fetch(e.request)))
+    // Network-first: always fetch fresh HTML so Vite content-hashed JS/CSS refs are current.
+    // Cache fallback only when offline.
+    e.respondWith(
+      fetch(e.request)
+        .then(r => {
+          const copy = r.clone()
+          caches.open(CACHE).then(c => c.put(e.request, copy))
+          return r
+        })
+        .catch(() => caches.match('/index.html'))
+    )
     return
   }
   if (!e.request.url.startsWith(self.location.origin)) return
@@ -40,7 +50,7 @@ self.addEventListener('push', e => {
       body,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag,              // same tag = new notification replaces old one of same type
+      tag,
       renotify: true,
       requireInteraction: false,
       silent: false,

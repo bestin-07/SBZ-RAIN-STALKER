@@ -113,9 +113,9 @@ export default function RadarMap({ location, areaPrecip, theme }) {
         rvLayersRef.current.forEach(l => { try { mapRef.current?.removeLayer(l) } catch {} })
         rvLayersRef.current = []
 
-        // Build one tile layer per frame.
-        // tileSize:512 + zoomOffset:-1 requests zoom N-1 tiles — avoids
-        // "Zoom Level Not Supported" errors in Alpine terrain at high zoom.
+        // maxNativeZoom:9 caps tile requests at zoom 9 for all map zoom levels.
+        // RainViewer Alpine coverage only exists up to zoom 9; this stretches
+        // those tiles rather than requesting missing higher-zoom tiles.
         rvLayersRef.current = frames.map((frame, i) => {
           const layer = L.tileLayer(
             `${host}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`,
@@ -126,6 +126,7 @@ export default function RadarMap({ location, areaPrecip, theme }) {
               attribution: '© RainViewer',
             }
           )
+          layer.on('tileerror', () => {})
           layer.addTo(mapRef.current)
           return layer
         })
