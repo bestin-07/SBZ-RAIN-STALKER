@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 
 const SALZBURG = [47.8, 13.045]
 const ZOOM = 10
+const BOUNDS = L.latLngBounds([47.60, 12.80], [47.99, 13.30])
 const FRAME_INTERVAL_MS = 500
 const TILE_COLOR_SCHEME = 2
 const TILE_OPACITY = 0.6
@@ -22,6 +23,10 @@ export default function RadarMap({ location, radarFrames }) {
     const map = L.map(containerRef.current, {
       center: location ? [location.lat, location.lon] : SALZBURG,
       zoom: ZOOM,
+      minZoom: 9,
+      maxZoom: 13,
+      maxBounds: BOUNDS,
+      maxBoundsViscosity: 1.0,
       zoomControl: false,
       attributionControl: true,
     })
