@@ -144,7 +144,7 @@ export default function App() {
         fetchForecast(location.lat, location.lon),
         fetchAccuracy(),
         fetchAreaPrecip(),
-        fetchNearbyStationPrecip(location.lat, location.lon),
+        fetchNearbyStationPrecip(),
       ])
 
       if (forecastResult.status === 'fulfilled') {
