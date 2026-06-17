@@ -38,6 +38,7 @@ const translations = {
     src_forecast: 'Vorhersage',
     src_radar:    'Radar',
     src_accuracy: 'Genauigkeit',
+    outside_sbz: 'Du bist außerhalb von Salzburg — Radarkarte zeigt möglicherweise falsche Region',
     close: 'SCHLIESSEN',
   },
   en: {
@@ -79,6 +80,7 @@ const translations = {
     src_forecast: 'Forecast',
     src_radar:    'Radar',
     src_accuracy: 'Accuracy',
+    outside_sbz: 'You are outside Salzburg — radar map may show the wrong region',
     close: 'CLOSE',
   },
 }

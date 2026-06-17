@@ -11,8 +11,16 @@ import InfoPanel from './components/InfoPanel'
 
 const REFRESH_MS = 5 * 60 * 1000
 
+// Generous Salzburg region bounds (city + all surrounding areas on the map)
+const SBZ_BOUNDS = { minLat: 47.35, maxLat: 48.20, minLon: 12.50, maxLon: 13.80 }
+
 function saved(key, fallback) {
   try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
+}
+
+function isOutsideSalzburg(loc) {
+  return loc.lat < SBZ_BOUNDS.minLat || loc.lat > SBZ_BOUNDS.maxLat ||
+         loc.lon < SBZ_BOUNDS.minLon || loc.lon > SBZ_BOUNDS.maxLon
 }
 
 export default function App() {
@@ -25,7 +33,7 @@ export default function App() {
   const [areaPrecip, setAreaPrecip] = useState([])
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
-  const [theme, setTheme] = useState(() => saved('theme', 'dark'))
+  const [theme, setTheme] = useState(() => saved('theme', 'light'))
   const [lang, setLang] = useState(() => saved('lang', 'de'))
   const [infoOpen, setInfoOpen] = useState(false)
 
@@ -118,6 +126,11 @@ export default function App() {
         onInfo={() => setInfoOpen(true)}
         t={t}
       />
+      {location && isOutsideSalzburg(location) && (
+        <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
+          <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
+        </div>
+      )}
       <GapBanner status={status} />
       <RainRibbon forecast={forecast} theme={theme} t={t} />
       <RadarMap location={location} areaPrecip={areaPrecip} theme={theme} />
