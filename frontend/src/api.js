@@ -1,5 +1,6 @@
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast'
 const GEOSPHERE_TAWES = 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min'
+const SBZ_STATION = '11150' // Salzburg Flughafen — confirmed WMO/TAWES station ID
 const BACKEND = import.meta.env.VITE_BACKEND_URL ?? ''
 
 export const AREAS = [
@@ -34,19 +35,19 @@ export async function fetchForecast(lat, lon) {
 
 
 // GeoSphere Austria TAWES — actual 10-minute station observations, not a forecast model.
-// RR = precipitation sum (mm) over the last 10 minutes from the nearest station(s).
-// Fails silently; returning null means we fall back to the model-only signals.
-export async function fetchNearbyStationPrecip(lat, lon) {
+// Station 11150 = Salzburg Flughafen (~3km from city centre), updated every 10 min.
+// RR = precipitation sum (mm) for the last 10-minute interval.
+// Response path confirmed from python-zamg source: features[0].properties.parameters.RR.data[0]
+export async function fetchNearbyStationPrecip() {
   try {
-    const params = new URLSearchParams({ parameters: 'RR', lat, lon, radius: 20 })
-    const r = await fetch(`${GEOSPHERE_TAWES}?${params}`, { signal: AbortSignal.timeout(6000) })
+    const r = await fetch(
+      `${GEOSPHERE_TAWES}?parameters=RR&station_ids=${SBZ_STATION}`,
+      { signal: AbortSignal.timeout(6000) }
+    )
     if (!r.ok) return null
     const data = await r.json()
-    const features = data?.features ?? []
-    const values = features
-      .map(f => f?.properties?.parameters?.RR?.data?.[0])
-      .filter(v => typeof v === 'number' && !isNaN(v))
-    return values.length ? Math.max(...values) : null
+    const val = data?.features?.[0]?.properties?.parameters?.RR?.data?.[0]
+    return typeof val === 'number' && !isNaN(val) ? val : null
   } catch {
     return null
   }
