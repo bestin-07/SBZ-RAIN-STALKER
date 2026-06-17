@@ -6,9 +6,9 @@ const DRY_THRESHOLD = 0.1
 
 function precipToColor(p) {
   if (p < DRY_THRESHOLD) return '#D4A017'
-  if (p < 0.5)           return '#1E4976'
-  if (p < 2)             return '#1A3A5C'
-  return                        '#0D2035'
+  if (p < 0.5)           return '#5B9CE8'
+  if (p < 2)             return '#3478D4'
+  return                        '#1D5EC0'
 }
 
 function precipToHeight(p) {
@@ -17,7 +17,7 @@ function precipToHeight(p) {
   return Math.round(4 + pct * (SLOT_H - 8))
 }
 
-export default function RainRibbon({ forecast }) {
+export default function RainRibbon({ forecast, theme, t }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
@@ -39,33 +39,33 @@ export default function RainRibbon({ forecast }) {
     const ctx = canvas.getContext('2d')
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
+    const slotBg    = theme === 'light' ? '#E8E6E1' : '#111318'
+    const labelCol  = theme === 'light' ? '#6B6860' : '#6B7280'
+    const nowCol    = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
+
     slots.forEach((slot, i) => {
       const x = i * SLOT_W
       const color = precipToColor(slot.p)
       const barH = precipToHeight(slot.p)
 
-      // background slot
-      ctx.fillStyle = '#111318'
+      ctx.fillStyle = slotBg
       ctx.fillRect(x, 0, SLOT_W - 1, SLOT_H)
 
-      // precipitation bar (grows from bottom)
       ctx.fillStyle = color
       ctx.fillRect(x, SLOT_H - barH, SLOT_W - 1, barH)
 
-      // hour label
       const d = new Date(slot.t * 1000)
       if (d.getMinutes() === 0) {
-        ctx.fillStyle = '#6B7280'
+        ctx.fillStyle = labelCol
         ctx.font = '8px JetBrains Mono, monospace'
         ctx.fillText(`${String(d.getHours()).padStart(2, '0')}h`, x + 2, SLOT_H - 6)
       }
     })
 
-    // NOW marker
-    ctx.fillStyle = '#F1F3F5'
+    ctx.fillStyle = nowCol
     ctx.fillRect(0, 0, 2, SLOT_H)
 
-  }, [forecast])
+  }, [forecast, theme])
 
   return (
     <div className="border-t border-b border-border shrink-0">
@@ -77,10 +77,10 @@ export default function RainRibbon({ forecast }) {
         />
       </div>
       <div className="flex items-center gap-4 px-4 py-2">
-        <Legend color="#D4A017" label="dry" />
-        <Legend color="#1E4976" label="light rain" />
-        <Legend color="#0D2035" label="heavy rain" />
-        <span className="font-mono text-xs text-muted ml-auto">next 12 hours</span>
+        <Legend color="#D4A017" label={t('dry')} />
+        <Legend color="#5B9CE8" label={t('light_rain')} />
+        <Legend color="#1D5EC0" label={t('heavy_rain')} />
+        <span className="font-mono text-xs text-muted ml-auto">{t('next_12h')}</span>
       </div>
     </div>
   )

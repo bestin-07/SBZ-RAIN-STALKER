@@ -7,12 +7,15 @@ const ZOOM = 10
 const BOUNDS = L.latLngBounds([47.60, 12.80], [47.99, 13.30])
 const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms'
 
+const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+
 function precipColor(p) {
   if (p === null || p === undefined) return '#374151'
   if (p < 0.1)  return '#D4A017'
-  if (p < 0.5)  return '#2A5F8F'
-  if (p < 2)    return '#1A3A5C'
-  return               '#0D2035'
+  if (p < 0.5)  return '#5B9CE8'
+  if (p < 2)    return '#3478D4'
+  return               '#1D5EC0'
 }
 
 function areaIcon(name, precip) {
@@ -29,8 +32,9 @@ function areaIcon(name, precip) {
         background:${color};
         border-radius:50%;
         margin:0 auto;
-        box-shadow:0 0 0 2px rgba(0,0,0,0.5);
-        ${isRaining ? `box-shadow:0 0 0 3px ${color}44;` : ''}
+        ${isRaining
+          ? `box-shadow:0 0 0 3px ${color}55;`
+          : 'box-shadow:0 0 0 2px rgba(0,0,0,0.4);'}
       "></div>
       <div style="
         font-family:'JetBrains Mono',monospace;
@@ -53,12 +57,14 @@ function areaIcon(name, precip) {
   })
 }
 
-export default function RadarMap({ location, areaPrecip }) {
+export default function RadarMap({ location, areaPrecip, theme }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markerRef = useRef(null)
+  const baseTileRef = useRef(null)
   const areaMarkersRef = useRef([])
 
+  // Init map once (no base tile — added by theme effect below)
   useEffect(() => {
     if (mapRef.current) return
 
@@ -72,13 +78,6 @@ export default function RadarMap({ location, areaPrecip }) {
       zoomControl: false,
       attributionControl: true,
     })
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; CartoDB &copy; OpenStreetMap',
-      subdomains: 'abcd',
-      maxZoom: 19,
-      detectRetina: true,
-    }).addTo(map)
 
     L.tileLayer.wms(DWD_WMS, {
       layers: 'dwd:RX-Produkt',
@@ -97,6 +96,23 @@ export default function RadarMap({ location, areaPrecip }) {
       mapRef.current = null
     }
   }, [])
+
+  // Swap base tile layer when theme changes
+  useEffect(() => {
+    if (!mapRef.current) return
+
+    if (baseTileRef.current) {
+      mapRef.current.removeLayer(baseTileRef.current)
+    }
+
+    baseTileRef.current = L.tileLayer(theme === 'light' ? TILE_LIGHT : TILE_DARK, {
+      attribution: '&copy; CartoDB &copy; OpenStreetMap',
+      subdomains: 'abcd',
+      maxZoom: 19,
+      detectRetina: true,
+      zIndex: 1,
+    }).addTo(mapRef.current)
+  }, [theme])
 
   // Location pin
   useEffect(() => {

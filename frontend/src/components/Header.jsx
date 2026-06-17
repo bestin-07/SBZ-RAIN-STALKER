@@ -1,4 +1,10 @@
-export default function Header({ accuracy, lastUpdated, onRefresh, loading }) {
+export default function Header({
+  accuracy, lastUpdated, onRefresh, loading,
+  theme, onThemeToggle,
+  lang, onLangToggle,
+  onInfo,
+  t,
+}) {
   const acc30 = accuracy?.['30min']?.accuracy
 
   function formatTime(ts) {
@@ -13,10 +19,10 @@ export default function Header({ accuracy, lastUpdated, onRefresh, loading }) {
         SBZ RAIN STALKER
       </span>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {acc30 !== null && acc30 !== undefined && (
           <span className="font-mono text-xs text-muted">
-            {acc30}% accurate
+            {acc30}{t('pct_accurate')}
           </span>
         )}
         {lastUpdated && (
@@ -24,6 +30,7 @@ export default function Header({ accuracy, lastUpdated, onRefresh, loading }) {
             {formatTime(lastUpdated)}
           </span>
         )}
+
         <button
           onClick={onRefresh}
           disabled={loading}
@@ -31,6 +38,33 @@ export default function Header({ accuracy, lastUpdated, onRefresh, loading }) {
           aria-label="refresh"
         >
           {loading ? '·' : '↺'}
+        </button>
+
+        <div className="w-px h-3 bg-border" />
+
+        <button
+          onClick={onLangToggle}
+          className="font-mono text-xs text-muted hover:text-primary transition-colors leading-none"
+          aria-label="switch language"
+        >
+          {lang === 'de' ? 'EN' : 'DE'}
+        </button>
+
+        <button
+          onClick={onThemeToggle}
+          className="font-mono text-base text-muted hover:text-primary transition-colors leading-none"
+          aria-label="toggle theme"
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? '☾' : '☀'}
+        </button>
+
+        <button
+          onClick={onInfo}
+          className="font-mono text-xs text-muted hover:text-primary transition-colors w-4 h-4 flex items-center justify-center border border-border rounded-full leading-none"
+          aria-label="about"
+        >
+          i
         </button>
       </div>
     </header>

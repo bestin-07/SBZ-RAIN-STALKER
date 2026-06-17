@@ -2,20 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --c-bg:      #08090B;
+  --c-surface: #111318;
+  --c-border:  #1E2128;
+  --c-primary: #F1F3F5;
+  --c-muted:   #6B7280;
+}
+
+html.light {
+  --c-bg:      #F2F0EB;
+  --c-surface: #E8E6E1;
+  --c-border:  #C8C6C0;
+  --c-primary: #0A0A08;
+  --c-muted:   #6B6860;
+}
+
 @layer base {
   * {
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
   }
 
-  html,
-  body,
-  #root {
+  html, body, #root {
     height: 100%;
     margin: 0;
     padding: 0;
-    background: #08090B;
-    color: #F1F3F5;
+    background: var(--c-bg);
+    color: var(--c-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -39,18 +53,26 @@
   }
 }
 
-/* Leaflet dark overrides */
 .leaflet-container {
-  background: #08090B;
+  background: var(--c-bg);
   font-family: inherit;
 }
 
 .leaflet-control-attribution {
-  background: rgba(8, 9, 11, 0.7) !important;
+  background: rgba(8, 9, 11, 0.75) !important;
   color: #6B7280 !important;
   font-size: 9px !important;
 }
 
+html.light .leaflet-control-attribution {
+  background: rgba(242, 240, 235, 0.85) !important;
+  color: #6B6860 !important;
+}
+
 .leaflet-control-attribution a {
   color: #6B7280 !important;
+}
+
+html.light .leaflet-control-attribution a {
+  color: #6B6860 !important;
 }

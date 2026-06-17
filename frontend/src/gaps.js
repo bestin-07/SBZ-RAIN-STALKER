@@ -1,8 +1,5 @@
-// mm per 15min slot — below this is walkably dry
 const DRY_THRESHOLD = 0.1
-// minimum consecutive dry slots to call it a gap (2 = 30 min)
 const MIN_GAP_SLOTS = 2
-// how far ahead to scan in seconds
 const LOOK_AHEAD = 3 * 3600
 
 export function detectGaps(times, precips) {
@@ -41,7 +38,6 @@ export function detectGaps(times, precips) {
     }
   }
 
-  // gap that runs to end of window
   if (gapStart !== null && gapCount >= MIN_GAP_SLOTS) {
     gaps.push({
       startsAt: gapStart.t,
@@ -53,9 +49,9 @@ export function detectGaps(times, precips) {
   return { currentPrecip, gaps }
 }
 
-export function getStatus(currentPrecip, gaps) {
+export function getStatus(currentPrecip, gaps, t = k => k) {
   if (currentPrecip === null) {
-    return { type: 'loading', headline: '...', sub: 'checking the sky' }
+    return { type: 'loading', headline: t('checking'), sub: t('reading_sky') }
   }
 
   const isDry = currentPrecip < DRY_THRESHOLD
@@ -65,28 +61,28 @@ export function getStatus(currentPrecip, gaps) {
     if (nextGap && nextGap.startsInMinutes === 0) {
       return {
         type: 'go',
-        headline: 'GO NOW',
-        sub: `dry for ${nextGap.durationMinutes} more minutes`,
+        headline: t('GO_NOW'),
+        sub: t('dry_for', { min: nextGap.durationMinutes }),
       }
     }
     return {
       type: 'go',
-      headline: 'GO NOW',
-      sub: 'no rain at your location',
+      headline: t('GO_NOW'),
+      sub: t('no_rain'),
     }
   }
 
   if (nextGap) {
     return {
       type: 'wait',
-      headline: `WAIT ${nextGap.startsInMinutes} MIN`,
-      sub: `then ${nextGap.durationMinutes} minutes clear`,
+      headline: t('WAIT_MIN', { min: nextGap.startsInMinutes }),
+      sub: t('then_clear', { min: nextGap.durationMinutes }),
     }
   }
 
   return {
     type: 'stuck',
-    headline: 'STUCK INSIDE',
-    sub: 'no gap in the next 3 hours',
+    headline: t('STUCK'),
+    sub: t('no_gap'),
   }
 }
