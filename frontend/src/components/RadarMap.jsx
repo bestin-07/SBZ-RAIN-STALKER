@@ -84,8 +84,8 @@ export default function RadarMap({ location, areaPrecip, theme }) {
       attributionControl: true,
     })
 
-    // DWD OPERA composite — WMS bounding-box request, works at every map zoom
-    L.tileLayer.wms(DWD_WMS, {
+    // DWD OPERA composite — WMS bounding-box, no tile-zoom arithmetic, always current
+    let dwdLayer = L.tileLayer.wms(DWD_WMS, {
       layers: 'dwd:RX-Produkt',
       format: 'image/png',
       transparent: true,
@@ -93,7 +93,24 @@ export default function RadarMap({ location, areaPrecip, theme }) {
       opacity: 0.55,
       zIndex: 100,
       attribution: '© DWD',
-    }).addTo(map)
+    })
+    dwdLayer.addTo(map)
+
+    // Re-create the DWD layer every 5 min to bypass browser tile cache
+    const dwdRefresh = setInterval(() => {
+      if (!mapRef.current) return
+      mapRef.current.removeLayer(dwdLayer)
+      dwdLayer = L.tileLayer.wms(DWD_WMS, {
+        layers: 'dwd:RX-Produkt',
+        format: 'image/png',
+        transparent: true,
+        version: '1.3.0',
+        opacity: 0.55,
+        zIndex: 100,
+        attribution: '© DWD',
+      })
+      dwdLayer.addTo(mapRef.current)
+    }, 5 * 60 * 1000)
 
     mapRef.current = map
 
@@ -118,8 +135,11 @@ export default function RadarMap({ location, areaPrecip, theme }) {
         const res = await fetch(RAINVIEWER_API)
         if (!res.ok) return
         const data = await res.json()
-        const host   = data.host ?? 'https://tilecache.rainviewer.com'
-        const frames = (data.radar?.past ?? []).slice(-6)
+        const host    = data.host ?? 'https://tilecache.rainviewer.com'
+        // Last 4 past frames (~40 min history) + up to 2 nowcast extrapolations
+        const past    = (data.radar?.past     ?? []).slice(-4)
+        const nowcast = (data.radar?.nowcast  ?? []).slice(0, 2)
+        const frames  = [...past, ...nowcast]
         if (!frames.length) return
 
         if (animTimerRef.current) { clearInterval(animTimerRef.current); animTimerRef.current = null }
@@ -156,6 +176,7 @@ export default function RadarMap({ location, areaPrecip, theme }) {
 
     return () => {
       map.off('zoomend', syncRvOpacity)
+      clearInterval(dwdRefresh)
       clearInterval(animRefreshRef.current)
       if (animTimerRef.current) clearInterval(animTimerRef.current)
       rvLayersRef.current.forEach(l => { try { l.remove() } catch {} })
