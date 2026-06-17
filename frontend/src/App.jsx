@@ -199,6 +199,24 @@ export default function App() {
     return () => clearInterval(id)
   }, [location, loadData])
 
+  // Make the browser / Android back button close the About panel instead of
+  // navigating away from the app: push a history entry while it's open and
+  // close on popstate.
+  useEffect(() => {
+    if (!infoOpen) return
+    window.history.pushState({ infoPanel: true }, '')
+    const onPop = () => setInfoOpen(false)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [infoOpen])
+
+  const closeInfo = () => {
+    // Route close through history so the X button, the backdrop and the back
+    // button all consume the pushed entry consistently.
+    if (window.history.state?.infoPanel) window.history.back()
+    else setInfoOpen(false)
+  }
+
   const headerProps = {
     theme, onThemeToggle: () => setTheme(prev => prev === 'dark' ? 'light' : 'dark'),
     lang,  onLangToggle:  () => setLang(prev  => prev === 'de'   ? 'en'   : 'de'),
@@ -245,7 +263,7 @@ export default function App() {
         </>
       )}
 
-      <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} t={t} />
+      <InfoPanel open={infoOpen} onClose={closeInfo} t={t} />
     </div>
   )
 }

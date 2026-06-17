@@ -16,14 +16,14 @@ const RV_MAX_ZOOM = 14
 const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
 
-// Clean blue precipitation ramp; dry/unknown recede to a muted slate so the
-// map isn't a field of loud dots. Matches the RainViewer "universal blue" scheme.
+// Must match the RainRibbon legend (dry = gold, light/heavy = blue) so the map
+// dots and the legend agree. Dry dots still recede via size/opacity, not colour.
 function precipColor(p) {
-  if (p === null || p === undefined) return '#4B5563' // unknown
-  if (p < 0.1)  return '#5B6472'  // dry — muted, low emphasis
-  if (p < 0.5)  return '#60A5FA'  // light
-  if (p < 2)    return '#3B82F6'  // moderate
-  return               '#1D4ED8'  // heavy
+  if (p === null || p === undefined) return '#4B5563' // unknown — neutral grey
+  if (p < 0.1)  return '#D4A017'  // dry  (legend gold)
+  if (p < 0.5)  return '#5B9CE8'  // light rain
+  if (p < 2)    return '#3478D4'  // moderate
+  return               '#1D5EC0'  // heavy rain
 }
 
 function areaIcon(name, precip, dryLabel = 'dry') {
@@ -245,7 +245,7 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
         <button
           onClick={recenter}
           aria-label={t ? t('recenter') : 'Center on my location'}
-          className="absolute bottom-4 right-4 z-[1000] w-11 h-11 flex items-center justify-center
+          className="absolute bottom-4 right-4 z-30 w-11 h-11 flex items-center justify-center
                      rounded-full bg-surface/90 backdrop-blur border border-border text-primary
                      shadow-lg hover:bg-surface active:scale-95 transition"
         >
