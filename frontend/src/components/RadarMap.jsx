@@ -81,6 +81,7 @@ export default function RadarMap({ location, radarFrames, areaPrecip }) {
       attribution: '&copy; CartoDB &copy; OpenStreetMap',
       subdomains: 'abcd',
       maxZoom: 19,
+      detectRetina: true,
     }).addTo(map)
 
     mapRef.current = map
@@ -139,6 +140,7 @@ export default function RadarMap({ location, radarFrames, areaPrecip }) {
     ]
     if (!frames.length) return
 
+    const host = radarFrames.host ?? 'https://tilecache.rainviewer.com'
     let idx = 0
     let currentLayer = null
 
@@ -146,8 +148,15 @@ export default function RadarMap({ location, radarFrames, areaPrecip }) {
       const frame = frames[frameIdx]
       if (!frame) return
 
-      const url = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/${TILE_COLOR_SCHEME}/1_1.png`
-      const next = L.tileLayer(url, { opacity: TILE_OPACITY, zIndex: 100, maxNativeZoom: 12, maxZoom: 19 })
+      const url = `${host}${frame.path}/512/{z}/{x}/{y}/${TILE_COLOR_SCHEME}/1_1.png`
+      const next = L.tileLayer(url, {
+        opacity: TILE_OPACITY,
+        zIndex: 100,
+        tileSize: 512,
+        zoomOffset: -1,
+        maxNativeZoom: 12,
+        detectRetina: false,
+      })
       next.addTo(mapRef.current)
 
       const prev = currentLayer
