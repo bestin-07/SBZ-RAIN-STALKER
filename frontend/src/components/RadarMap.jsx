@@ -5,9 +5,7 @@ import 'leaflet/dist/leaflet.css'
 const SALZBURG = [47.8, 13.045]
 const ZOOM = 10
 const BOUNDS = L.latLngBounds([47.60, 12.80], [47.99, 13.30])
-const FRAME_INTERVAL_MS = 500
-const TILE_COLOR_SCHEME = 2
-const TILE_OPACITY = 0.6
+const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms'
 
 function precipColor(p) {
   if (p === null || p === undefined) return '#374151'
@@ -55,12 +53,10 @@ function areaIcon(name, precip) {
   })
 }
 
-export default function RadarMap({ location, radarFrames, areaPrecip }) {
+export default function RadarMap({ location, areaPrecip }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markerRef = useRef(null)
-  const radarLayerRef = useRef(null)
-  const animRef = useRef(null)
   const areaMarkersRef = useRef([])
 
   useEffect(() => {
@@ -82,6 +78,16 @@ export default function RadarMap({ location, radarFrames, areaPrecip }) {
       subdomains: 'abcd',
       maxZoom: 19,
       detectRetina: true,
+    }).addTo(map)
+
+    L.tileLayer.wms(DWD_WMS, {
+      layers: 'dwd:RX-Produkt',
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+      opacity: 0.65,
+      zIndex: 100,
+      attribution: '&copy; DWD',
     }).addTo(map)
 
     mapRef.current = map
@@ -129,54 +135,6 @@ export default function RadarMap({ location, radarFrames, areaPrecip }) {
       areaMarkersRef.current = []
     }
   }, [areaPrecip])
-
-  // Radar animation
-  useEffect(() => {
-    if (!mapRef.current || !radarFrames) return
-
-    const frames = [
-      ...(radarFrames.radar?.past ?? []),
-      ...(radarFrames.radar?.nowcast ?? []),
-    ]
-    if (!frames.length) return
-
-    const host = radarFrames.host ?? 'https://tilecache.rainviewer.com'
-    let idx = 0
-    let currentLayer = null
-
-    function showFrame(frameIdx) {
-      const frame = frames[frameIdx]
-      if (!frame) return
-
-      const url = `${host}${frame.path}/512/{z}/{x}/{y}/${TILE_COLOR_SCHEME}/1_1.png`
-      const next = L.tileLayer(url, {
-        opacity: TILE_OPACITY,
-        zIndex: 100,
-        tileSize: 512,
-        zoomOffset: -1,
-        maxNativeZoom: 12,
-        detectRetina: false,
-      })
-      next.addTo(mapRef.current)
-
-      const prev = currentLayer
-      currentLayer = next
-      radarLayerRef.current = next
-
-      if (prev) setTimeout(() => mapRef.current?.removeLayer(prev), FRAME_INTERVAL_MS)
-    }
-
-    showFrame(0)
-    animRef.current = setInterval(() => {
-      idx = (idx + 1) % frames.length
-      showFrame(idx)
-    }, FRAME_INTERVAL_MS)
-
-    return () => {
-      clearInterval(animRef.current)
-      if (currentLayer && mapRef.current) mapRef.current.removeLayer(currentLayer)
-    }
-  }, [radarFrames])
 
   return (
     <div

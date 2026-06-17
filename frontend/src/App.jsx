@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchForecast, fetchRadarFrames, fetchAccuracy, fetchAreaPrecip } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip } from './api'
 import { detectGaps, getStatus } from './gaps'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -13,7 +13,6 @@ export default function App() {
   const [location, setLocation] = useState(null)
   const [locationError, setLocationError] = useState(null)
   const [forecast, setForecast] = useState(null)
-  const [radarFrames, setRadarFrames] = useState(null)
   const [accuracy, setAccuracy] = useState(null)
   const [status, setStatus] = useState(null)
   const [gaps, setGaps] = useState([])
@@ -40,9 +39,8 @@ export default function App() {
     if (!location) return
     setLoading(true)
     try {
-      const [forecastResult, radarResult, accuracyResult, areaResult] = await Promise.allSettled([
+      const [forecastResult, accuracyResult, areaResult] = await Promise.allSettled([
         fetchForecast(location.lat, location.lon),
-        fetchRadarFrames(),
         fetchAccuracy(),
         fetchAreaPrecip(),
       ])
@@ -58,7 +56,6 @@ export default function App() {
         setLastUpdated(Date.now())
       }
 
-      if (radarResult.status === 'fulfilled') setRadarFrames(radarResult.value)
       if (accuracyResult.status === 'fulfilled') setAccuracy(accuracyResult.value)
       if (areaResult.status === 'fulfilled') setAreaPrecip(areaResult.value)
     } finally {
@@ -88,7 +85,7 @@ export default function App() {
       <Header accuracy={accuracy} lastUpdated={lastUpdated} onRefresh={loadData} loading={loading} />
       <GapBanner status={status} loading={loading && !status} />
       <RainRibbon forecast={forecast} />
-      <RadarMap location={location} radarFrames={radarFrames} areaPrecip={areaPrecip} />
+      <RadarMap location={location} areaPrecip={areaPrecip} />
     </div>
   )
 }
