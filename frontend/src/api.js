@@ -1,5 +1,4 @@
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast'
-const RAINVIEWER = 'https://api.rainviewer.com/public/weather-maps.json'
 const BACKEND = import.meta.env.VITE_BACKEND_URL ?? ''
 
 export const AREAS = [
@@ -32,11 +31,6 @@ export async function fetchForecast(lat, lon) {
   return r.json()
 }
 
-export async function fetchRadarFrames() {
-  const r = await fetch(RAINVIEWER)
-  if (!r.ok) throw new Error(`RainViewer error ${r.status}`)
-  return r.json()
-}
 
 export async function fetchAccuracy() {
   if (!BACKEND) return null

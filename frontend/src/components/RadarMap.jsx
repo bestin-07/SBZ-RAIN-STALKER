@@ -6,7 +6,6 @@ const SALZBURG = [47.8, 13.045]
 const ZOOM = 10
 const BOUNDS = L.latLngBounds([47.60, 12.80], [47.99, 13.30])
 const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms'
-const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
 
 const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
@@ -59,17 +58,13 @@ function areaIcon(name, precip) {
 }
 
 export default function RadarMap({ location, areaPrecip, theme }) {
-  const containerRef = useRef(null)
-  const mapRef       = useRef(null)
-  const markerRef    = useRef(null)
-  const baseTileRef  = useRef(null)
+  const containerRef   = useRef(null)
+  const mapRef         = useRef(null)
+  const markerRef      = useRef(null)
+  const baseTileRef    = useRef(null)
   const areaMarkersRef = useRef([])
-  const rvLayersRef  = useRef([])
-  const animIdxRef   = useRef(0)
-  const animTimerRef = useRef(null)
-  const animRefreshRef = useRef(null)
 
-  // Init map + static DWD radar + animated RainViewer
+  // Init map + DWD OPERA radar (WMS — no tile-zoom issues at any map zoom)
   useEffect(() => {
     if (mapRef.current) return
 
@@ -84,78 +79,19 @@ export default function RadarMap({ location, areaPrecip, theme }) {
       attributionControl: true,
     })
 
-    // High-quality static DWD OPERA radar underneath animation
     L.tileLayer.wms(DWD_WMS, {
       layers: 'dwd:RX-Produkt',
       format: 'image/png',
       transparent: true,
       version: '1.3.0',
-      opacity: 0.45,
+      opacity: 0.55,
       zIndex: 100,
       attribution: '© DWD',
     }).addTo(map)
 
     mapRef.current = map
 
-    // ---- RainViewer animated overlay ----
-    async function setupAnimation() {
-      if (!mapRef.current) return
-      try {
-        const res = await fetch(RAINVIEWER_API)
-        if (!res.ok) return
-        const data = await res.json()
-        const host   = data.host ?? 'https://tilecache.rainviewer.com'
-        const frames = (data.radar?.past ?? []).slice(-8)  // ~2 hours of history
-        if (!frames.length) return
-
-        // Tear down previous animation
-        if (animTimerRef.current) { clearInterval(animTimerRef.current); animTimerRef.current = null }
-        rvLayersRef.current.forEach(l => { try { mapRef.current?.removeLayer(l) } catch {} })
-        rvLayersRef.current = []
-
-        // maxNativeZoom:9 caps tile requests at zoom 9 for all map zoom levels.
-        // RainViewer Alpine coverage only exists up to zoom 9; this stretches
-        // those tiles rather than requesting missing higher-zoom tiles.
-        rvLayersRef.current = frames.map((frame, i) => {
-          const layer = L.tileLayer(
-            `${host}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`,
-            {
-              maxNativeZoom: 9,
-              opacity: i === frames.length - 1 ? 0.5 : 0,
-              zIndex: 200,
-              attribution: '© RainViewer',
-            }
-          )
-          layer.on('tileerror', () => {})
-          layer.addTo(mapRef.current)
-          return layer
-        })
-        animIdxRef.current = frames.length - 1
-
-        // Cycle through frames every 700 ms
-        animTimerRef.current = setInterval(() => {
-          const layers = rvLayersRef.current
-          if (!layers.length) return
-          const prev = animIdxRef.current
-          const next = (prev + 1) % layers.length
-          try { layers[prev].setOpacity(0) } catch {}
-          try { layers[next].setOpacity(0.5) } catch {}
-          animIdxRef.current = next
-        }, 700)
-
-      } catch {
-        // RainViewer unavailable — DWD WMS still active as fallback
-      }
-    }
-
-    setupAnimation()
-    animRefreshRef.current = setInterval(setupAnimation, 5 * 60 * 1000)
-
     return () => {
-      clearInterval(animRefreshRef.current)
-      if (animTimerRef.current) clearInterval(animTimerRef.current)
-      rvLayersRef.current.forEach(l => { try { l.remove() } catch {} })
-      rvLayersRef.current = []
       map.remove()
       mapRef.current = null
     }
