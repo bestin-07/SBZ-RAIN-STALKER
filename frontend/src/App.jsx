@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip } from './api'
 import { detectGaps, getStatus } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
@@ -140,10 +140,11 @@ export default function App() {
     if (!location) return
     setLoading(true)
     try {
-      const [forecastResult, accuracyResult, areaResult] = await Promise.allSettled([
+      const [forecastResult, accuracyResult, areaResult, stationResult] = await Promise.allSettled([
         fetchForecast(location.lat, location.lon),
         fetchAccuracy(),
         fetchAreaPrecip(),
+        fetchNearbyStationPrecip(location.lat, location.lon),
       ])
 
       if (forecastResult.status === 'fulfilled') {
@@ -151,10 +152,13 @@ export default function App() {
         const times = data.minutely_15?.time ?? []
         const precips = data.minutely_15?.precipitation ?? []
         const { currentPrecip: cp, gaps: detectedGaps } = detectGaps(times, precips)
-        // current.precipitation = measured mm in the preceding hour (not a forecast).
-        // Use it as an override so active rain isn't masked by a stale forecast slot.
+        // Blend three signals — take the highest so any one source catching rain wins:
+        // 1. minutely_15 forecast slot (cp) — ICON-EU model, can lag 2-3h on convective events
+        // 2. current.precipitation — model-measured mm last hour, same lag problem
+        // 3. GeoSphere Austria TAWES — actual station observation, 10-min updates (most reliable)
         const measured = data.current?.precipitation ?? 0
-        const effectivePrecip = cp === null ? null : Math.max(cp, measured)
+        const stationPrecip = stationResult?.status === 'fulfilled' ? (stationResult.value ?? 0) : 0
+        const effectivePrecip = cp === null ? null : Math.max(cp, measured, stationPrecip)
         setForecast({ times, precips })
         setCurrentPrecip(effectivePrecip)
         setGaps(detectedGaps)

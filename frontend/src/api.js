@@ -1,4 +1,5 @@
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast'
+const GEOSPHERE_TAWES = 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min'
 const BACKEND = import.meta.env.VITE_BACKEND_URL ?? ''
 
 export const AREAS = [
@@ -31,6 +32,25 @@ export async function fetchForecast(lat, lon) {
   return r.json()
 }
 
+
+// GeoSphere Austria TAWES — actual 10-minute station observations, not a forecast model.
+// RR = precipitation sum (mm) over the last 10 minutes from the nearest station(s).
+// Fails silently; returning null means we fall back to the model-only signals.
+export async function fetchNearbyStationPrecip(lat, lon) {
+  try {
+    const params = new URLSearchParams({ parameters: 'RR', lat, lon, radius: 20 })
+    const r = await fetch(`${GEOSPHERE_TAWES}?${params}`, { signal: AbortSignal.timeout(6000) })
+    if (!r.ok) return null
+    const data = await r.json()
+    const features = data?.features ?? []
+    const values = features
+      .map(f => f?.properties?.parameters?.RR?.data?.[0])
+      .filter(v => typeof v === 'number' && !isNaN(v))
+    return values.length ? Math.max(...values) : null
+  } catch {
+    return null
+  }
+}
 
 export async function fetchAccuracy() {
   if (!BACKEND) return null
