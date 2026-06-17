@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchRadarPrecipAtPoint } from './api'
 import { detectGaps, getStatus } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
@@ -140,11 +140,12 @@ export default function App() {
     if (!location) return
     setLoading(true)
     try {
-      const [forecastResult, accuracyResult, areaResult, stationResult] = await Promise.allSettled([
+      const [forecastResult, accuracyResult, areaResult, stationResult, radarResult] = await Promise.allSettled([
         fetchForecast(location.lat, location.lon),
         fetchAccuracy(),
         fetchAreaPrecip(),
-        fetchNearbyStationPrecip(),
+        fetchNearbyStationPrecip(location.lat, location.lon),
+        fetchRadarPrecipAtPoint(location.lat, location.lon),
       ])
 
       if (forecastResult.status === 'fulfilled') {
@@ -152,13 +153,15 @@ export default function App() {
         const times = data.minutely_15?.time ?? []
         const precips = data.minutely_15?.precipitation ?? []
         const { currentPrecip: cp, gaps: detectedGaps } = detectGaps(times, precips)
-        // Blend three signals — take the highest so any one source catching rain wins:
-        // 1. minutely_15 forecast slot (cp) — ICON-EU model, can lag 2-3h on convective events
-        // 2. current.precipitation — model-measured mm last hour, same lag problem
-        // 3. GeoSphere Austria TAWES — actual station observation, 10-min updates (most reliable)
-        const measured = data.current?.precipitation ?? 0
+        // Take the max across all sources — any single signal detecting rain wins:
+        // 1. Open-Meteo minutely_15 slot  — ICON-EU forecast, can lag 2-3h on convective rain
+        // 2. Open-Meteo current.precip    — model-measured last hour, same lag
+        // 3. GeoSphere TAWES nearest 3    — actual station obs, 10-min updates
+        // 4. DWD RADOLAN GetFeatureInfo   — live radar point value, 5-min updates
+        const measured     = data.current?.precipitation ?? 0
         const stationPrecip = stationResult?.status === 'fulfilled' ? (stationResult.value ?? 0) : 0
-        const effectivePrecip = cp === null ? null : Math.max(cp, measured, stationPrecip)
+        const radarPrecip   = radarResult?.status   === 'fulfilled' ? (radarResult.value  ?? 0) : 0
+        const effectivePrecip = cp === null ? null : Math.max(cp, measured, stationPrecip, radarPrecip)
         setForecast({ times, precips })
         setCurrentPrecip(effectivePrecip)
         setGaps(detectedGaps)
