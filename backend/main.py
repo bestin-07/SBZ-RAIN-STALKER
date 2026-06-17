@@ -78,9 +78,6 @@ def init_vapid():
     env_priv = os.getenv("VAPID_PRIVATE_KEY")
     env_pub = os.getenv("VAPID_PUBLIC_KEY")
     if env_priv and env_pub:
-        # Accept base64-encoded PEM (single-line, Railway-friendly) or raw PEM
-        if not env_priv.strip().startswith("-----"):
-            env_priv = base64.b64decode(env_priv).decode()
         VAPID_PRIVATE_KEY = env_priv
         VAPID_PUBLIC_KEY = env_pub
         print("[vapid] Loaded from environment variables")
