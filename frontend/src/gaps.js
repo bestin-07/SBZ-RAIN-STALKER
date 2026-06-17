@@ -96,9 +96,12 @@ export function getStatus(currentPrecip, gaps, weather, t = k => k) {
 
   const isDry = currentPrecip < DRY_THRESHOLD && !precipByCode(weather?.code)
   const nextGap = gaps[0]
+  // A gap starting in 0 min means the forecast says dry right now.
+  // Station RR can lag up to 10 min when clearing — trust the model in this case.
+  const gapNow = nextGap?.startsInMinutes === 0
 
-  if (isDry) {
-    if (nextGap && nextGap.startsInMinutes === 0) {
+  if (isDry || gapNow) {
+    if (nextGap && gapNow) {
       return {
         type: 'go',
         headline: t('GO_NOW'),
