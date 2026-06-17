@@ -51,9 +51,31 @@ export function detectGaps(times, precips) {
   return { currentPrecip, gaps }
 }
 
-export function getStatus(currentPrecip, gaps, t = k => k) {
+function getWeatherNote(weather, t) {
+  if (!weather || weather.temp === null || weather.temp === undefined) return null
+  const temp = Math.round(weather.temp)
+  const wind = Math.round(weather.wind ?? 0)
+  const code = weather.code ?? -1
+
+  // Snow (WMO codes 71-77 = snow fall, 85-86 = snow showers)
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) {
+    return t('weather_snow')
+  }
+  if (wind > 50) return t('weather_storm', { wind })
+  if (temp > 33)  return t('weather_scorching', { temp })
+  if (temp > 29)  return t('weather_hot', { temp })
+  if (wind > 30)  return t('weather_windy', { wind })
+  if (temp < 5)   return t('weather_freezing', { temp })
+  if (temp < 12)  return t('weather_cold', { temp })
+  if (temp >= 22 && temp <= 29 && wind < 20) return t('weather_perfect')
+  return null
+}
+
+export function getStatus(currentPrecip, gaps, weather, t = k => k) {
+  const weatherNote = getWeatherNote(weather, t)
+
   if (currentPrecip === null) {
-    return { type: 'loading', headline: t('checking'), sub: t('reading_sky') }
+    return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null }
   }
 
   const isDry = currentPrecip < DRY_THRESHOLD
@@ -67,12 +89,14 @@ export function getStatus(currentPrecip, gaps, t = k => k) {
         sub: nextGap.opensEnded
           ? t('dry_for_over', { min: nextGap.durationMinutes })
           : t('dry_for', { min: nextGap.durationMinutes }),
+        weather: weatherNote,
       }
     }
     return {
       type: 'go',
       headline: t('GO_NOW'),
       sub: t('no_rain'),
+      weather: weatherNote,
     }
   }
 
@@ -81,6 +105,7 @@ export function getStatus(currentPrecip, gaps, t = k => k) {
       type: 'wait',
       headline: t('WAIT_MIN', { min: nextGap.startsInMinutes }),
       sub: t('then_clear', { min: nextGap.durationMinutes }),
+      weather: weatherNote,
     }
   }
 
@@ -88,5 +113,6 @@ export function getStatus(currentPrecip, gaps, t = k => k) {
     type: 'stuck',
     headline: t('STUCK'),
     sub: t('no_gap'),
+    weather: weatherNote,
   }
 }

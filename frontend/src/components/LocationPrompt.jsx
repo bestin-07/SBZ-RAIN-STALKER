@@ -3,7 +3,7 @@ export default function LocationPrompt({ onRequest, error, loading, t }) {
     <div className="min-h-screen bg-bg flex flex-col items-start justify-center px-6 pb-safe">
       <div className="mb-12">
         <div className="font-display font-bold text-3xl text-primary tracking-[0.15em] uppercase mb-1">
-          SBZ RAIN STALKER
+          GEMMA RAUS
         </div>
         <div className="font-mono text-sm text-muted">
           {t('app_tagline')}

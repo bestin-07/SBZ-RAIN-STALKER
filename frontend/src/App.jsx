@@ -11,7 +11,6 @@ import InfoPanel from './components/InfoPanel'
 
 const REFRESH_MS = 5 * 60 * 1000
 
-// Generous Salzburg region bounds (city + all surrounding areas on the map)
 const SBZ_BOUNDS = { minLat: 47.35, maxLat: 48.20, minLon: 12.50, maxLon: 13.80 }
 
 function saved(key, fallback) {
@@ -29,6 +28,7 @@ export default function App() {
   const [forecast, setForecast] = useState(null)
   const [accuracy, setAccuracy] = useState(null)
   const [currentPrecip, setCurrentPrecip] = useState(null)
+  const [currentWeather, setCurrentWeather] = useState(null)
   const [gaps, setGaps] = useState([])
   const [areaPrecip, setAreaPrecip] = useState([])
   const [loading, setLoading] = useState(false)
@@ -36,16 +36,15 @@ export default function App() {
   const [theme, setTheme] = useState(() => saved('theme', 'light'))
   const [lang, setLang] = useState(() => saved('lang', 'de'))
   const [infoOpen, setInfoOpen] = useState(false)
-  const [notifyState, setNotifyState] = useState('idle') // idle | subscribed | denied | unsupported
+  const [notifyState, setNotifyState] = useState('idle')
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
                     || window.navigator.standalone === true
 
   const t = useI18n(lang)
-  const status = getStatus(currentPrecip, gaps, t)
+  const status = getStatus(currentPrecip, gaps, currentWeather, t)
 
-  // PWA install prompt capture (Chrome/Edge — not Brave/Safari)
   useEffect(() => {
     const handler = e => {
       e.preventDefault()
@@ -57,7 +56,6 @@ export default function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
-  // Check existing push subscription state
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       setNotifyState('unsupported')
@@ -73,7 +71,6 @@ export default function App() {
     if (notifyState === 'unsupported' || notifyState === 'denied') return
 
     if (notifyState === 'subscribed') {
-      // Unsubscribe
       const reg = await navigator.serviceWorker.ready
       const sub = await reg.pushManager.getSubscription()
       if (sub) {
@@ -88,7 +85,6 @@ export default function App() {
       return
     }
 
-    // Subscribe
     try {
       const keyRes = await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/vapid-public-key`)
       if (!keyRes.ok) return
@@ -114,7 +110,6 @@ export default function App() {
     }
   }, [notifyState])
 
-  // Apply theme class + meta color
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
     const meta = document.querySelector('meta[name="theme-color"]')
@@ -159,6 +154,11 @@ export default function App() {
         setForecast({ times, precips })
         setCurrentPrecip(cp)
         setGaps(detectedGaps)
+        setCurrentWeather({
+          temp: data.current?.temperature_2m ?? null,
+          wind: data.current?.wind_speed_10m ?? null,
+          code: data.current?.weather_code ?? null,
+        })
         setLastUpdated(Date.now())
       }
 

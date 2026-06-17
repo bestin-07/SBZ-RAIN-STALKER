@@ -19,7 +19,7 @@ export default function Header({
     <header className="shrink-0 border-b border-border">
       <div className="flex items-center justify-between px-4 pt-safe pb-3">
         <span className="font-display font-bold text-xs tracking-[0.2em] uppercase text-primary">
-          SBZ RAIN STALKER
+          GEMMA RAUS
         </span>
 
         <div className="flex items-center gap-3">

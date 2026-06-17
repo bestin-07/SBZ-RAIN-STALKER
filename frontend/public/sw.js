@@ -30,7 +30,7 @@ self.addEventListener('push', e => {
   try { data = e.data.json() } catch {}
 
   const de = (navigator.language || 'de').startsWith('de')
-  const title = de ? (data.title_de || 'SBZ Rain Stalker') : (data.title_en || 'SBZ Rain Stalker')
+  const title = de ? (data.title_de || 'Gemma Raus') : (data.title_en || 'Gemma Raus')
   const body  = de ? (data.body_de  || '') : (data.body_en  || '')
 
   const tag = data.type === 'rain' ? 'rain-warning' : 'rain-gap'
