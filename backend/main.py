@@ -401,6 +401,16 @@ def health():
     return {"ok": True, "time": datetime.now(timezone.utc).isoformat()}
 
 
+@app.get("/api/vapid-keys")
+def get_vapid_keys():
+    """One-time use: copy these into Railway env vars, then you can remove this endpoint."""
+    return {
+        "VAPID_PUBLIC_KEY":  VAPID_PUBLIC_KEY,
+        "VAPID_PRIVATE_KEY": VAPID_PRIVATE_KEY,
+        "note": "Add both as Railway env vars, then delete this endpoint from main.py",
+    }
+
+
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
