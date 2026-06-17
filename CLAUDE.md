@@ -158,17 +158,24 @@ else → STUCK INSIDE (no gap in 3h)
 
 ## Known Issues / Technical Debt
 
-### DWD RADOLAN GetFeatureInfo — REMOVED (was WAF-blocked, not CORS)
-**Resolved 2026-06.** The old `fetchRadarPrecipAtPoint()` queried DWD `GetFeatureInfo`. Live testing showed it returns **HTTP 403 ("Access Denied", F5/edge WAF signature)** from Austrian user IPs — not a CORS issue, a server-side block that browser headers don't bypass. It returned `null` on every request, contributing nothing to the rain blend. It has been replaced by GeoSphere INCA (source #3 above). Do not reintroduce DWD GetFeatureInfo as a data source; the DWD WMS *tile* overlay in `RadarMap.jsx` is fine to keep (different request path).
+### DWD `maps.dwd.de` — FULLY REMOVED (WAF-blocked, not CORS)
+**Resolved 2026-06.** Live testing showed **both** DWD WMS request types return **HTTP 403 ("Access Denied", F5/edge WAF signature)** from Austrian user IPs — not CORS, a server-side block that browser headers don't bypass:
+- `GetFeatureInfo` (the old `fetchRadarPrecipAtPoint()` data point) → 403, returned `null` every request → replaced by GeoSphere INCA (data source #3 above).
+- `GetMap` (the `dwd:RX-Produkt` **tile overlay** on the map in `RadarMap.jsx`) → also 403, returned an HTML error body instead of a PNG → the radar overlay rendered nothing. **Removed entirely**; RainViewer is now the sole radar overlay.
+
+Do not reintroduce any `maps.dwd.de` request — the whole host is blocked for Austrian (and likely most EU residential) networks.
 
 ### ICON-EU Model Lag
-The Open-Meteo ICON-EU model runs roughly hourly and can be 2-3h behind convective rain events in the Alps. On fast-moving summer storms, all model-based signals (minutely_15, current.precipitation, weather_code) can show `0` while it's actively raining. The TAWES stations and RADOLAN radar are meant to compensate — but only if those API calls succeed.
+The Open-Meteo ICON-EU model runs roughly hourly and can be 2-3h behind convective rain events in the Alps. On fast-moving summer storms, all model-based signals (minutely_15, current.precipitation, weather_code) can show `0` while it's actively raining. The TAWES stations (fast, 10-min) and GeoSphere INCA nowcast (gridded, hourly) are meant to compensate — but only if those API calls succeed.
 
 ### GeoSphere TAWES Metadata Format — VERIFIED
 Live-confirmed 2026-06: the metadata endpoint returns `{ ..., stations: [...] }` where each station object has exactly `id` (string), `lat`, `lon`, `is_active` (bool). Discovery filters out inactive stations and falls back to `station_ids=11150` only if the whole metadata fetch fails.
 
-### RainViewer Animated Radar
-`RadarMap.jsx` uses RainViewer API for animated radar tiles (past 2h animation). `maxNativeZoom: 9` and a `zoomend` guard at `RV_MAX_ZOOM = 10` prevent broken tiles at high zoom. The DWD WMS static overlay is the authoritative source; RainViewer is visual context only.
+### RainViewer Animated Radar — now the sole radar overlay
+`RadarMap.jsx` uses the RainViewer API for animated radar tiles (~40 min past + 2 nowcast frames). It is now the **only** radar overlay (DWD removed — see above).
+- `maxNativeZoom: 9` → z9 tiles are upscaled (slightly soft) above zoom 9 rather than disappearing.
+- `RV_MAX_ZOOM = 14` (was `10`). **This was the "map looks empty" bug:** the default map zoom is `11`, so the old `<= 10` gate hid RainViewer at the default view — and with DWD also blocked, the map showed no radar at all. The gate now spans the full interactive zoom range (minZoom 9 → maxZoom 14).
+- A `ResizeObserver` calls `map.invalidateSize()` on mount and resize, so the flex-mounted container (`flex-1 min-h-0`, with sibling banners that settle height after first paint) doesn't leave the base tiles blank.
 
 ---
 

@@ -5,9 +5,13 @@ import 'leaflet/dist/leaflet.css'
 const SALZBURG = [47.802, 13.045]
 const ZOOM = 11
 const BOUNDS = L.latLngBounds([47.50, 12.65], [48.10, 13.65])
-const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms'
 const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
-const RV_MAX_ZOOM = 10  // hide RainViewer tiles above this map zoom
+// Show RainViewer across the whole interactive zoom range. Tiles are native at
+// z9 (maxNativeZoom) and upscaled above — slightly soft but visible. The DWD
+// WMS overlay used to be the authoritative layer, but its tiles (GetMap) return
+// HTTP 403 from Austrian networks just like GetFeatureInfo, so RainViewer is now
+// the only radar overlay and must be visible at the default zoom (11).
+const RV_MAX_ZOOM = 14
 
 const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
@@ -84,35 +88,16 @@ export default function RadarMap({ location, areaPrecip, theme }) {
       attributionControl: true,
     })
 
-    // DWD OPERA composite — WMS bounding-box, no tile-zoom arithmetic, always current
-    let dwdLayer = L.tileLayer.wms(DWD_WMS, {
-      layers: 'dwd:RX-Produkt',
-      format: 'image/png',
-      transparent: true,
-      version: '1.3.0',
-      opacity: 0.55,
-      zIndex: 100,
-      attribution: '© DWD',
-    })
-    dwdLayer.addTo(map)
-
-    // Re-create the DWD layer every 5 min to bypass browser tile cache
-    const dwdRefresh = setInterval(() => {
-      if (!mapRef.current) return
-      mapRef.current.removeLayer(dwdLayer)
-      dwdLayer = L.tileLayer.wms(DWD_WMS, {
-        layers: 'dwd:RX-Produkt',
-        format: 'image/png',
-        transparent: true,
-        version: '1.3.0',
-        opacity: 0.55,
-        zIndex: 100,
-        attribution: '© DWD',
-      })
-      dwdLayer.addTo(mapRef.current)
-    }, 5 * 60 * 1000)
-
     mapRef.current = map
+
+    // The flex-mounted container can report a stale/zero size when Leaflet
+    // initialises (sibling banners settle height after first paint), which
+    // leaves the base tiles blank. Re-measure once mounted and on any resize.
+    const resizeObs = new ResizeObserver(() => {
+      try { mapRef.current?.invalidateSize() } catch {}
+    })
+    resizeObs.observe(containerRef.current)
+    requestAnimationFrame(() => { try { map.invalidateSize() } catch {} })
 
     // ---- RainViewer animated overlay ----
     // maxNativeZoom:9 ensures Leaflet requests z=9 tiles with z=9 coordinates
@@ -167,7 +152,7 @@ export default function RadarMap({ location, areaPrecip, theme }) {
           animIdxRef.current = next
         }, 700)
       } catch {
-        // RainViewer unavailable — DWD WMS remains
+        // RainViewer unavailable — base map + area dots remain
       }
     }
 
@@ -176,7 +161,7 @@ export default function RadarMap({ location, areaPrecip, theme }) {
 
     return () => {
       map.off('zoomend', syncRvOpacity)
-      clearInterval(dwdRefresh)
+      resizeObs.disconnect()
       clearInterval(animRefreshRef.current)
       if (animTimerRef.current) clearInterval(animTimerRef.current)
       rvLayersRef.current.forEach(l => { try { l.remove() } catch {} })
