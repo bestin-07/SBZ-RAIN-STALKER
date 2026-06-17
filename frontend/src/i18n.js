@@ -63,6 +63,12 @@ const translations = {
     privacy_3: 'Für Push-Benachrichtigungen speichern wir ein anonymes Browser-Token ohne Standortbezug. Abmelden jederzeit möglich.',
     privacy_basis: 'Rechtsgrundlage: berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO) für die Wetterabfrage; Einwilligung für Push.',
 
+    support_title: 'Unterstützen',
+    made_by:       'Gebaut und am Laufen gehalten von Bestin Antu — einem Salzburger, der das Regen-Raten satt hatte.',
+    buy_coffee:    'Spendier mir einen Kaffee',
+    coffee_scan:   'QR scannen um einen Kaffee zu spendieren',
+    coffee_soon:   'QR-Code folgt in Kürze',
+
     close: 'SCHLIESSEN',
 
     guide_title:      'was bedeutet was',
@@ -147,6 +153,12 @@ const translations = {
     privacy_2: 'Only theme and language preferences are saved locally in your browser. No tracking cookies no account.',
     privacy_3: 'For push notifications we store an anonymous browser token with no location attached. Unsubscribe at any time.',
     privacy_basis: 'Legal basis: legitimate interest (Art. 6(1)(f) GDPR) for weather lookup; consent for push notifications.',
+
+    support_title: 'Support',
+    made_by:       'Built and kept running by Bestin Antu — a Salzburg local who got tired of guessing the rain.',
+    buy_coffee:    'Buy me a coffee',
+    coffee_scan:   'Scan to send a coffee',
+    coffee_soon:   'QR code coming soon',
 
     close: 'CLOSE',
 

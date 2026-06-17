@@ -1,4 +1,7 @@
+import { useState } from 'react'
+
 export default function InfoPanel({ open, onClose, t }) {
+  const [qrError, setQrError] = useState(false)
   if (!open) return null
 
   return (
@@ -57,9 +60,9 @@ export default function InfoPanel({ open, onClose, t }) {
           </div>
           <div className="space-y-3 mb-10">
             <DataRow label={t('src_forecast')} value="Open-Meteo ICON-EU" />
-            <DataRow label={t('src_radar')}    value="DWD / OPERA + RainViewer" />
-            <DataRow label={t('src_station')}  value="GeoSphere Austria TAWES · 3 nächste Stationen" />
-            <DataRow label={t('src_radar_pt')} value="DWD RADOLAN · live Punkt-Abfrage" />
+            <DataRow label={t('src_radar')}    value="RainViewer · EU composite" />
+            <DataRow label={t('src_station')}  value="GeoSphere TAWES · 6 nearest + airport" />
+            <DataRow label={t('src_radar_pt')} value="GeoSphere nowcast · 1 km / 15 min" />
             <DataRow label={t('src_accuracy')} value={t('fact_03')} />
           </div>
 
@@ -79,6 +82,34 @@ export default function InfoPanel({ open, onClose, t }) {
             {['privacy_1','privacy_2','privacy_3','privacy_basis'].map(k => (
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
             ))}
+          </div>
+
+          {/* ── SUPPORT ── */}
+          <div className="w-full h-px bg-border mb-8" />
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
+            {t('support_title')}
+          </div>
+          <p className="font-mono text-sm text-muted leading-relaxed mb-5">
+            {t('made_by')}
+          </p>
+
+          <div className="border border-border rounded-lg px-5 py-5 mb-10 flex flex-col items-center text-center">
+            <div className="font-display font-bold text-lg text-primary mb-1">
+              ☕ {t('buy_coffee')}
+            </div>
+            {qrError ? (
+              <div className="mt-3 w-40 h-40 flex items-center justify-center border border-dashed border-border rounded">
+                <span className="font-mono text-xs text-muted px-4">{t('coffee_soon')}</span>
+              </div>
+            ) : (
+              <img
+                src="/support/coffee-qr.png"
+                alt={t('buy_coffee')}
+                onError={() => setQrError(true)}
+                className="mt-3 w-40 h-40 rounded bg-white p-2 object-contain"
+              />
+            )}
+            <p className="font-mono text-xs text-muted mt-3">{t('coffee_scan')}</p>
           </div>
 
           <button
