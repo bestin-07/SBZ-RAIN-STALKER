@@ -189,46 +189,52 @@ export default function App() {
     return () => clearInterval(id)
   }, [location, loadData])
 
-  if (!location && !locationError) {
-    return <LocationPrompt loading onRequest={requestLocation} t={t} />
-  }
-
-  if (locationError && !location) {
-    return <LocationPrompt error={locationError} onRequest={requestLocation} t={t} />
+  const headerProps = {
+    theme, onThemeToggle: () => setTheme(prev => prev === 'dark' ? 'light' : 'dark'),
+    lang,  onLangToggle:  () => setLang(prev  => prev === 'de'   ? 'en'   : 'de'),
+    onInfo: () => setInfoOpen(true),
+    t,
+    // below only meaningful once we have location data
+    accuracy:     location ? accuracy     : null,
+    lastUpdated:  location ? lastUpdated  : null,
+    onRefresh:    location ? loadData     : null,
+    loading:      location ? loading      : false,
+    notifyState:  location ? notifyState  : 'unsupported',
+    onNotifyToggle: location ? toggleNotifications : null,
+    installable: installable && !isStandalone,
+    onInstall: async () => {
+      if (installPromptRef.current) {
+        installPromptRef.current.prompt()
+        const { outcome } = await installPromptRef.current.userChoice
+        if (outcome === 'accepted') setInstallable(false)
+      }
+    },
   }
 
   return (
     <div className="flex flex-col h-full bg-bg text-primary overflow-hidden">
-      <Header
-        accuracy={accuracy}
-        lastUpdated={lastUpdated}
-        onRefresh={loadData}
-        loading={loading}
-        theme={theme}
-        onThemeToggle={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-        lang={lang}
-        onLangToggle={() => setLang(prev => prev === 'de' ? 'en' : 'de')}
-        onInfo={() => setInfoOpen(true)}
-        notifyState={notifyState}
-        onNotifyToggle={toggleNotifications}
-        installable={installable && !isStandalone}
-        onInstall={async () => {
-          if (installPromptRef.current) {
-            installPromptRef.current.prompt()
-            const { outcome } = await installPromptRef.current.userChoice
-            if (outcome === 'accepted') setInstallable(false)
-          }
-        }}
-        t={t}
-      />
-      {location && isOutsideSalzburg(location) && (
-        <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
-          <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
-        </div>
+      <Header {...headerProps} />
+
+      {!location ? (
+        <LocationPrompt
+          loading={!locationError}
+          error={locationError}
+          onRequest={requestLocation}
+          t={t}
+        />
+      ) : (
+        <>
+          {isOutsideSalzburg(location) && (
+            <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
+              <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
+            </div>
+          )}
+          <GapBanner status={status} />
+          <RainRibbon forecast={forecast} theme={theme} t={t} />
+          <RadarMap location={location} areaPrecip={areaPrecip} theme={theme} />
+        </>
       )}
-      <GapBanner status={status} />
-      <RainRibbon forecast={forecast} theme={theme} t={t} />
-      <RadarMap location={location} areaPrecip={areaPrecip} theme={theme} />
+
       <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} t={t} />
     </div>
   )
