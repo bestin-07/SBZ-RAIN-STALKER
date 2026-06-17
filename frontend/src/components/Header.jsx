@@ -4,6 +4,7 @@ export default function Header({
   lang, onLangToggle,
   onInfo,
   notifyState, onNotifyToggle,
+  installable, onInstall,
   t,
 }) {
   const acc30 = accuracy?.['30min']?.accuracy
@@ -15,71 +16,84 @@ export default function Header({
   }
 
   return (
-    <header className="flex items-center justify-between px-4 pt-safe pb-3 border-b border-border shrink-0">
-      <span className="font-display font-bold text-xs tracking-[0.2em] uppercase text-primary">
-        SBZ RAIN STALKER
-      </span>
+    <header className="shrink-0 border-b border-border">
+      <div className="flex items-center justify-between px-4 pt-safe pb-3">
+        <span className="font-display font-bold text-xs tracking-[0.2em] uppercase text-primary">
+          SBZ RAIN STALKER
+        </span>
 
-      <div className="flex items-center gap-3">
-        {acc30 !== null && acc30 !== undefined && (
-          <span className="font-mono text-xs text-muted">
-            {acc30}{t('pct_accurate')}
-          </span>
-        )}
-        {lastUpdated && (
-          <span className="font-mono text-xs text-muted">
-            {formatTime(lastUpdated)}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {acc30 !== null && acc30 !== undefined && (
+            <span className="font-mono text-xs text-muted">
+              {acc30}{t('pct_accurate')}
+            </span>
+          )}
+          {lastUpdated && (
+            <span className="font-mono text-xs text-muted">
+              {formatTime(lastUpdated)}
+            </span>
+          )}
 
-        <button
-          onClick={onRefresh}
-          disabled={loading}
-          className="font-mono text-sm text-muted hover:text-primary transition-colors disabled:opacity-30"
-          aria-label="refresh"
-        >
-          {loading ? '·' : '↺'}
-        </button>
-
-        <div className="w-px h-3 bg-border" />
-
-        <button
-          onClick={onLangToggle}
-          className="font-mono text-xs text-muted hover:text-primary transition-colors leading-none"
-          aria-label="switch language"
-        >
-          {lang === 'de' ? 'EN' : 'DE'}
-        </button>
-
-        <button
-          onClick={onThemeToggle}
-          className="font-mono text-base text-muted hover:text-primary transition-colors leading-none"
-          aria-label="toggle theme"
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
-          {theme === 'dark' ? '☾' : '☀'}
-        </button>
-
-        {notifyState !== 'unsupported' && (
           <button
-            onClick={onNotifyToggle}
-            disabled={notifyState === 'denied'}
-            className="font-mono text-base text-muted hover:text-primary transition-colors leading-none disabled:opacity-40"
-            aria-label="toggle notifications"
-            title={notifyState === 'denied' ? t('notify_denied') : notifyState === 'subscribed' ? t('notify_on') : t('notify_off')}
+            onClick={onRefresh}
+            disabled={loading}
+            className="font-mono text-sm text-muted hover:text-primary transition-colors disabled:opacity-30"
+            aria-label="refresh"
           >
-            {notifyState === 'subscribed' ? t('notify_on') : t('notify_off')}
+            {loading ? '·' : '↺'}
           </button>
-        )}
 
-        <button
-          onClick={onInfo}
-          className="font-mono text-xs text-muted hover:text-primary transition-colors w-4 h-4 flex items-center justify-center border border-border rounded-full leading-none"
-          aria-label="about"
-        >
-          i
-        </button>
+          <div className="w-px h-3 bg-border" />
+
+          <button
+            onClick={onLangToggle}
+            className="font-mono text-xs text-muted hover:text-primary transition-colors leading-none"
+            aria-label="switch language"
+          >
+            {lang === 'de' ? 'EN' : 'DE'}
+          </button>
+
+          <button
+            onClick={onThemeToggle}
+            className="font-mono text-base text-muted hover:text-primary transition-colors leading-none"
+            aria-label="toggle theme"
+          >
+            {theme === 'dark' ? '☾' : '☀'}
+          </button>
+
+          {notifyState !== 'unsupported' && (
+            <button
+              onClick={onNotifyToggle}
+              disabled={notifyState === 'denied'}
+              className="font-mono text-base text-muted hover:text-primary transition-colors leading-none disabled:opacity-40"
+              aria-label="toggle notifications"
+              title={notifyState === 'denied' ? t('notify_denied') : ''}
+            >
+              {notifyState === 'subscribed' ? t('notify_on') : t('notify_off')}
+            </button>
+          )}
+
+          <button
+            onClick={onInfo}
+            className="font-mono text-xs text-muted hover:text-primary transition-colors w-4 h-4 flex items-center justify-center border border-border rounded-full leading-none"
+            aria-label="about"
+          >
+            i
+          </button>
+        </div>
       </div>
+
+      {/* Install strip — shown when browser supports beforeinstallprompt (Chrome/Edge)
+          Brave/Safari users are guided via the info panel instead */}
+      {installable && (
+        <button
+          onClick={onInstall}
+          className="w-full flex items-center justify-between px-4 py-2 bg-surface border-t border-border font-mono text-xs text-muted hover:text-primary transition-colors"
+        >
+          <span>{lang === 'de' ? 'App zum Startbildschirm hinzufügen' : 'Add to home screen'}</span>
+          <span className="text-base leading-none">⊕</span>
+        </button>
+      )}
     </header>
   )
 }

@@ -38,14 +38,22 @@ export default function App() {
   const [infoOpen, setInfoOpen] = useState(false)
   const [notifyState, setNotifyState] = useState('idle') // idle | subscribed | denied | unsupported
   const installPromptRef = useRef(null)
+  const [installable, setInstallable] = useState(false)
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true
 
   const t = useI18n(lang)
   const status = getStatus(currentPrecip, gaps, t)
 
-  // PWA install prompt capture
+  // PWA install prompt capture (Chrome/Edge — not Brave/Safari)
   useEffect(() => {
-    const handler = e => { e.preventDefault(); installPromptRef.current = e }
+    const handler = e => {
+      e.preventDefault()
+      installPromptRef.current = e
+      setInstallable(true)
+    }
     window.addEventListener('beforeinstallprompt', handler)
+    window.addEventListener('appinstalled', () => setInstallable(false))
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
@@ -192,6 +200,14 @@ export default function App() {
         onInfo={() => setInfoOpen(true)}
         notifyState={notifyState}
         onNotifyToggle={toggleNotifications}
+        installable={installable && !isStandalone}
+        onInstall={async () => {
+          if (installPromptRef.current) {
+            installPromptRef.current.prompt()
+            const { outcome } = await installPromptRef.current.userChoice
+            if (outcome === 'accepted') setInstallable(false)
+          }
+        }}
         t={t}
       />
       {location && isOutsideSalzburg(location) && (

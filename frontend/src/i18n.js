@@ -45,6 +45,11 @@ const translations = {
     notify_denied: 'blockiert',
     notify_unsupported: 'kein Push',
 
+    install_title: 'App installieren',
+    install_brave: 'Brave oder Samsung Browser: Menü (⋮) dann "Zum Startbildschirm hinzufügen"',
+    install_safari: 'Safari auf iOS: Teilen-Symbol tippen dann "Zum Home-Bildschirm"',
+    install_note: 'Nach der Installation öffnet die App ohne Adressleiste wie eine native App.',
+
     privacy_title: 'Datenschutz',
     privacy_1: 'Dein GPS-Standort verlässt deinen Browser nur als Koordinaten direkt an Open-Meteo (Schweiz, FADP-konform). Wir erhalten und speichern deinen Standort nicht.',
     privacy_2: 'Im Browser werden ausschließlich Design- und Spracheinstellungen gespeichert. Keine Tracking-Cookies, kein Benutzerkonto.',
@@ -98,6 +103,11 @@ const translations = {
     notify_off: '◎',
     notify_denied: 'blocked',
     notify_unsupported: 'no push',
+
+    install_title: 'Install app',
+    install_brave: 'Brave or Samsung Browser: menu (⋮) then "Add to home screen"',
+    install_safari: 'Safari on iOS: tap the share icon then "Add to Home Screen"',
+    install_note: 'Once installed the app opens without an address bar like a native app.',
 
     privacy_title: 'Privacy',
     privacy_1: 'Your GPS coordinates leave your browser only as a direct request to Open-Meteo (Switzerland, FADP-compliant). We never receive or store your location.',

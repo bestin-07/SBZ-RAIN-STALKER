@@ -34,6 +34,15 @@ export default function InfoPanel({ open, onClose, t }) {
           </div>
 
           <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3 mt-8">
+            {t('install_title')}
+          </div>
+          <div className="space-y-2 mb-10 border-l-2 border-border pl-4">
+            <p className="font-mono text-xs text-muted leading-relaxed">{t('install_brave')}</p>
+            <p className="font-mono text-xs text-muted leading-relaxed">{t('install_safari')}</p>
+            <p className="font-mono text-xs text-primary leading-relaxed">{t('install_note')}</p>
+          </div>
+
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3 mt-8">
             {t('privacy_title')}
           </div>
           <div className="space-y-2 mb-8 border-l-2 border-border pl-4">
