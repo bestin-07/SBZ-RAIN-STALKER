@@ -176,6 +176,9 @@ The Open-Meteo ICON-EU model runs roughly hourly and can be 2-3h behind convecti
 ### GeoSphere TAWES Metadata Format — VERIFIED
 Live-confirmed 2026-06: the metadata endpoint returns `{ ..., stations: [...] }` where each station object has exactly `id` (string), `lat`, `lon`, `is_active` (bool). Discovery filters out inactive stations and falls back to `station_ids=11150` only if the whole metadata fetch fails.
 
+### Nearby-town dots & API rate limits
+`fetchAreaPrecip()` shows precip for the 12 surrounding towns. It uses a **single batched Open-Meteo request** (comma-separated `latitude`/`longitude` → array response in order), not 12 separate calls — gentler on the rate limit and it no longer drops towns when individual calls get throttled (the old behaviour made the dots "disappear"). It always returns every AREA (precip `null` on failure) so dots render consistently. **All weather/radar calls are client-side (browser → Open-Meteo / GeoSphere directly); none go through the Railway backend**, so public-API rate limits apply per user IP, not to our server. The backend only calls Open-Meteo for its own 5 accuracy points every 5 min.
+
 ### RainViewer Animated Radar — now the sole radar overlay
 `RadarMap.jsx` uses the RainViewer API for animated radar tiles (~40 min past + 2 nowcast frames). It is now the **only** radar overlay (DWD removed — see above).
 - `maxNativeZoom: 9` → z9 tiles are upscaled (slightly soft) above zoom 9 rather than disappearing.

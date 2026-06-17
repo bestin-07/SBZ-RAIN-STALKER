@@ -3,7 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const SALZBURG = [47.802, 13.045]
-const ZOOM = 11
+const ZOOM = 12  // a touch closer to the user; RainViewer maxNativeZoom covers this
 const BOUNDS = L.latLngBounds([47.50, 12.65], [48.10, 13.65])
 const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
 // Show RainViewer across the whole interactive zoom range. Tiles are native at
@@ -26,14 +26,15 @@ function precipColor(p) {
   return               '#1D4ED8'  // heavy
 }
 
-function areaIcon(name, precip) {
+function areaIcon(name, precip, dryLabel = 'dry') {
   const known = precip !== null && precip !== undefined
   const isRaining = known && precip >= 0.1
   const color = precipColor(precip)
-  const dot = isRaining ? 9 : 6
+  const dot = isRaining ? 9 : 7
 
-  // Dry areas recede (small dim dot + faint name, no value); raining areas pop
-  // (larger blue dot with a glow + the mm reading). Keeps the map uncluttered.
+  // Every town stays readable (name always shown); raining areas pop with a
+  // larger blue dot, glow and mm reading. Dry areas keep a visible dot + name
+  // but no value, so the map shows the full network without clutter.
   return L.divIcon({
     html: `<div style="text-align:center;pointer-events:none;">
       <div style="
@@ -41,7 +42,7 @@ function areaIcon(name, precip) {
         background:${color};
         border-radius:50%;
         margin:0 auto;
-        ${isRaining ? `box-shadow:0 0 0 4px ${color}40;` : 'opacity:0.6;'}
+        ${isRaining ? `box-shadow:0 0 0 4px ${color}40;` : 'box-shadow:0 0 0 2px rgba(0,0,0,0.45);opacity:0.85;'}
       "></div>
       <div style="
         font-family:'JetBrains Mono',monospace;
@@ -50,15 +51,15 @@ function areaIcon(name, precip) {
         white-space:nowrap;
         margin-top:3px;
         line-height:1.1;
-        opacity:${isRaining ? '1' : '0.5'};
+        opacity:${isRaining ? '1' : '0.8'};
       ">${name}</div>
-      ${isRaining ? `<div style="
+      ${known ? `<div style="
         font-family:'JetBrains Mono',monospace;
         font-size:9px;
-        font-weight:600;
-        color:${color};
+        font-weight:${isRaining ? '600' : '400'};
+        color:${isRaining ? color : '#6B7280'};
         white-space:nowrap;
-      ">${precip.toFixed(1)}mm</div>` : ''}
+      ">${isRaining ? precip.toFixed(1) + 'mm' : dryLabel}</div>` : ''}
     </div>`,
     iconSize: [60, 36],
     iconAnchor: [30, dot / 2],
@@ -66,7 +67,7 @@ function areaIcon(name, precip) {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, theme }) {
+export default function RadarMap({ location, areaPrecip, theme, t }) {
   const containerRef   = useRef(null)
   const mapRef         = useRef(null)
   const markerRef      = useRef(null)
@@ -135,15 +136,15 @@ export default function RadarMap({ location, areaPrecip, theme }) {
         rvLayersRef.current = []
 
         rvLayersRef.current = frames.map((frame, i) => {
-          // 512px tiles + colour scheme 2 (universal blue) + smoothing for a
-          // clean overlay. maxNativeZoom 11 lets RainViewer serve real tiles up
-          // to city zoom instead of stretching one z9 tile (the "blurry / not
-          // supported" look). Note: radar is natively ~1 km, so beyond ~z11 it's
-          // interpolated, not finer detail — the fine signal comes from the
-          // GeoSphere 1 km nowcast that drives the GO/WAIT status.
+          // 256px tiles, colour scheme 2 (universal blue) + smoothing. maxNativeZoom
+          // 12 lets RainViewer serve real tiles at the default city zoom instead of
+          // stretching one low-zoom tile (the "blurry / zoom not supported" look).
+          // Radar is natively ~1 km, so beyond this it's interpolated, not finer
+          // detail — the fine signal comes from the GeoSphere 1 km nowcast that
+          // drives the GO/WAIT status, not from this visual overlay.
           const layer = L.tileLayer(
-            `${host}${frame.path}/512/{z}/{x}/{y}/2/1_1.png`,
-            { tileSize: 512, maxNativeZoom: 11, opacity: 0, zIndex: 200, attribution: '© RainViewer' }
+            `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`,
+            { maxNativeZoom: 12, opacity: 0, zIndex: 200, attribution: '© RainViewer' }
           )
           layer.addTo(mapRef.current)
           return layer
@@ -217,15 +218,16 @@ export default function RadarMap({ location, areaPrecip, theme }) {
   useEffect(() => {
     if (!mapRef.current || !areaPrecip?.length) return
     areaMarkersRef.current.forEach(m => m.remove())
+    const dryLabel = t ? t('dry') : 'dry'
     areaMarkersRef.current = areaPrecip.map(area =>
-      L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip), zIndexOffset: 200 })
+      L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip, dryLabel), zIndexOffset: 200 })
         .addTo(mapRef.current)
     )
     return () => {
       areaMarkersRef.current.forEach(m => m.remove())
       areaMarkersRef.current = []
     }
-  }, [areaPrecip])
+  }, [areaPrecip, t])
 
   return (
     <div

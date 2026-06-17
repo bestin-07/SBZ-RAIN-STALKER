@@ -147,14 +147,24 @@ export async function fetchAccuracy() {
 }
 
 export async function fetchAreaPrecip() {
-  const results = await Promise.allSettled(
-    AREAS.map(area =>
-      fetch(`${OPEN_METEO}?latitude=${area.lat}&longitude=${area.lon}&current=precipitation&timezone=UTC`)
-        .then(r => r.json())
-        .then(data => ({ ...area, precip: data.current?.precipitation ?? null }))
+  // One batched Open-Meteo request for all towns (comma-separated coords) instead
+  // of one request each — far gentler on the rate limit and avoids dropping towns
+  // when individual calls get throttled. Always returns every AREA (precip null on
+  // failure) so the map dots render consistently.
+  try {
+    const lats = AREAS.map(a => a.lat).join(',')
+    const lons = AREAS.map(a => a.lon).join(',')
+    const r = await fetch(
+      `${OPEN_METEO}?latitude=${lats}&longitude=${lons}&current=precipitation&timezone=UTC`,
+      { signal: AbortSignal.timeout(8000) }
     )
-  )
-  return results
-    .filter(r => r.status === 'fulfilled')
-    .map(r => r.value)
+    if (!r.ok) return AREAS.map(a => ({ ...a, precip: null }))
+    const data = await r.json()
+    // Multi-location requests return an array (one object per coordinate, in order);
+    // a single coordinate would return a bare object.
+    const arr = Array.isArray(data) ? data : [data]
+    return AREAS.map((a, i) => ({ ...a, precip: arr[i]?.current?.precipitation ?? null }))
+  } catch {
+    return AREAS.map(a => ({ ...a, precip: null }))
+  }
 }

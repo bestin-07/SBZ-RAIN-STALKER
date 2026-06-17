@@ -241,7 +241,7 @@ export default function App() {
           )}
           <GapBanner status={status} />
           <RainRibbon forecast={forecast} theme={theme} t={t} />
-          <RadarMap location={location} areaPrecip={areaPrecip} theme={theme} />
+          <RadarMap location={location} areaPrecip={areaPrecip} theme={theme} t={t} />
         </>
       )}
 
