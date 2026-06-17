@@ -16,31 +16,32 @@ const RV_MAX_ZOOM = 14
 const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
 
+// Clean blue precipitation ramp; dry/unknown recede to a muted slate so the
+// map isn't a field of loud dots. Matches the RainViewer "universal blue" scheme.
 function precipColor(p) {
-  if (p === null || p === undefined) return '#374151'
-  if (p < 0.1)  return '#D4A017'
-  if (p < 0.5)  return '#5B9CE8'
-  if (p < 2)    return '#3478D4'
-  return               '#1D5EC0'
+  if (p === null || p === undefined) return '#4B5563' // unknown
+  if (p < 0.1)  return '#5B6472'  // dry — muted, low emphasis
+  if (p < 0.5)  return '#60A5FA'  // light
+  if (p < 2)    return '#3B82F6'  // moderate
+  return               '#1D4ED8'  // heavy
 }
 
 function areaIcon(name, precip) {
+  const known = precip !== null && precip !== undefined
+  const isRaining = known && precip >= 0.1
   const color = precipColor(precip)
-  const isRaining = precip !== null && precip >= 0.1
-  const label = precip !== null
-    ? (precip < 0.1 ? 'dry' : `${precip.toFixed(1)}mm`)
-    : ''
+  const dot = isRaining ? 9 : 6
 
+  // Dry areas recede (small dim dot + faint name, no value); raining areas pop
+  // (larger blue dot with a glow + the mm reading). Keeps the map uncluttered.
   return L.divIcon({
     html: `<div style="text-align:center;pointer-events:none;">
       <div style="
-        width:8px;height:8px;
+        width:${dot}px;height:${dot}px;
         background:${color};
         border-radius:50%;
         margin:0 auto;
-        ${isRaining
-          ? `box-shadow:0 0 0 3px ${color}55;`
-          : 'box-shadow:0 0 0 2px rgba(0,0,0,0.4);'}
+        ${isRaining ? `box-shadow:0 0 0 4px ${color}40;` : 'opacity:0.6;'}
       "></div>
       <div style="
         font-family:'JetBrains Mono',monospace;
@@ -49,16 +50,18 @@ function areaIcon(name, precip) {
         white-space:nowrap;
         margin-top:3px;
         line-height:1.1;
+        opacity:${isRaining ? '1' : '0.5'};
       ">${name}</div>
-      ${label ? `<div style="
+      ${isRaining ? `<div style="
         font-family:'JetBrains Mono',monospace;
-        font-size:8px;
+        font-size:9px;
+        font-weight:600;
         color:${color};
         white-space:nowrap;
-      ">${label}</div>` : ''}
+      ">${precip.toFixed(1)}mm</div>` : ''}
     </div>`,
     iconSize: [60, 36],
-    iconAnchor: [30, 4],
+    iconAnchor: [30, dot / 2],
     className: '',
   })
 }
@@ -132,9 +135,15 @@ export default function RadarMap({ location, areaPrecip, theme }) {
         rvLayersRef.current = []
 
         rvLayersRef.current = frames.map((frame, i) => {
+          // 512px tiles + colour scheme 2 (universal blue) + smoothing for a
+          // clean overlay. maxNativeZoom 11 lets RainViewer serve real tiles up
+          // to city zoom instead of stretching one z9 tile (the "blurry / not
+          // supported" look). Note: radar is natively ~1 km, so beyond ~z11 it's
+          // interpolated, not finer detail — the fine signal comes from the
+          // GeoSphere 1 km nowcast that drives the GO/WAIT status.
           const layer = L.tileLayer(
-            `${host}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`,
-            { maxNativeZoom: 9, opacity: 0, zIndex: 200, attribution: '© RainViewer' }
+            `${host}${frame.path}/512/{z}/{x}/{y}/2/1_1.png`,
+            { tileSize: 512, maxNativeZoom: 11, opacity: 0, zIndex: 200, attribution: '© RainViewer' }
           )
           layer.addTo(mapRef.current)
           return layer

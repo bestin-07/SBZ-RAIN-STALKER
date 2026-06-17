@@ -58,14 +58,14 @@ SBZ-RAIN-STALKER/
 
 ## Data Sources & Rain Detection Pipeline
 
-All 4 sources are queried in parallel on every refresh (every 5 minutes). The app takes the **maximum** across all sources — any single signal detecting rain wins.
+Sources are queried in parallel on every refresh. The **gap timeline** (GO/WAIT/STUCK and "dry for N min") is driven by the finest-resolution forecast available — the GeoSphere 1 km / 15-min nowcast (source #3), falling back to Open-Meteo. The **current "now" condition** is the **maximum** of the live measurements (Open-Meteo current + TAWES) so any single signal seeing rain wins.
 
 ### 1. Open-Meteo ICON-EU Forecast (`api.js: fetchForecast`)
 - **URL:** `https://api.open-meteo.com/v1/forecast`
 - **Params:** `minutely_15=precipitation&forecast_minutely_15=48&current=temperature_2m,wind_speed_10m,weather_code,precipitation`
 - **Update cycle:** ~hourly model run, can lag 2-3h on convective alpine rain
-- **Used for:** Gap detection (dry windows in `minutely_15.precipitation`), weather notes (temp/wind/code), current measured precipitation
-- **Critical limitation:** ICON-EU is frequently blind to fast-moving convective cells in the Alps. `precipitation=0.00` and `weather_code=3` (partly cloudy) during active heavy rain is confirmed behavior.
+- **Used for:** the 12 h RainRibbon overview chart, weather notes (temp/wind/code), current measured precipitation, and **fallback** gap timeline if the nowcast is unavailable
+- **Critical limitation:** ICON-EU is frequently blind to fast-moving convective cells in the Alps. `precipitation=0.00` and `weather_code=3` (partly cloudy) during active heavy rain is confirmed behavior — which is exactly why it is no longer the primary gap source.
 
 ### 2. GeoSphere Austria TAWES Stations (`api.js: fetchNearbyStationPrecip`)
 - **URL:** `https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min`
@@ -77,27 +77,32 @@ All 4 sources are queried in parallel on every refresh (every 5 minutes). The ap
 - **Response path:** `data.features[].properties.parameters.RR.data[0]`
 - **Verified (2026-06):** Metadata structure live-confirmed — `meta.stations` is an array of objects with exactly `id`/`lat`/`lon`/`is_active`. The wider net (6 + anchor) exists so a hyper-local convective cell isn't missed when the 3 nearest stations are dry but a 4th–6th nearest (or the airport) is wet.
 
-### 3. GeoSphere INCA 1 km Nowcast (`api.js: fetchRadarPrecipAtPoint`)
-- **URL:** `https://dataset.api.hub.geosphere.at/v1/timeseries/historical/inca-v1-1h-1km`
-- **Param:** `parameters=RR&start=<-3h>&end=<now>&lat_lon=<lat>,<lon>`
-- **`RR`** = 1-hour precipitation sum in kg/m² (= mm) at the point's 1 km grid cell — radar+station blended analysis, independent of the Open-Meteo model
-- **Update cycle:** Hourly analysis, lags ~30–90 min (slower than TAWES, but spatially complete)
-- **Returns:** most recent non-null hourly value in mm, or `null` on failure
-- **Response path:** `data.features[0].properties.parameters.RR.data[]` → last valid entry
-- **Why this replaced DWD RADOLAN:** The previous source used DWD `GetFeatureInfo` on `maps.dwd.de`. Live-tested 2026-06: that endpoint returns **HTTP 403 (WAF "Access Denied")** from Austrian user networks (client IP A1 Telekom AT), with or without browser headers — so it returned `null` on every request for real users. **This was a primary cause of false "GO" during rain.** INCA is on the already-working GeoSphere host (no CORS, no WAF block). The DWD WMS *tile* overlay (`GetMap`) in `RadarMap.jsx` is a different request path and is unaffected.
+### 3. GeoSphere Nowcast 1 km / 15-min — PRIMARY gap timeline (`api.js: fetchNowcastTimeline`)
+- **URL:** `https://dataset.api.hub.geosphere.at/v1/timeseries/forecast/nowcast-v1-15min-1km`
+- **Param:** `parameters=rr&lat_lon=<lat>,<lon>` (param name is **lowercase `rr`**; unit kg/m² = mm)
+- **Resolution:** 1 km grid, **15-min steps, +3 h horizon** (e.g. issued 20:45 → 21:00…23:45). Radar-extrapolation nowcast — catches convective rain the ICON-EU model lags on, at the user's exact cell.
+- **Returns:** `{ times:[unix s], precips:[mm] }`, or `null` on failure → App.jsx prepends a synthetic "now" slot (from live measurements) and runs `detectGaps` on it. Falls back to Open-Meteo `minutely_15` when null.
+- **Response path:** top-level `timestamps[]` + `features[0].properties.parameters.rr.data[]`
+- **History:** replaced the hourly INCA analysis (too coarse in time) which itself replaced DWD RADOLAN `GetFeatureInfo` on `maps.dwd.de` — DWD is **HTTP 403 (WAF block)** from Austrian networks for both `GetFeatureInfo` and `GetMap`, so the whole `maps.dwd.de` host is unusable here.
 
 ### 4. Open-Meteo Current Measured (`App.jsx: loadData`)
 - `data.current.precipitation` — Open-Meteo's reported last-hour measured value
 - Same API call as source 1, no extra request
-- Can lag but occasionally catches rain the forecast misses
+- Contributes to the live "now" reading alongside TAWES
 
 ### Signal Blending (App.jsx: loadData)
 ```js
-const cp           = detectGaps(times, precips).currentPrecip   // minutely_15 slot we're in
-const measured     = data.current?.precipitation ?? 0            // current.precipitation
-const stationPrecip = stationResult?.value ?? 0                  // TAWES max of 3 stations
-const radarPrecip   = radarResult?.value   ?? 0                  // DWD RADOLAN point
-const effectivePrecip = cp === null ? null : Math.max(cp, measured, stationPrecip, radarPrecip)
+const measured      = data.current?.precipitation ?? 0           // Open-Meteo current
+const stationPrecip = stationResult?.value ?? 0                  // TAWES max of nearest 6 + airport
+const nowPrecip     = Math.max(measured, stationPrecip)          // live "now" condition
+
+// Gap timeline: GeoSphere 1km/15-min nowcast (preferred) else Open-Meteo,
+// with a real "now" slot anchored from nowPrecip.
+const timeline = nowcast
+  ? { times: [nowSec, ...nowcast.times], precips: [nowPrecip, ...nowcast.precips] }
+  : { times: omTimes, precips: omPrecips }
+const cp = detectGaps(timeline.times, timeline.precips).currentPrecip
+const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
 ```
 
 ---

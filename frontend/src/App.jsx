@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchRadarPrecipAtPoint } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline } from './api'
 import { detectGaps, getStatus } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
@@ -140,30 +140,39 @@ export default function App() {
     if (!location) return
     setLoading(true)
     try {
-      const [forecastResult, accuracyResult, areaResult, stationResult, radarResult] = await Promise.allSettled([
+      const [forecastResult, accuracyResult, areaResult, stationResult, nowcastResult] = await Promise.allSettled([
         fetchForecast(location.lat, location.lon),
         fetchAccuracy(),
         fetchAreaPrecip(),
         fetchNearbyStationPrecip(location.lat, location.lon),
-        fetchRadarPrecipAtPoint(location.lat, location.lon),
+        fetchNowcastTimeline(location.lat, location.lon),
       ])
 
       if (forecastResult.status === 'fulfilled') {
         const data = forecastResult.value
-        const times = data.minutely_15?.time ?? []
-        const precips = data.minutely_15?.precipitation ?? []
-        const { currentPrecip: cp, gaps: detectedGaps } = detectGaps(times, precips)
-        // Take the max across all sources — any single signal detecting rain wins:
-        // 1. Open-Meteo minutely_15 slot  — ICON-EU forecast, can lag 2-3h on convective rain
-        // 2. Open-Meteo current.precip    — model-measured last hour, same lag
-        // 3. GeoSphere TAWES nearest 6+airport — actual station obs, 10-min updates
-        // 4. GeoSphere INCA 1km nowcast   — radar+station blended point value, hourly
-        //    (replaces DWD RADOLAN GetFeatureInfo, which is WAF-blocked in Austria)
-        const measured     = data.current?.precipitation ?? 0
+        // 12 h Open-Meteo series — drives the RainRibbon overview chart.
+        const omTimes   = data.minutely_15?.time ?? []
+        const omPrecips = data.minutely_15?.precipitation ?? []
+
+        // Current "now" measurements — any signal seeing rain wins:
+        // - Open-Meteo current.precip   — model-measured last hour (can lag)
+        // - GeoSphere TAWES nearest 6+airport — actual station obs, 10-min updates
+        const measured      = data.current?.precipitation ?? 0
         const stationPrecip = stationResult?.status === 'fulfilled' ? (stationResult.value ?? 0) : 0
-        const radarPrecip   = radarResult?.status   === 'fulfilled' ? (radarResult.value  ?? 0) : 0
-        const effectivePrecip = cp === null ? null : Math.max(cp, measured, stationPrecip, radarPrecip)
-        setForecast({ times, precips })
+        const nowPrecip     = Math.max(measured, stationPrecip)
+
+        // Gap timeline: prefer the GeoSphere 1 km / 15-min radar nowcast (catches
+        // convective rain the ICON-EU model lags on); fall back to Open-Meteo.
+        // Anchor a real "now" slot from live measurements so gap timing is exact.
+        const nowcast = nowcastResult.status === 'fulfilled' ? nowcastResult.value : null
+        const nowSec = Math.floor(Date.now() / 1000)
+        const timeline = nowcast
+          ? { times: [nowSec, ...nowcast.times], precips: [nowPrecip, ...nowcast.precips] }
+          : { times: omTimes, precips: omPrecips }
+
+        const { currentPrecip: cp, gaps: detectedGaps } = detectGaps(timeline.times, timeline.precips)
+        const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
+        setForecast({ times: omTimes, precips: omPrecips })
         setCurrentPrecip(effectivePrecip)
         setGaps(detectedGaps)
         setCurrentWeather({

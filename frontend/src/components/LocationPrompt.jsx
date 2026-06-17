@@ -1,38 +1,46 @@
 export default function LocationPrompt({ onRequest, error, loading, t }) {
   return (
-    <div className="min-h-screen bg-bg flex flex-col items-start justify-center px-6 pb-safe">
-      <div className="mb-12">
-        <div className="font-display font-bold text-3xl text-primary tracking-[0.15em] uppercase mb-1">
-          GEMMA RAUS
+    <div className="min-h-screen bg-bg flex flex-col items-start justify-center px-6 pb-safe md:items-center">
+      {/* Bounded column: left-aligned editorial look on mobile, centered on desktop */}
+      <div className="w-full max-w-md">
+        <div className="mb-12">
+          <div className="font-display font-bold text-3xl text-primary tracking-[0.15em] uppercase mb-1">
+            GEMMA RAUS
+          </div>
+          <div className="font-mono text-sm text-muted">
+            {t('app_tagline')}
+          </div>
         </div>
-        <div className="font-mono text-sm text-muted">
-          {t('app_tagline')}
+
+        <div className="mb-10 space-y-2">
+          <Fact n="01" text={t('fact_01')} />
+          <Fact n="02" text={t('fact_02')} />
+          <Fact n="03" text={t('fact_03')} />
         </div>
-      </div>
 
-      <div className="mb-10 space-y-2">
-        <Fact n="01" text={t('fact_01')} />
-        <Fact n="02" text={t('fact_02')} />
-        <Fact n="03" text={t('fact_03')} />
-      </div>
+        {error && (
+          <div className="font-mono text-xs text-stuck mb-6 border border-stuck px-3 py-2">
+            {error === 'location access denied' ? t('location_denied') : t('location_not_supported')}
+            {' '}{t('try_again')}
+          </div>
+        )}
 
-      {error && (
-        <div className="font-mono text-xs text-stuck mb-6 border border-stuck px-3 py-2">
-          {error === 'location access denied' ? t('location_denied') : t('location_not_supported')}
-          {' '}{t('try_again')}
+        <button
+          onClick={onRequest}
+          disabled={loading}
+          className="font-display font-bold text-sm tracking-[0.15em] uppercase px-8 py-4 bg-primary text-bg hover:opacity-90 transition-opacity disabled:opacity-40"
+        >
+          {loading ? t('locating') : t('get_location')}
+        </button>
+
+        <div className="font-mono text-xs text-muted mt-4 max-w-xs leading-relaxed">
+          {t('privacy')}
         </div>
-      )}
 
-      <button
-        onClick={onRequest}
-        disabled={loading}
-        className="font-display font-bold text-sm tracking-[0.15em] uppercase px-8 py-4 bg-primary text-bg hover:opacity-90 transition-opacity disabled:opacity-40"
-      >
-        {loading ? t('locating') : t('get_location')}
-      </button>
-
-      <div className="font-mono text-xs text-muted mt-4 max-w-xs leading-relaxed">
-        {t('privacy')}
+        <div className="font-mono text-xs text-muted mt-10 flex items-center gap-1.5 opacity-70">
+          <span>{t('made_with_love')}</span>
+          <span aria-hidden="true" style={{ color: '#DC2626' }}>♥</span>
+        </div>
       </div>
     </div>
   )

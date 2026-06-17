@@ -1,9 +1,11 @@
 const OPEN_METEO     = 'https://api.open-meteo.com/v1/forecast'
 const GEOSPHERE_TAWES = 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min'
-// GeoSphere INCA: radar+station blended 1 km analysis grid. Replaces the DWD
-// RADOLAN WMS GetFeatureInfo source, which is WAF-blocked (HTTP 403) from
-// Austrian user networks and silently returned null on every request.
-const GEOSPHERE_INCA = 'https://dataset.api.hub.geosphere.at/v1/timeseries/historical/inca-v1-1h-1km'
+// GeoSphere nowcast: radar-extrapolation forecast at 1 km / 15-min steps,
+// +3 h horizon. This is the finest-resolution rain timeline available here —
+// it catches convective alpine rain the Open-Meteo ICON-EU model lags on, at
+// the user's exact grid cell. Replaces both the WAF-blocked DWD RADOLAN source
+// and the coarse hourly INCA analysis.
+const GEOSPHERE_NOWCAST = 'https://dataset.api.hub.geosphere.at/v1/timeseries/forecast/nowcast-v1-15min-1km'
 const BACKEND        = import.meta.env.VITE_BACKEND_URL ?? ''
 
 // Salzburg Airport (TAWES 11150) — central, reliable. Always queried as an
@@ -109,33 +111,25 @@ export async function fetchNearbyStationPrecip(lat, lon) {
   }
 }
 
-// ---- GeoSphere INCA — radar+station blended 1 km nowcast point value ----
-// Replaces the DWD RADOLAN WMS GetFeatureInfo source, which is WAF-blocked
-// (HTTP 403) from Austrian user networks. INCA is the same GeoSphere host as
-// TAWES (no CORS issues) and gives an actual analysed precipitation value at
-// the user's exact 1 km grid cell — independent of the Open-Meteo model that
-// lags fast convective alpine rain.
-// RR = 1-hour precipitation sum in kg/m² (= mm). Returns the most recent
-// hourly value in mm, or null on failure.
-export async function fetchRadarPrecipAtPoint(lat, lon) {
+// ---- GeoSphere nowcast — 1 km / 15-min radar-extrapolation timeline ----
+// The primary gap-detection source: a +3 h precipitation forecast at the user's
+// exact 1 km grid cell, in 15-min steps. Same GeoSphere host as TAWES (no CORS /
+// no WAF block). Returns { times:[unix seconds], precips:[mm] } or null.
+// (param name is lowercase `rr`; unit kg/m² = mm.)
+export async function fetchNowcastTimeline(lat, lon) {
   try {
-    // INCA hourly analysis lags ~30–90 min; ask for the last 3 h and take the
-    // most recent non-null hourly sum.
-    const now = new Date()
-    const start = new Date(now.getTime() - 3 * 3600 * 1000)
-    const iso = d => d.toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm
-    const params = new URLSearchParams({
-      parameters: 'RR',
-      start: iso(start),
-      end: iso(now),
-      lat_lon: `${lat},${lon}`,
-    })
-    const r = await fetch(`${GEOSPHERE_INCA}?${params}`, { signal: AbortSignal.timeout(6000) })
+    const r = await fetch(
+      `${GEOSPHERE_NOWCAST}?parameters=rr&lat_lon=${lat},${lon}`,
+      { signal: AbortSignal.timeout(6000) }
+    )
     if (!r.ok) return null
     const data = await r.json()
-    const series = data?.features?.[0]?.properties?.parameters?.RR?.data ?? []
-    const valid = series.filter(v => typeof v === 'number' && !isNaN(v))
-    return valid.length ? valid[valid.length - 1] : null
+    const ts = data?.timestamps ?? []
+    const rr = data?.features?.[0]?.properties?.parameters?.rr?.data ?? []
+    if (!ts.length || ts.length !== rr.length) return null
+    const times = ts.map(s => Math.floor(Date.parse(s) / 1000))
+    const precips = rr.map(v => (typeof v === 'number' && !isNaN(v)) ? v : 0)
+    return { times, precips }
   } catch {
     return null
   }
