@@ -2,9 +2,9 @@ import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-const SALZBURG = [47.8, 13.045]
-const ZOOM = 10
-const BOUNDS = L.latLngBounds([47.60, 12.80], [47.99, 13.30])
+const SALZBURG = [47.802, 13.045]
+const ZOOM = 11
+const BOUNDS = L.latLngBounds([47.50, 12.65], [48.10, 13.65])
 const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms'
 
 const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
@@ -71,8 +71,8 @@ export default function RadarMap({ location, areaPrecip, theme }) {
     const map = L.map(containerRef.current, {
       center: location ? [location.lat, location.lon] : SALZBURG,
       zoom: ZOOM,
-      minZoom: 9,
-      maxZoom: 13,
+      minZoom: 10,
+      maxZoom: 14,
       maxBounds: BOUNDS,
       maxBoundsViscosity: 1.0,
       zoomControl: false,
