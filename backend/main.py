@@ -185,54 +185,138 @@ async def fetch_current_for_point(client: httpx.AsyncClient, point: dict):
 
 
 # ---------------------------------------------------------------------------
-# Gap push logic
+# Push notification logic
 # ---------------------------------------------------------------------------
 
-def _find_gap_soon(times, precips, now_ts, window_sec=45 * 60):
-    """If currently raining and a dry slot opens in the next window_sec, return minutes until it."""
-    slotpairs = list(zip(times, precips))
-    current = next((p for t, p in slotpairs if t >= now_ts - 300), None)
-    if current is None or current < DRY_THRESHOLD:
-        return None  # Already dry or no data
-    for t, p in slotpairs:
-        if now_ts < t <= now_ts + window_sec and p < DRY_THRESHOLD:
-            return max(0, round((t - now_ts) / 60))
+def _analyze_forecast(times, precips, now_ts):
+    """
+    Returns a push event dict or None.
+
+    Gap opening:   currently raining, dry window ≥10 min starts within 15 min
+    Rain incoming: currently dry, rain starts within 30 min
+    """
+    slots = sorted(zip(times, precips), key=lambda s: s[0])
+
+    # Current condition — slot closest to now
+    current = min(slots, key=lambda s: abs(s[0] - now_ts), default=None)
+    if current is None:
+        return None
+    is_raining = current[1] >= DRY_THRESHOLD
+
+    if is_raining:
+        # Look for a dry gap starting within the next 15 min
+        window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 15 * 60]
+        for gap_t, p in window:
+            if p < DRY_THRESHOLD:
+                gap_in_min = max(0, round((gap_t - now_ts) / 60))
+                # Measure how long the gap lasts (consecutive dry slots)
+                gap_slots = sum(
+                    1 for t2, p2 in slots if t2 >= gap_t and p2 < DRY_THRESHOLD
+                    and t2 < next(
+                        (t3 for t3, p3 in slots if t3 > gap_t and p3 >= DRY_THRESHOLD),
+                        gap_t + 99999
+                    )
+                )
+                gap_min = gap_slots * 15
+                if gap_min >= 10:
+                    return {"type": "gap", "gap_in_min": gap_in_min, "gap_min": gap_min}
+    else:
+        # Look for rain starting within the next 30 min
+        window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 30 * 60]
+        for rain_t, p in window:
+            if p >= DRY_THRESHOLD:
+                rain_in_min = max(0, round((rain_t - now_ts) / 60))
+                return {"type": "rain_incoming", "rain_in_min": rain_in_min}
+
     return None
 
 
+def _cooldown_ok(conn, key: str, seconds: int, now_ts: int) -> bool:
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return (now_ts - float(row[0])) >= seconds if row else True
+
+
+def _build_payload(event: dict) -> dict:
+    """Build a bilingual push payload — service worker picks language via navigator.language."""
+    t = event["type"]
+    if t == "gap":
+        x, y = event["gap_in_min"], event["gap_min"]
+        if x == 0:
+            return {
+                "type": "gap",
+                "title_de": "Jetzt trocken",
+                "body_de":  f"{y} Minuten Fenster — rausgehen!",
+                "title_en": "Dry now",
+                "body_en":  f"{y} minute window — go!",
+            }
+        return {
+            "type": "gap",
+            "title_de": f"Lücke in {x} Min.",
+            "body_de":  f"{y} Minuten trocken — bereit machen",
+            "title_en": f"Gap in {x} min",
+            "body_en":  f"{y} minutes dry — get ready",
+        }
+    if t == "rain_incoming":
+        x = event["rain_in_min"]
+        if x <= 5:
+            return {
+                "type": "rain",
+                "title_de": "Regen kommt gleich",
+                "body_de":  "Jetzt noch schnell reinkommen",
+                "title_en": "Rain arriving now",
+                "body_en":  "Head inside soon",
+            }
+        return {
+            "type": "rain",
+            "title_de": f"Regen in {x} Min.",
+            "body_de":  "Schnell noch raus oder drin bleiben",
+            "title_en": f"Rain in {x} min",
+            "body_en":  "Get out now or stay in",
+        }
+    return {}
+
+
 async def check_and_push(client: httpx.AsyncClient, now_ts: int):
-    conn = sqlite3.connect(DB_PATH)
-    row = conn.execute("SELECT value FROM settings WHERE key='last_gap_push_ts'").fetchone()
-    conn.close()
-
-    last_push = float(row[0]) if row else 0
-    if now_ts - last_push < 3600:  # max one push per hour
-        return
-
-    # Check if any monitoring point has a gap opening soon
+    # Gather data from all monitoring points
+    events = []
     for point in POINTS:
         try:
             data = await fetch_forecast_for_point(client, point)
-            times  = data.get("minutely_15", {}).get("time", [])
+            times   = data.get("minutely_15", {}).get("time", [])
             precips = data.get("minutely_15", {}).get("precipitation", [])
-            gap_in = _find_gap_soon(times, precips, now_ts)
-            if gap_in is not None:
-                body = (
-                    f"In {gap_in} Min. wird es trocken bei {point['name']}. Jetzt loslegen!"
-                    if gap_in > 0 else
-                    "Regen hat gerade aufgehört. Jetzt rausgehen!"
-                )
-                await push_to_all({"title": "Regenluecke", "body": body})
-                conn = sqlite3.connect(DB_PATH)
-                conn.execute(
-                    "INSERT OR REPLACE INTO settings VALUES ('last_gap_push_ts', ?)",
-                    (str(float(now_ts)),)
-                )
-                conn.commit()
-                conn.close()
-                return
+            ev = _analyze_forecast(times, precips, now_ts)
+            if ev:
+                events.append(ev)
         except Exception as e:
-            print(f"[push check] {point['name']}: {e}")
+            print(f"[push] {point['name']}: {e}")
+
+    if not events:
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+
+    # Prioritise gap notifications over rain warnings
+    gap_events  = [e for e in events if e["type"] == "gap"]
+    rain_events = [e for e in events if e["type"] == "rain_incoming"]
+
+    sent = False
+
+    if gap_events and _cooldown_ok(conn, "last_gap_push_ts", 45 * 60, now_ts):
+        # Use the soonest gap across all points
+        best = min(gap_events, key=lambda e: e["gap_in_min"])
+        await push_to_all(_build_payload(best))
+        conn.execute("INSERT OR REPLACE INTO settings VALUES ('last_gap_push_ts', ?)", (str(float(now_ts)),))
+        sent = True
+
+    if not sent and rain_events and _cooldown_ok(conn, "last_rain_push_ts", 60 * 60, now_ts):
+        best = min(rain_events, key=lambda e: e["rain_in_min"])
+        await push_to_all(_build_payload(best))
+        conn.execute("INSERT OR REPLACE INTO settings VALUES ('last_rain_push_ts', ?)", (str(float(now_ts)),))
+        sent = True
+
+    if sent:
+        conn.commit()
+    conn.close()
 
 
 # ---------------------------------------------------------------------------

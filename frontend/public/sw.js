@@ -26,17 +26,24 @@ self.addEventListener('fetch', e => {
 
 // Push notifications
 self.addEventListener('push', e => {
-  let data = { title: 'SBZ Rain Stalker', body: 'Regenluecke in Salzburg!' }
-  try { data = { ...data, ...e.data.json() } } catch {}
+  let data = {}
+  try { data = e.data.json() } catch {}
+
+  const de = (navigator.language || 'de').startsWith('de')
+  const title = de ? (data.title_de || 'SBZ Rain Stalker') : (data.title_en || 'SBZ Rain Stalker')
+  const body  = de ? (data.body_de  || '') : (data.body_en  || '')
+
+  const tag = data.type === 'rain' ? 'rain-warning' : 'rain-gap'
 
   e.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
+    self.registration.showNotification(title, {
+      body,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: 'rain-gap',          // replaces previous notification instead of stacking
+      tag,              // same tag = new notification replaces old one of same type
       renotify: true,
       requireInteraction: false,
+      silent: false,
     })
   )
 })
