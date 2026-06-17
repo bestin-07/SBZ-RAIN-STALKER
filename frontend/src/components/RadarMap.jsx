@@ -9,14 +9,60 @@ const FRAME_INTERVAL_MS = 500
 const TILE_COLOR_SCHEME = 2
 const TILE_OPACITY = 0.6
 
-export default function RadarMap({ location, radarFrames }) {
+function precipColor(p) {
+  if (p === null || p === undefined) return '#374151'
+  if (p < 0.1)  return '#D4A017'
+  if (p < 0.5)  return '#2A5F8F'
+  if (p < 2)    return '#1A3A5C'
+  return               '#0D2035'
+}
+
+function areaIcon(name, precip) {
+  const color = precipColor(precip)
+  const isRaining = precip !== null && precip >= 0.1
+  const label = precip !== null
+    ? (precip < 0.1 ? 'dry' : `${precip.toFixed(1)}mm`)
+    : ''
+
+  return L.divIcon({
+    html: `<div style="text-align:center;pointer-events:none;">
+      <div style="
+        width:8px;height:8px;
+        background:${color};
+        border-radius:50%;
+        margin:0 auto;
+        box-shadow:0 0 0 2px rgba(0,0,0,0.5);
+        ${isRaining ? `box-shadow:0 0 0 3px ${color}44;` : ''}
+      "></div>
+      <div style="
+        font-family:'JetBrains Mono',monospace;
+        font-size:9px;
+        color:#9CA3AF;
+        white-space:nowrap;
+        margin-top:3px;
+        line-height:1.1;
+      ">${name}</div>
+      ${label ? `<div style="
+        font-family:'JetBrains Mono',monospace;
+        font-size:8px;
+        color:${color};
+        white-space:nowrap;
+      ">${label}</div>` : ''}
+    </div>`,
+    iconSize: [60, 36],
+    iconAnchor: [30, 4],
+    className: '',
+  })
+}
+
+export default function RadarMap({ location, radarFrames, areaPrecip }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markerRef = useRef(null)
   const radarLayerRef = useRef(null)
   const animRef = useRef(null)
+  const areaMarkersRef = useRef([])
 
-  // Init map once
   useEffect(() => {
     if (mapRef.current) return
 
@@ -51,11 +97,11 @@ export default function RadarMap({ location, radarFrames }) {
 
     const icon = L.divIcon({
       html: `<div style="
-        width: 12px; height: 12px;
-        background: #F1F3F5;
-        border: 2px solid #08090B;
-        border-radius: 50%;
-        box-shadow: 0 0 0 3px rgba(241,243,245,0.25);
+        width:12px;height:12px;
+        background:#F1F3F5;
+        border:2px solid #08090B;
+        border-radius:50%;
+        box-shadow:0 0 0 3px rgba(241,243,245,0.25);
       "></div>`,
       iconSize: [12, 12],
       iconAnchor: [6, 6],
@@ -66,6 +112,22 @@ export default function RadarMap({ location, radarFrames }) {
     markerRef.current = L.marker([location.lat, location.lon], { icon }).addTo(mapRef.current)
     mapRef.current.setView([location.lat, location.lon], ZOOM)
   }, [location])
+
+  // Area dots
+  useEffect(() => {
+    if (!mapRef.current || !areaPrecip?.length) return
+
+    areaMarkersRef.current.forEach(m => m.remove())
+    areaMarkersRef.current = areaPrecip.map(area =>
+      L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip), zIndexOffset: 200 })
+        .addTo(mapRef.current)
+    )
+
+    return () => {
+      areaMarkersRef.current.forEach(m => m.remove())
+      areaMarkersRef.current = []
+    }
+  }, [areaPrecip])
 
   // Radar animation
   useEffect(() => {

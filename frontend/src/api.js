@@ -2,6 +2,21 @@ const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast'
 const RAINVIEWER = 'https://api.rainviewer.com/public/weather-maps.json'
 const BACKEND = import.meta.env.VITE_BACKEND_URL ?? ''
 
+export const AREAS = [
+  { name: "Hallein",         lat: 47.6835, lon: 13.0965 },
+  { name: "Grödig",         lat: 47.7283, lon: 13.0432 },
+  { name: "Anif",           lat: 47.7432, lon: 13.0632 },
+  { name: "Berchtesgaden",  lat: 47.6317, lon: 13.0009 },
+  { name: "Bad Reichenhall",lat: 47.7247, lon: 12.8753 },
+  { name: "Freilassing",    lat: 47.8366, lon: 12.9699 },
+  { name: "Wals",           lat: 47.7922, lon: 12.9724 },
+  { name: "Bergheim",       lat: 47.8375, lon: 13.0375 },
+  { name: "Elixhausen",     lat: 47.8600, lon: 13.0600 },
+  { name: "Seekirchen",     lat: 47.9021, lon: 13.1316 },
+  { name: "Oberndorf",      lat: 47.9412, lon: 12.9384 },
+  { name: "Eugendorf",      lat: 47.8567, lon: 13.1067 },
+]
+
 export async function fetchForecast(lat, lon) {
   const params = new URLSearchParams({
     latitude: lat,
@@ -31,4 +46,17 @@ export async function fetchAccuracy() {
   } catch {
     return null
   }
+}
+
+export async function fetchAreaPrecip() {
+  const results = await Promise.allSettled(
+    AREAS.map(area =>
+      fetch(`${OPEN_METEO}?latitude=${area.lat}&longitude=${area.lon}&current=precipitation&timezone=UTC`)
+        .then(r => r.json())
+        .then(data => ({ ...area, precip: data.current?.precipitation ?? null }))
+    )
+  )
+  return results
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value)
 }
