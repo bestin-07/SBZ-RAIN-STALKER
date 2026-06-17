@@ -3,10 +3,10 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const SALZBURG = [47.8, 13.045]
-const ZOOM = 12
+const ZOOM = 10
 const FRAME_INTERVAL_MS = 500
-const TILE_COLOR_SCHEME = 2  // Universal Blue — works well on dark maps
-const TILE_OPACITY = 0.55
+const TILE_COLOR_SCHEME = 2
+const TILE_OPACITY = 0.6
 
 export default function RadarMap({ location, radarFrames }) {
   const containerRef = useRef(null)
@@ -80,7 +80,7 @@ export default function RadarMap({ location, radarFrames }) {
       if (!frame) return
 
       const url = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/${TILE_COLOR_SCHEME}/1_1.png`
-      const next = L.tileLayer(url, { opacity: TILE_OPACITY, zIndex: 100 })
+      const next = L.tileLayer(url, { opacity: TILE_OPACITY, zIndex: 100, maxNativeZoom: 12, maxZoom: 19 })
       next.addTo(mapRef.current)
 
       const prev = currentLayer
