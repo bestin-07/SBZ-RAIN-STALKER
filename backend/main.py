@@ -114,7 +114,23 @@ def init_vapid():
     if env_priv and env_pub:
         VAPID_PRIVATE_KEY = env_priv
         VAPID_PUBLIC_KEY  = env_pub
-        print("[vapid] Loaded from environment variables")
+        # Verify the pair: a mismatched public key makes every subscription look
+        # valid while NO push is ever delivered — a silent, confusing failure.
+        try:
+            from cryptography.hazmat.primitives.serialization import (
+                load_pem_private_key, Encoding, PublicFormat,
+            )
+            pk = load_pem_private_key(env_priv.encode(), password=None)
+            derived = base64.urlsafe_b64encode(
+                pk.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+            ).rstrip(b"=").decode()
+            if derived != env_pub.rstrip("="):
+                print("[vapid] *** WARNING: VAPID_PUBLIC_KEY does NOT match VAPID_PRIVATE_KEY — "
+                      f"push will silently fail. Correct public key for this private key is: {derived}")
+            else:
+                print("[vapid] Loaded from environment variables (key pair verified ✓)")
+        except Exception as e:
+            print(f"[vapid] Loaded from env; could not verify key pair: {e}")
         return
 
     conn = get_db()

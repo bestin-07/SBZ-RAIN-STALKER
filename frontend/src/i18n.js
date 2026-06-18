@@ -61,6 +61,8 @@ const translations = {
     notify_off:         '◎',
     notify_denied:      'blockiert',
     notify_unsupported: 'kein Push',
+    notify_ios_install: 'iPhone: App zuerst über das Teilen-Symbol zum Home-Bildschirm hinzufügen, dann von dort öffnen und Benachrichtigungen aktivieren.',
+    notify_fail:        'Benachrichtigungen konnten nicht aktiviert werden. Erlaube sie in den Browser-Einstellungen.',
 
     install_title:  'App installieren',
     install_brave:  'Brave oder Samsung Browser: Menü (⋮) dann "Zum Startbildschirm hinzufügen"',
@@ -162,6 +164,8 @@ const translations = {
     notify_off:         '◎',
     notify_denied:      'blocked',
     notify_unsupported: 'no push',
+    notify_ios_install: 'On iPhone, add the app to your Home Screen (Share → Add to Home Screen) first, then open it from there and enable notifications.',
+    notify_fail:        'Could not enable notifications. Allow them in your browser settings.',
 
     install_title:  'Install app',
     install_brave:  'Brave or Samsung Browser: menu (⋮) then "Add to home screen"',

@@ -22,6 +22,17 @@ function isOutsideSalzburg(loc) {
          loc.lon < SBZ_BOUNDS.minLon || loc.lon > SBZ_BOUNDS.maxLon
 }
 
+// VAPID public key (base64url) → Uint8Array. The most compatible form for
+// pushManager.subscribe — a raw string is rejected by some browsers.
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  const arr = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
+  return arr
+}
+
 export default function App() {
   const [location, setLocation] = useState(null)
   const [locationError, setLocationError] = useState(null)
@@ -38,10 +49,13 @@ export default function App() {
   const [lang, setLang] = useState(() => saved('lang', 'de'))
   const [infoOpen, setInfoOpen] = useState(false)
   const [notifyState, setNotifyState] = useState('idle')
+  const [notifyMsg, setNotifyMsg] = useState(null)
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
                     || window.navigator.standalone === true
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+             || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
   const t = useI18n(lang)
   const status = getStatus(currentPrecip, gaps, currentWeather, t)
@@ -88,6 +102,13 @@ export default function App() {
   const toggleNotifications = useCallback(async () => {
     if (notifyState === 'unsupported' || notifyState === 'denied') return
 
+    // iOS only delivers web push to an INSTALLED home-screen app. In a Safari
+    // tab, subscribe silently fails — so guide the user instead of doing nothing.
+    if (notifyState !== 'subscribed' && isIOS && !isStandalone) {
+      setNotifyMsg('notify_ios_install')
+      return
+    }
+
     if (notifyState === 'subscribed') {
       const reg = await navigator.serviceWorker.ready
       const sub = await reg.pushManager.getSubscription()
@@ -116,7 +137,7 @@ export default function App() {
       const reg = await navigator.serviceWorker.ready
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: publicKey,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
       })
 
       const subRes = await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/subscribe`, {
@@ -124,17 +145,18 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...sub.toJSON(), confirm: true }),
       })
-      if (subRes.ok) {
-        const subData = await subRes.json().catch(() => ({}))
-        if (subData.token) {
-          try { localStorage.setItem('push_unsub_token', subData.token) } catch {}
-        }
+      if (!subRes.ok) { setNotifyMsg('notify_fail'); return }
+      const subData = await subRes.json().catch(() => ({}))
+      if (subData.token) {
+        try { localStorage.setItem('push_unsub_token', subData.token) } catch {}
       }
       setNotifyState('subscribed')
+      setNotifyMsg(null)
     } catch (e) {
       console.error('Push subscribe failed', e)
+      setNotifyMsg('notify_fail')
     }
-  }, [notifyState])
+  }, [notifyState, isIOS, isStandalone])
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
@@ -291,6 +313,16 @@ export default function App() {
   return (
     <div className="flex flex-col h-full bg-bg text-primary overflow-hidden">
       <Header {...headerProps} />
+
+      {notifyMsg && (
+        <button
+          onClick={() => setNotifyMsg(null)}
+          className="w-full text-left px-4 py-2 bg-surface border-b border-border shrink-0 flex items-start gap-2"
+        >
+          <span className="font-mono text-xs text-wait leading-relaxed flex-1">{t(notifyMsg)}</span>
+          <span className="font-mono text-xs text-muted shrink-0">✕</span>
+        </button>
+      )}
 
       {!location ? (
         <LocationPrompt
