@@ -42,6 +42,8 @@ export default function App() {
   const [currentPrecip, setCurrentPrecip] = useState(null)
   const [currentWeather, setCurrentWeather] = useState(null)
   const [gaps, setGaps] = useState([])
+  const [trend, setTrend] = useState({ nextRainAt: null, dryEndsOpen: false })
+  const [tickNow, setTickNow] = useState(() => Math.floor(Date.now() / 1000))
   const [areaPrecip, setAreaPrecip] = useState([])
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
@@ -58,7 +60,14 @@ export default function App() {
              || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
   const t = useI18n(lang)
-  const status = getStatus(currentPrecip, gaps, currentWeather, t)
+  const status = getStatus(currentPrecip, gaps, currentWeather, t, tickNow, trend)
+
+  // Tick every minute so the "rain in X" / "dry in X" countdown moves live
+  // between the 5-minute data refreshes (re-synced on each refresh).
+  useEffect(() => {
+    const id = setInterval(() => setTickNow(Math.floor(Date.now() / 1000)), 60000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     const handler = e => {
@@ -245,11 +254,13 @@ export default function App() {
           ? { times: [nowSec, ...nowcast.times], precips: [nowPrecip, ...nowcast.precips] }
           : { times: omTimes, precips: omPrecips }
 
-        const { currentPrecip: cp, gaps: detectedGaps } = detectGaps(timeline.times, timeline.precips)
+        const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(timeline.times, timeline.precips)
         const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
         setForecast({ times: omTimes, precips: omPrecips })
         setCurrentPrecip(effectivePrecip)
         setGaps(detectedGaps)
+        setTrend({ nextRainAt, dryEndsOpen })
+        setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: data.current?.temperature_2m ?? null,
           wind: data.current?.wind_speed_10m ?? null,

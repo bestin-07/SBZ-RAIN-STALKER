@@ -111,27 +111,38 @@ const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
 ## Gap Detection Logic (`gaps.js`)
 
 - **Threshold:** `DRY_THRESHOLD = 0.1` mm/h — anything below is "dry"
-- **Min gap:** `MIN_GAP_SLOTS = 2` → 2 × 15 min = 30 minutes minimum
+- **Min gap:** `MIN_GAP_SLOTS = 2` → 2 × 15 min = 30 minutes minimum. **Kept at 30 (not 15) on purpose** — a single 15-min nowcast slot is too likely to be noise to promise as a "go out" break. The rain-*coming* countdown does NOT depend on this (see below), so shortening it isn't needed for urgency.
 - **Look-ahead:** `LOOK_AHEAD = 3 * 3600` = 3 hours
 - Considers the slot we're currently **inside** (includes 1 slot in the past for current slot identification)
-- `opensEnded: true` if gap extends to end of forecast window (shown as "more than N min")
+- `opensEnded: true` if gap extends to end of forecast window
+- **Trend fields** also returned by `detectGaps`: `nextRainAt` (unix ts of the next wet slot when it's dry now, independent of `MIN_GAP_SLOTS`) and `dryEndsOpen` (dry for the whole 3 h ahead).
 
-### Status Logic (`getStatus`)
+### Status Logic (`getStatus`) — narrative + live countdown
+`getStatus(currentPrecip, gaps, weather, t, nowSec, trend)`. `nowSec` is a per-minute ticker in App (`tickNow`, re-synced on each 5-min data refresh) so the countdowns move live. Thresholds: `URGENT_MIN = 15`, `ALMOST_MIN = 10`.
+
 ```
-currentPrecip === null  → loading state
-isDry = currentPrecip < 0.1 AND weather_code not a rain code
-gapNow = gaps[0].startsInMinutes === 0
+currentPrecip === null → loading
 
-isDry OR gapNow → GO NOW
-  + gapNow → show gap duration in sub-text
+DRY now (isDry, or a gap already started):
+  dryEndsOpen            → GO · "clear skies for hours"          (s_clear_hours)
+  rain in ≤ 0 min        → GO · "rain could start any minute"    (s_rain_any)
+  rain in ≤ 15 min       → GO · "window closing, rain in X min"  (s_window_closing)  ← urgency
+  rain in > 15 min       → GO · "dry now, rain in about X min"   (s_rain_soon)
+  no trend info          → GO · "no rain right now"              (s_dry_generic)
 
-nextGap exists → WAIT N MIN (then X min clear)
-else → STUCK INSIDE (no gap in 3h)
+RAINING now, a ≥30-min break ahead (gaps[0]):
+  clears in ≤ 10 min     → WAIT · "almost over, dry in X, get ready" (s_almost_over)
+  clears in > 10 min     → WAIT · "break opens in X, lasts Y"        (s_break_opens)
+
+RAINING, no break in 3 h → STUCK · "rain straight through"       (s_stuck)
 ```
+- **Time-to-rain countdown** (`nextRainAt`) is what powers the "window closing" urgency; it uses the next wet slot's exact timestamp, so "rain in 10 min" is legitimate even though slots are 15-min apart.
+- **"Almost over"** (`ALMOST_MIN`) counts down to `gaps[0].startsAt` — i.e. the start of a *confirmed* ≥30-min break.
+- Countdown is cosmetic interpolation between refreshes; soft cases use "about/any minute" to avoid overstating precision.
 
-**WMO rain codes** checked by `precipByCode()`: `51-67` (drizzle/rain), `71-77` (snow), `80-99` (showers/storms)
+**WMO rain codes** checked by `precipByCode()`: `51-67` (drizzle/rain), `71-77` (snow), `80-99` (showers/storms). Snow is treated as "wet" (no separate arc); it surfaces only via the weather note.
 
-**Note:** `gapNow` prevents "WAIT 0 MIN" — if the model says a gap opens right now but a station still shows residual rain (lag up to 10 min after clearing), trust the model.
+**Note:** `gapNow` (a gap whose `startsAt <= nowSec`) routes to GO even if a station's RR still shows residual rain — trust the model when it says dry now.
 
 ---
 

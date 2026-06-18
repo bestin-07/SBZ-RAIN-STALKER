@@ -57,7 +57,18 @@ export function detectGaps(times, precips) {
     })
   }
 
-  return { currentPrecip, gaps }
+  // Trend for the narrative: if it's dry right now, when does rain arrive?
+  // (Independent of MIN_GAP_SLOTS, so the "rain in X / window closing" countdown
+  // works even for short dry spells we wouldn't call a full gap.)
+  let nextRainAt = null
+  let dryEndsOpen = false
+  if (currentPrecip < DRY_THRESHOLD) {
+    const firstWet = slots.find(s => s.p >= DRY_THRESHOLD)
+    if (firstWet) nextRainAt = firstWet.t
+    else dryEndsOpen = true   // dry for the whole 3 h window ahead
+  }
+
+  return { currentPrecip, gaps, nextRainAt, dryEndsOpen }
 }
 
 function getWeatherNote(weather, t) {
@@ -87,7 +98,15 @@ function precipByCode(code) {
          (code >= 80 && code <= 99)
 }
 
-export function getStatus(currentPrecip, gaps, weather, t = k => k) {
+const URGENT_MIN = 15  // dry now but rain this soon → "window closing, hurry"
+const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
+
+// nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
+// live between the 5-min data refreshes.
+export function getStatus(
+  currentPrecip, gaps, weather, t = k => k,
+  nowSec = Math.floor(Date.now() / 1000), trend = {},
+) {
   const weatherNote = getWeatherNote(weather, t)
 
   if (currentPrecip === null) {
@@ -95,43 +114,44 @@ export function getStatus(currentPrecip, gaps, weather, t = k => k) {
   }
 
   const isDry = currentPrecip < DRY_THRESHOLD && !precipByCode(weather?.code)
-  const nextGap = gaps[0]
-  // A gap starting in 0 min means the forecast says dry right now.
-  // Station RR can lag up to 10 min when clearing — trust the model in this case.
-  const gapNow = nextGap?.startsInMinutes === 0
+  const firstGap = gaps[0]
+  // A gap that's already started means the forecast says dry now even if a
+  // station's RR still lags — trust the model and treat it as "go".
+  const gapNow = firstGap && firstGap.startsAt <= nowSec
 
+  // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {
-    if (nextGap && gapNow) {
-      return {
-        type: 'go',
-        headline: t('GO_NOW'),
-        sub: nextGap.opensEnded
-          ? t('dry_for_over', { min: nextGap.durationMinutes })
-          : t('dry_for', { min: nextGap.durationMinutes }),
-        weather: weatherNote,
-      }
+    if (trend.dryEndsOpen) {
+      return { type: 'go', headline: t('GO_NOW'), sub: t('s_clear_hours'), weather: weatherNote }
     }
-    return {
-      type: 'go',
-      headline: t('GO_NOW'),
-      sub: t('no_rain'),
-      weather: weatherNote,
+    if (trend.nextRainAt) {
+      const rainInMin = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
+      const sub = rainInMin <= 0
+        ? t('s_rain_any')
+        : rainInMin <= URGENT_MIN
+          ? t('s_window_closing', { min: rainInMin })
+          : t('s_rain_soon', { min: rainInMin })
+      return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
     }
+    return { type: 'go', headline: t('GO_NOW'), sub: t('s_dry_generic'), weather: weatherNote }
   }
 
-  if (nextGap) {
+  // ---- Raining now: narrate the break ahead ----
+  if (firstGap) {
+    const clearInMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
+    if (clearInMin <= 0) {
+      return { type: 'wait', headline: t('WAIT_MIN', { min: 0 }), sub: t('s_almost_now'), weather: weatherNote }
+    }
+    if (clearInMin <= ALMOST_MIN) {
+      return { type: 'wait', headline: t('WAIT_MIN', { min: clearInMin }), sub: t('s_almost_over', { min: clearInMin }), weather: weatherNote }
+    }
     return {
       type: 'wait',
-      headline: t('WAIT_MIN', { min: nextGap.startsInMinutes }),
-      sub: t('then_clear', { min: nextGap.durationMinutes }),
+      headline: t('WAIT_MIN', { min: clearInMin }),
+      sub: t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes }),
       weather: weatherNote,
     }
   }
 
-  return {
-    type: 'stuck',
-    headline: t('STUCK'),
-    sub: t('no_gap'),
-    weather: weatherNote,
-  }
+  return { type: 'stuck', headline: t('STUCK'), sub: t('s_stuck'), weather: weatherNote }
 }
