@@ -106,31 +106,45 @@ def init_db():
 # VAPID key management
 # ---------------------------------------------------------------------------
 
+def _prepare_vapid_private(priv_str: str):
+    """pywebpush/py_vapid needs the private key as base64url-encoded DER — a PEM
+    fails with 'Could not deserialize key data'. Accept PEM or base64url-DER and
+    return (base64url_DER_private, derived_base64url_public)."""
+    from cryptography.hazmat.primitives.serialization import (
+        load_pem_private_key, load_der_private_key, Encoding, PublicFormat,
+        PrivateFormat, NoEncryption,
+    )
+    s = (priv_str or "").strip()
+    if "BEGIN" in s:
+        key = load_pem_private_key(s.encode(), password=None)
+    else:
+        raw = base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+        key = load_der_private_key(raw, password=None)
+    der = key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+    priv_b64 = base64.urlsafe_b64encode(der).rstrip(b"=").decode()
+    pub = key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+    pub_b64 = base64.urlsafe_b64encode(pub).rstrip(b"=").decode()
+    return priv_b64, pub_b64
+
+
 def init_vapid():
     global VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY
 
     env_priv = os.getenv("VAPID_PRIVATE_KEY")
     env_pub  = os.getenv("VAPID_PUBLIC_KEY")
     if env_priv and env_pub:
-        VAPID_PRIVATE_KEY = env_priv
-        VAPID_PUBLIC_KEY  = env_pub
-        # Verify the pair: a mismatched public key makes every subscription look
-        # valid while NO push is ever delivered — a silent, confusing failure.
+        VAPID_PUBLIC_KEY = env_pub
         try:
-            from cryptography.hazmat.primitives.serialization import (
-                load_pem_private_key, Encoding, PublicFormat,
-            )
-            pk = load_pem_private_key(env_priv.encode(), password=None)
-            derived = base64.urlsafe_b64encode(
-                pk.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
-            ).rstrip(b"=").decode()
-            if derived != env_pub.rstrip("="):
+            priv_b64, derived_pub = _prepare_vapid_private(env_priv)
+            VAPID_PRIVATE_KEY = priv_b64  # normalized so pywebpush can parse it
+            if derived_pub != env_pub.rstrip("="):
                 print("[vapid] *** WARNING: VAPID_PUBLIC_KEY does NOT match VAPID_PRIVATE_KEY — "
-                      f"push will silently fail. Correct public key for this private key is: {derived}")
+                      f"push will fail. Correct public key for this private key is: {derived_pub}")
             else:
-                print("[vapid] Loaded from environment variables (key pair verified ✓)")
+                print("[vapid] Loaded from env (key pair verified + normalized for pywebpush ✓)")
         except Exception as e:
-            print(f"[vapid] Loaded from env; could not verify key pair: {e}")
+            VAPID_PRIVATE_KEY = env_priv
+            print(f"[vapid] *** Could NOT parse VAPID_PRIVATE_KEY — push will fail: {e}")
         return
 
     conn = get_db()
@@ -138,8 +152,11 @@ def init_vapid():
     pub_row  = conn.execute("SELECT value FROM settings WHERE key='vapid_public_key'").fetchone()
 
     if priv_row and pub_row:
-        VAPID_PRIVATE_KEY = priv_row[0]
-        VAPID_PUBLIC_KEY  = pub_row[0]
+        VAPID_PUBLIC_KEY = pub_row[0]
+        try:
+            VAPID_PRIVATE_KEY, _ = _prepare_vapid_private(priv_row[0])
+        except Exception:
+            VAPID_PRIVATE_KEY = priv_row[0]
         print("[vapid] Loaded from database")
         return
 
@@ -148,16 +165,15 @@ def init_vapid():
         Encoding, PublicFormat, PrivateFormat, NoEncryption
     )
     private_key = generate_private_key(SECP256R1())
-    priv_pem    = private_key.private_bytes(
-        Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()
-    ).decode()
+    der       = private_key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+    priv_b64  = base64.urlsafe_b64encode(der).rstrip(b"=").decode()
     pub_bytes = private_key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
     pub_b64   = base64.urlsafe_b64encode(pub_bytes).rstrip(b"=").decode()
 
-    VAPID_PRIVATE_KEY = priv_pem
+    VAPID_PRIVATE_KEY = priv_b64
     VAPID_PUBLIC_KEY  = pub_b64
 
-    conn.execute("INSERT OR REPLACE INTO settings VALUES ('vapid_private_key', ?)", (priv_pem,))
+    conn.execute("INSERT OR REPLACE INTO settings VALUES ('vapid_private_key', ?)", (priv_b64,))
     conn.execute("INSERT OR REPLACE INTO settings VALUES ('vapid_public_key',  ?)", (pub_b64,))
     conn.commit()
     print(f"[vapid] Generated new keypair. Public key: {pub_b64[:20]}...")
