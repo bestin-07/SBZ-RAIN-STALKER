@@ -3,6 +3,12 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
+# VITE_* vars are baked in at build time. Railway passes service variables as
+# build args, but they must be declared as ARG here to reach `npm run build`.
+ARG VITE_DONATE_URL=""
+ARG VITE_BACKEND_URL=""
+ENV VITE_DONATE_URL=$VITE_DONATE_URL
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 RUN npm run build
 
 FROM python:3.11-slim
