@@ -102,8 +102,9 @@ const URGENT_MIN = 15  // dry now but rain this soon → "window closing, hurry"
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
 
 // nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
-// live between the 5-min data refreshes.
-export function getStatus(
+// live between the 5-min data refreshes. getStatus() wraps this with the
+// night-time sleep nudge (below).
+function buildStatus(
   currentPrecip, gaps, weather, t = k => k,
   nowSec = Math.floor(Date.now() / 1000), trend = {},
 ) {
@@ -154,4 +155,20 @@ export function getStatus(
   }
 
   return { type: 'stuck', headline: t('STUCK'), sub: t('s_stuck'), weather: weatherNote }
+}
+
+export function getStatus(
+  currentPrecip, gaps, weather, t = k => k,
+  nowSec = Math.floor(Date.now() / 1000), trend = {},
+) {
+  const result = buildStatus(currentPrecip, gaps, weather, t, nowSec, trend)
+  if (result.type === 'loading') return result
+
+  // Browser-local clock: 22:00–05:59 → swap the headline for a sleep nudge but
+  // keep the rain sub-line so a night owl still sees the actual forecast.
+  const hour = new Date(nowSec * 1000).getHours()
+  if (hour >= 22 || hour < 6) {
+    return { ...result, type: 'night', headline: t('SLEEP') }
+  }
+  return result
 }
