@@ -1,16 +1,22 @@
-# Support / Buy-me-a-coffee QR
+# Support / Donate
 
-Drop your payment QR code image in this folder so it shows up in the app's
-**About → Support** section.
+The **About → Support** section shows a "Buy me a coffee" button that opens a
+donation link. There is **no QR code** anymore — it's a single configurable URL.
 
-- **Required filename:** `coffee-qr.png`  (exact name, lowercase)
-- **Recommended:** a square PNG, at least 400×400 px, on a white/light background
-  so it scans well in both light and dark app themes.
+## Set your donation link (pick ONE)
 
-Path the app loads: `/support/coffee-qr.png`
+1. **PayPal.me (recommended, easiest):** create your link at https://paypal.me
+   → you get `https://paypal.me/yourhandle`.
+2. **Stripe Payment Link:** Stripe Dashboard → Payment Links → create one (no code).
+3. **Ko-fi:** https://ko-fi.com/yourhandle (0% platform fee, bundles PayPal+Stripe).
 
-Until you add the file, the Support section shows a "QR code coming soon"
-placeholder instead of a broken image — so it's safe to ship before the QR exists.
+## Where to put it
 
-Anything else placed in `frontend/public/` is copied verbatim into the build,
-so no code changes are needed after you add the image — just commit and push.
+Either:
+- **Env var (no code change):** set `VITE_DONATE_URL=https://paypal.me/yourhandle`
+  in Railway, redeploy. This is read at build time by Vite.
+- **Or hardcode:** edit `DONATE_URL` near the top of
+  `frontend/src/components/InfoPanel.jsx`.
+
+If no URL is set, the button is hidden and a "coming soon" line shows instead —
+so it's safe to ship before you've picked a provider.

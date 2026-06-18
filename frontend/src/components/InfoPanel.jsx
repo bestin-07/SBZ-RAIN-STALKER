@@ -1,7 +1,9 @@
-import { useState } from 'react'
+// Donation link. Paste your PayPal.me / Stripe Payment Link / Ko-fi URL here,
+// or set VITE_DONATE_URL in Railway to override without editing code.
+// e.g. 'https://paypal.me/yourhandle'
+const DONATE_URL = import.meta.env.VITE_DONATE_URL || ''
 
 export default function InfoPanel({ open, onClose, t }) {
-  const [qrError, setQrError] = useState(false)
   if (!open) return null
 
   return (
@@ -93,23 +95,19 @@ export default function InfoPanel({ open, onClose, t }) {
             {t('made_by')}
           </p>
 
-          <div className="border border-border rounded-lg px-5 py-5 mb-10 flex flex-col items-center text-center">
-            <div className="font-display font-bold text-lg text-primary mb-1">
-              ☕ {t('buy_coffee')}
-            </div>
-            {qrError ? (
-              <div className="mt-3 w-40 h-40 flex items-center justify-center border border-dashed border-border rounded">
-                <span className="font-mono text-xs text-muted px-4">{t('coffee_soon')}</span>
-              </div>
+          <div className="mb-10">
+            {DONATE_URL ? (
+              <a
+                href={DONATE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 font-display font-bold text-sm tracking-[0.12em] uppercase px-6 py-3 rounded-lg bg-[#D4A017] text-bg hover:opacity-90 transition-opacity"
+              >
+                ☕ {t('buy_coffee')}
+              </a>
             ) : (
-              <img
-                src="/support/coffee-qr.png"
-                alt={t('buy_coffee')}
-                onError={() => setQrError(true)}
-                className="mt-3 w-40 h-40 rounded bg-white p-2 object-contain"
-              />
+              <span className="font-mono text-xs text-muted">{t('coffee_soon')}</span>
             )}
-            <p className="font-mono text-xs text-muted mt-3">{t('coffee_scan')}</p>
           </div>
 
           <button

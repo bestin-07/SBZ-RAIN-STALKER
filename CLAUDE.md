@@ -32,7 +32,7 @@ SBZ-RAIN-STALKER/
 │   ├── public/
 │   │   ├── sw.js                # Service worker (network-first, cache v2)
 │   │   ├── manifest.json        # PWA manifest
-│   │   ├── support/            # Buy-me-a-coffee QR — drop coffee-qr.png here (served at /support/coffee-qr.png)
+│   │   ├── support/            # Donate docs — set VITE_DONATE_URL (or DONATE_URL in InfoPanel.jsx) to a PayPal.me/Stripe/Ko-fi link
 │   │   ├── favicon.svg          # Brand icons (user-maintained)
 │   │   ├── favicon-32.png
 │   │   ├── apple-touch-icon.png
