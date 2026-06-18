@@ -613,6 +613,18 @@ async def subscribe(request: Request):
         (endpoint, p256dh, auth, token, datetime.now(timezone.utc).timestamp()),
     )
     conn.commit()
+
+    # Immediate confirmation push so the user sees notifications actually work
+    # right away — otherwise nothing arrives until a real rain/gap event.
+    if PUSH_AVAILABLE and VAPID_PRIVATE_KEY:
+        await asyncio.to_thread(_send_push_sync, endpoint, p256dh, auth, {
+            "type": "gap",
+            "title_de": "Benachrichtigungen aktiv ✓",
+            "body_de":  "Du bekommst Bescheid bei Regenlücken.",
+            "title_en": "Notifications on ✓",
+            "body_en":  "You'll get a ping when a dry window opens.",
+        })
+
     return {"ok": True, "token": token}
 
 
