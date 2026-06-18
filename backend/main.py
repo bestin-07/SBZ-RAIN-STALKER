@@ -594,7 +594,7 @@ def get_vapid_public_key():
 
 
 @app.post("/api/subscribe")
-@limiter.limit("5/minute")
+@limiter.limit("30/minute")
 async def subscribe(request: Request):
     # Body size guard
     content_length = int(request.headers.get("content-length", 0))

@@ -100,7 +100,8 @@ export default function App() {
   }, [])
 
   const toggleNotifications = useCallback(async () => {
-    if (notifyState === 'unsupported' || notifyState === 'denied') return
+    if (notifyState === 'unsupported') return
+    if (notifyState === 'denied') { setNotifyMsg('notify_blocked'); return }
 
     // iOS only delivers web push to an INSTALLED home-screen app. In a Safari
     // tab, subscribe silently fails — so guide the user instead of doing nothing.
@@ -135,6 +136,11 @@ export default function App() {
       if (perm !== 'granted') { setNotifyState('denied'); return }
 
       const reg = await navigator.serviceWorker.ready
+      // Drop any stale subscription first. If the VAPID key changed (e.g. earlier
+      // deploys generated different keys), subscribe() throws InvalidStateError
+      // because a subscription with a different applicationServerKey exists.
+      const existing = await reg.pushManager.getSubscription()
+      if (existing) { try { await existing.unsubscribe() } catch {} }
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
