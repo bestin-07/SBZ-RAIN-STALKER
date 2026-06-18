@@ -102,7 +102,7 @@ const translations = {
     guide_weather:    'unter dem status gibt es hinweise zu temperatur, wind oder schnee. immer basierend auf deinem standort.',
     guide_ex_wait:    'NOCH 12 MIN',
     guide_ex_stuck:   'BLEIB DRIN',
-    guide_disclaimer: 'Vorhersagen kommen von Open-Meteo (ICON-EU Modell) und Radar vom DWD. Beides Open Source und kostenlos. Alpen-Radar kann abweichen und Vorhersagen sind keine Garantie. Im Zweifel kurz aus dem Fenster schauen.',
+    guide_disclaimer: 'Der Status nutzt einen GeoSphere 1 km Radar-Nowcast plus Open-Meteo und Live-Wetterstationen von GeoSphere; das Karten-Radar kommt von RainViewer. Alpenwetter ändert sich schnell und Vorhersagen sind keine Garantie, der Countdown ist eine Schätzung. Im Zweifel kurz aus dem Fenster schauen.',
 
     weather_perfect:   'ideales wetter heute. kein einziger grund drinzubleiben.',
     weather_hot:       '{temp}°C da draußen. sonnenbrille an und los!',
@@ -216,7 +216,7 @@ const translations = {
     guide_weather:    'below the main status you get notes on temperature, wind or snow. always based on your location.',
     guide_ex_wait:    'WAIT 12 MIN',
     guide_ex_stuck:   'STUCK INSIDE',
-    guide_disclaimer: 'Forecasts from Open-Meteo (ICON-EU model), radar from DWD. Both are open source and free. Alpine radar can be imprecise and forecasts are not a guarantee. When in doubt look out the window.',
+    guide_disclaimer: 'The status uses a GeoSphere 1 km radar nowcast plus Open-Meteo and live GeoSphere weather stations; the map radar is RainViewer. Alpine weather moves fast and forecasts are not a guarantee, so the countdown is a best estimate. When in doubt, look out the window.',
 
     weather_perfect:   'perfect out there. no excuse to stay in.',
     weather_hot:       '{temp}°C outside. shades and sunscreen first.',
