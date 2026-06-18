@@ -3,7 +3,6 @@ const translations = {
     GO_NOW:       'GEMMA RAUS',
     WAIT_MIN:     'NOCH {min} MIN',
     STUCK:        'BLEIB DRIN',
-    SLEEP:        'GEH SCHLAFEN',
     dry_for:      'noch {min} Minuten trocken',
     dry_for_over: 'mehr als {min} Minuten trocken',
     no_rain:      'kein Regen an deinem Standort',
@@ -19,6 +18,12 @@ const translations = {
     s_almost_over:    'gleich vorbei, in {min} min trocken, mach dich bereit',
     s_almost_now:     'gleich vorbei, jeden moment trocken',
     s_stuck:          'durchgehend regen in den nächsten 3 stunden',
+
+    s_night_clear:        'die ganze nacht trocken, aber vielleicht einfach schlafen?',
+    s_night_rain_coming:  'später kommt regen, aber es ist spät, bleib gemütlich',
+    s_night_dry:          'draußen trocken, aber schlafen klingt besser',
+    s_night_raining:      'es regnet, perfektes schlafwetter',
+    s_night_stuck:        'regen die ganze nacht, schlaf dich aus',
 
     dry:        'trocken',
     light_rain: 'leichter Regen',
@@ -118,7 +123,6 @@ const translations = {
     GO_NOW:       'GEMMA RAUS',
     WAIT_MIN:     'WAIT {min} MIN',
     STUCK:        'STUCK INSIDE',
-    SLEEP:        'GO TO SLEEP',
     dry_for:      'dry for {min} more minutes',
     dry_for_over: 'dry for more than {min} minutes',
     no_rain:      'no rain at your location',
@@ -134,6 +138,12 @@ const translations = {
     s_almost_over:    'almost over, dry in {min} min, get ready',
     s_almost_now:     'almost over, dry any minute now',
     s_stuck:          'rain straight through the next 3 hours',
+
+    s_night_clear:        'dry all night, but maybe just sleep?',
+    s_night_rain_coming:  'rain comes later, but it is late, stay cozy',
+    s_night_dry:          'dry out there, but sleep sounds better',
+    s_night_raining:      'raining, perfect sleeping weather',
+    s_night_stuck:        'rain all night, sleep tight',
 
     dry:        'dry',
     light_rain: 'light rain',

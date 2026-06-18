@@ -144,7 +144,7 @@ RAINING, no break in 3 h → STUCK · "rain straight through"       (s_stuck)
 
 **Note:** `gapNow` (a gap whose `startsAt <= nowSec`) routes to GO even if a station's RR still shows residual rain — trust the model when it says dry now.
 
-**Night nudge:** `getStatus` wraps `buildStatus`; if the **browser-local** hour (from `nowSec`) is 22:00–05:59 it swaps the headline for `SLEEP` ("GO TO SLEEP") with `type:'night'` (color `#818CF8`), keeping the rain sub-line so info isn't lost. Loading state is exempt.
+**Night nudge:** if the **browser-local** hour (from `nowSec`) is 22:00–05:59, `getStatus` keeps the normal headline + colour but swaps the **sub-line** for a cozy `s_night_*` variant (and drops the "make it quick" urgency — nobody sprints out at 3am). The `NOCH X MIN` countdown headline still shows when raining, so timing info isn't lost.
 
 ---
 

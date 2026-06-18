@@ -104,7 +104,7 @@ const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get r
 // nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
 // live between the 5-min data refreshes. getStatus() wraps this with the
 // night-time sleep nudge (below).
-function buildStatus(
+export function getStatus(
   currentPrecip, gaps, weather, t = k => k,
   nowSec = Math.floor(Date.now() / 1000), trend = {},
 ) {
@@ -114,6 +114,11 @@ function buildStatus(
     return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null }
   }
 
+  // Browser-local clock: 22:00–05:59 → cozy night sub-lines (headline & colour
+  // stay normal; nobody's sprinting outside at 3am, so no urgency at night).
+  const hour = new Date(nowSec * 1000).getHours()
+  const night = hour >= 22 || hour < 6
+
   const isDry = currentPrecip < DRY_THRESHOLD && !precipByCode(weather?.code)
   const firstGap = gaps[0]
   // A gap that's already started means the forecast says dry now even if a
@@ -122,53 +127,43 @@ function buildStatus(
 
   // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {
+    let sub
     if (trend.dryEndsOpen) {
-      return { type: 'go', headline: t('GO_NOW'), sub: t('s_clear_hours'), weather: weatherNote }
+      sub = t(night ? 's_night_clear' : 's_clear_hours')
+    } else if (trend.nextRainAt) {
+      if (night) {
+        sub = t('s_night_rain_coming')
+      } else {
+        const rainInMin = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
+        sub = rainInMin <= 0
+          ? t('s_rain_any')
+          : rainInMin <= URGENT_MIN
+            ? t('s_window_closing', { min: rainInMin })
+            : t('s_rain_soon', { min: rainInMin })
+      }
+    } else {
+      sub = t(night ? 's_night_dry' : 's_dry_generic')
     }
-    if (trend.nextRainAt) {
-      const rainInMin = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
-      const sub = rainInMin <= 0
-        ? t('s_rain_any')
-        : rainInMin <= URGENT_MIN
-          ? t('s_window_closing', { min: rainInMin })
-          : t('s_rain_soon', { min: rainInMin })
-      return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
-    }
-    return { type: 'go', headline: t('GO_NOW'), sub: t('s_dry_generic'), weather: weatherNote }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
   }
 
-  // ---- Raining now: narrate the break ahead ----
+  // ---- Raining now: narrate the break ahead (headline keeps the countdown) ----
   if (firstGap) {
     const clearInMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
-    if (clearInMin <= 0) {
-      return { type: 'wait', headline: t('WAIT_MIN', { min: 0 }), sub: t('s_almost_now'), weather: weatherNote }
-    }
-    if (clearInMin <= ALMOST_MIN) {
-      return { type: 'wait', headline: t('WAIT_MIN', { min: clearInMin }), sub: t('s_almost_over', { min: clearInMin }), weather: weatherNote }
-    }
-    return {
-      type: 'wait',
-      headline: t('WAIT_MIN', { min: clearInMin }),
-      sub: t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes }),
-      weather: weatherNote,
-    }
+    const sub = night
+      ? t('s_night_raining')
+      : clearInMin <= 0
+        ? t('s_almost_now')
+        : clearInMin <= ALMOST_MIN
+          ? t('s_almost_over', { min: clearInMin })
+          : t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
+    return { type: 'wait', headline: t('WAIT_MIN', { min: clearInMin }), sub, weather: weatherNote }
   }
 
-  return { type: 'stuck', headline: t('STUCK'), sub: t('s_stuck'), weather: weatherNote }
-}
-
-export function getStatus(
-  currentPrecip, gaps, weather, t = k => k,
-  nowSec = Math.floor(Date.now() / 1000), trend = {},
-) {
-  const result = buildStatus(currentPrecip, gaps, weather, t, nowSec, trend)
-  if (result.type === 'loading') return result
-
-  // Browser-local clock: 22:00–05:59 → swap the headline for a sleep nudge but
-  // keep the rain sub-line so a night owl still sees the actual forecast.
-  const hour = new Date(nowSec * 1000).getHours()
-  if (hour >= 22 || hour < 6) {
-    return { ...result, type: 'night', headline: t('SLEEP') }
+  return {
+    type: 'stuck',
+    headline: t('STUCK'),
+    sub: t(night ? 's_night_stuck' : 's_stuck'),
+    weather: weatherNote,
   }
-  return result
 }

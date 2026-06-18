@@ -3,7 +3,6 @@ const COLORS = {
   wait:    '#CA8A04',
   stuck:   '#DC2626',
   loading: '#6B7280',
-  night:   '#818CF8',
 }
 
 export default function GapBanner({ status }) {
