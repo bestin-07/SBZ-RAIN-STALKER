@@ -12,6 +12,9 @@ ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 RUN npm run build
 
 FROM python:3.11-slim
+# Unbuffered stdout so print() diagnostics ([vapid], [push], [cycle]) show in
+# Railway logs immediately instead of being block-buffered and lost.
+ENV PYTHONUNBUFFERED=1
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 WORKDIR /app
 COPY backend/requirements.txt ./
