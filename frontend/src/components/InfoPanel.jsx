@@ -138,8 +138,8 @@ function StatusRow({ color, badge, desc }) {
 
 function DataRow({ label, value }) {
   return (
-    <div className="flex items-start gap-3">
-      <span className="font-mono text-xs text-muted shrink-0 w-20">{label}</span>
+    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:gap-3">
+      <span className="font-mono text-xs text-muted shrink-0 sm:w-28">{label}</span>
       <span className="font-mono text-xs text-primary">{value}</span>
     </div>
   )
