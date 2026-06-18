@@ -199,6 +199,11 @@ def _send_push_sync(endpoint: str, p256dh: str, auth: str, payload: dict) -> boo
             return False  # Subscription expired
         print(f"[push] WebPushException: {e}")
         return True
+    except Exception as e:
+        # e.g. a malformed VAPID key — never let a push failure 500 the caller
+        # (this is what broke /api/subscribe). Keep the subscription.
+        print(f"[push] send error: {e}")
+        return True
 
 
 async def push_to_all(payload: dict):
