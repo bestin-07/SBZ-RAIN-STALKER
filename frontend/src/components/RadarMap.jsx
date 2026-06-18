@@ -16,6 +16,12 @@ const RV_MAX_ZOOM = 14
 const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
 
+const ALLOWED_RV_HOST = 'https://tilecache.rainviewer.com'
+
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 // Must match the RainRibbon legend (dry = gold, light/heavy = blue) so the map
 // dots and the legend agree. Dry dots still recede via size/opacity, not colour.
 function precipColor(p) {
@@ -52,7 +58,7 @@ function areaIcon(name, precip, dryLabel = 'dry') {
         margin-top:3px;
         line-height:1.1;
         opacity:${isRaining ? '1' : '0.8'};
-      ">${name}</div>
+      ">${escHtml(name)}</div>
       ${known ? `<div style="
         font-family:'JetBrains Mono',monospace;
         font-size:9px;
@@ -124,7 +130,10 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
         const res = await fetch(RAINVIEWER_API)
         if (!res.ok) return
         const data = await res.json()
-        const host    = data.host ?? 'https://tilecache.rainviewer.com'
+        const rawHost = data.host
+        const host = typeof rawHost === 'string' && /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}$/.test(rawHost)
+          ? rawHost
+          : ALLOWED_RV_HOST
         // Last 4 past frames (~40 min history) + up to 2 nowcast extrapolations
         const past    = (data.radar?.past     ?? []).slice(-4)
         const nowcast = (data.radar?.nowcast  ?? []).slice(0, 2)

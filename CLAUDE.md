@@ -290,3 +290,62 @@ The most critical thing to verify during the next rain event:
 - Does `dataset.api.hub.geosphere.at/.../tawes-v1-10min?parameters=RR&station_ids=...` return non-zero `RR` values for the nearest stations (this is the fast 10-min signal)?
 - Does the INCA point query (`inca-v1-1h-1km?parameters=RR&lat_lon=...`) return a non-zero recent hourly sum?
 - (DWD GetFeatureInfo is no longer used — it 403s from Austrian networks. Don't reintroduce it.)
+
+---
+
+## Security Audit — Findings & Fixes (2026-06)
+
+Full security review conducted covering backend API, frontend JS, Docker build, and CSP headers. All critical and high findings were fixed.
+
+### Backend (`backend/main.py`)
+
+| Finding | Severity | Fix Applied |
+|---------|----------|-------------|
+| `/api/vapid-keys` exposed VAPID private key in a GET response | **Critical** | Endpoint deleted entirely |
+| CORS allowed `*` wildcard origins | High | Restricted to `ALLOWED_ORIGINS` env var (default: localhost only) |
+| No rate limiting on subscribe/unsubscribe | High | `slowapi` added; POST subscribe → 5/min, DELETE → 10/min, GET accuracy → 30/min |
+| Unsubscribe required only `endpoint` — any caller could remove anyone's subscription | High | Unsubscribe token (UUID4) issued on POST, stored in DB, required on DELETE (403 on mismatch) |
+| No input validation on POST /api/subscribe | High | Body size limit 4096 bytes, endpoint validated by regex `_PUSH_ORIGIN_RE`, p256dh/auth length-checked |
+| No security headers (CSP, HSTS, X-Frame-Options, etc.) | High | Middleware adds full header set on every response |
+| `FastAPI(debug=True)` could leak stack traces | Medium | Changed to `debug=False`; generic `@app.exception_handler(Exception)` returns `{"error": "internal error"}` |
+| DB_PATH could be path-traversed via env var | Medium | `os.path.basename()` sanitizes the value |
+| Unlimited push subscriptions (DoS vector) | Medium | `MAX_PUSH_SUBS = 50_000` cap enforced |
+| SQLite `check_same_thread=True` (default) unsafe for async | Medium | Shared connection with `check_same_thread=False`, WAL mode, `busy_timeout=5000` |
+| Forecast rows grew unbounded in DB | Low | Pruned to 8-day window on every run cycle |
+| TAWES station list unbounded | Low | Capped at 500 entries |
+
+**Security headers set by middleware:**
+```
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.cartocdn.com https://*.openstreetmap.org https://*.rainviewer.com https://tilecache.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://dataset.api.hub.geosphere.at https://api.rainviewer.com https://tilecache.rainviewer.com; frame-ancestors 'none'
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=()
+Strict-Transport-Security: max-age=31536000; includeSubDomains (HTTPS only)
+```
+
+### Frontend (`frontend/src/`)
+
+| Finding | Severity | Fix Applied |
+|---------|----------|-------------|
+| `RadarMap.jsx`: town `name` interpolated raw into `divIcon` innerHTML — XSS if a malicious area name ever reaches the component | Medium | `escHtml()` helper added; all name interpolations now escaped |
+| `RadarMap.jsx`: RainViewer `data.host` used as tile URL prefix without validation | Medium | Validated against `^https://[a-z0-9.-]+\.[a-z]{2,}$`; falls back to known-good `ALLOWED_RV_HOST` |
+| `App.jsx`: DELETE /api/subscribe sent only `endpoint` — no token → anyone who knows an endpoint can unsubscribe a victim | High | Token read from `localStorage` and included in DELETE body; stored on successful POST, removed after DELETE |
+| `sw.js`: error responses (4xx/5xx) cached in navigate handler | Low | Added `if (r.ok)` guard before `cache.put()` |
+| `vite.config.js`: `allowedHosts: 'all'` in preview config exposes dev server to any host header | Low | Removed; `preview` now only sets `host` and `port` |
+
+### Infrastructure
+
+| Finding | Severity | Fix Applied |
+|---------|----------|-------------|
+| Docker container ran as `root` | High | Non-root `appuser` added; `chown` + `USER appuser` in Dockerfile |
+| No `.dockerignore` — `.git`, `.env`, node_modules copied into build context | Medium | `.dockerignore` created (excludes `.git`, `.env*`, `node_modules`, `*.db`, `*.md`, etc.) |
+| `requirements.txt` pinned old fastapi/uvicorn/httpx with known CVEs in older ranges | Medium | Upgraded: `fastapi==0.115.0`, `uvicorn==0.32.0`, `httpx==0.27.2`; added `slowapi==0.1.9`, `cryptography==43.0.3` |
+
+### Threat model notes
+
+- **No user accounts / sessions** — there is nothing to hijack. The only persistent identity is the push subscription endpoint URL, which is now protected by an unsubscribe token.
+- **All weather API calls are client-side** — Open-Meteo, GeoSphere, RainViewer calls go browser → external API directly. Our Railway backend handles only push subscriptions and accuracy tracking; it is not a proxy.
+- **GPS coordinates never leave the browser** — the `/api/forecast` backend endpoint is no longer called from the frontend (data is fetched client-side); lat/lon is only sent to third-party weather APIs directly.
+- **Rate limits apply per user IP** (via slowapi) for the Railway backend endpoints. External weather APIs have their own rate limits per user IP.
+- **VAPID key pair** — private key is a Railway secret (`VAPID_PRIVATE_KEY` env var); public key is served via `/api/vapid-public-key` GET endpoint (public-key exposure is intentional and required for push subscriptions).

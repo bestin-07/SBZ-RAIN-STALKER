@@ -75,11 +75,13 @@ export default function App() {
       const reg = await navigator.serviceWorker.ready
       const sub = await reg.pushManager.getSubscription()
       if (sub) {
+        const token = localStorage.getItem('push_unsub_token') ?? ''
         await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/subscribe`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: sub.endpoint }),
+          body: JSON.stringify({ endpoint: sub.endpoint, token }),
         })
+        localStorage.removeItem('push_unsub_token')
         await sub.unsubscribe()
       }
       setNotifyState('idle')
@@ -100,11 +102,17 @@ export default function App() {
         applicationServerKey: publicKey,
       })
 
-      await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/subscribe`, {
+      const subRes = await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sub),
       })
+      if (subRes.ok) {
+        const subData = await subRes.json().catch(() => ({}))
+        if (subData.token) {
+          try { localStorage.setItem('push_unsub_token', subData.token) } catch {}
+        }
+      }
       setNotifyState('subscribed')
     } catch (e) {
       console.error('Push subscribe failed', e)
