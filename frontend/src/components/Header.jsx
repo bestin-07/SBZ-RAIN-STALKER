@@ -24,12 +24,12 @@ export default function Header({
 
         <div className="flex items-center gap-1.5">
           {acc30 !== null && acc30 !== undefined && (
-            <span className="font-mono text-xs text-muted mr-1">
+            <span className="hidden sm:inline font-mono text-xs text-muted mr-1">
               {acc30}{t('pct_accurate')}
             </span>
           )}
           {lastUpdated && (
-            <span className="font-mono text-xs text-muted mr-1">
+            <span className="hidden sm:inline font-mono text-xs text-muted mr-1">
               {formatTime(lastUpdated)}
             </span>
           )}
@@ -37,25 +37,26 @@ export default function Header({
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="font-mono text-xl text-muted hover:text-primary transition-colors disabled:opacity-30 w-10 h-10 flex items-center justify-center leading-none"
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-border font-mono text-xl text-muted hover:text-primary hover:border-primary transition-colors disabled:opacity-30 leading-none"
             aria-label="refresh"
           >
             {loading ? '·' : '↺'}
           </button>
 
-          <div className="w-px h-5 bg-border mx-0.5" />
-
+          {/* Segmented language toggle: active language highlighted — no guessing
+              what a bare "EN"/"DE" means. */}
           <button
             onClick={onLangToggle}
-            className="font-mono text-sm text-muted hover:text-primary transition-colors w-10 h-10 flex items-center justify-center leading-none"
+            className="flex items-center h-9 px-1 rounded-lg border border-border font-mono text-xs leading-none"
             aria-label="switch language"
           >
-            {lang === 'de' ? 'EN' : 'DE'}
+            <span className={`px-1.5 py-1 rounded ${lang === 'de' ? 'bg-primary text-bg' : 'text-muted'}`}>DE</span>
+            <span className={`px-1.5 py-1 rounded ${lang === 'en' ? 'bg-primary text-bg' : 'text-muted'}`}>EN</span>
           </button>
 
           <button
             onClick={onThemeToggle}
-            className="font-mono text-xl text-muted hover:text-primary transition-colors w-10 h-10 flex items-center justify-center leading-none"
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-border font-mono text-xl text-muted hover:text-primary hover:border-primary transition-colors leading-none"
             aria-label="toggle theme"
           >
             {theme === 'dark' ? '☾' : '☀'}
@@ -65,7 +66,7 @@ export default function Header({
             <button
               onClick={onNotifyToggle}
               disabled={notifyState === 'denied'}
-              className="font-mono text-xl text-muted hover:text-primary transition-colors disabled:opacity-40 w-10 h-10 flex items-center justify-center leading-none"
+              className="w-9 h-9 flex items-center justify-center rounded-lg border border-border font-mono text-xl text-muted hover:text-primary hover:border-primary transition-colors disabled:opacity-40 leading-none"
               aria-label="toggle notifications"
               title={notifyState === 'denied' ? t('notify_denied') : ''}
             >
@@ -75,7 +76,7 @@ export default function Header({
 
           <button
             onClick={onInfo}
-            className="font-mono text-sm text-muted hover:text-primary transition-colors w-7 h-7 flex items-center justify-center border border-border rounded-full leading-none"
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-border font-mono text-sm text-muted hover:text-primary hover:border-primary transition-colors leading-none"
             aria-label="guide"
           >
             ?

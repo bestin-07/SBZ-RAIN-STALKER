@@ -34,13 +34,17 @@ export default function LocationPrompt({ onRequest, onUseDefault, error, loading
         </div>
 
         {error && (
-          <div className="mb-6 w-full max-w-sm">
-            <div className="font-mono text-xs text-stuck mb-3 border border-stuck px-3 py-2">
+          <div className="mb-6 w-full">
+            <div className="font-mono text-xs text-stuck mb-3 border border-stuck rounded px-3 py-2">
               {t(ERR_KEY[error] ?? 'loc_unavailable')}
             </div>
-            <div className="font-mono text-xs text-muted leading-relaxed border-l-2 border-border pl-4">
-              <div className="text-primary mb-1">{t('loc_help_title')}</div>
-              {t(helpKey)}
+            <div className="bg-surface border border-border rounded-lg px-4 py-3">
+              <div className="font-mono text-[11px] tracking-[0.12em] uppercase text-primary mb-2">
+                {t('loc_help_title')}
+              </div>
+              <p className="font-mono text-xs text-muted leading-relaxed">
+                {t(helpKey)}
+              </p>
             </div>
           </div>
         )}
