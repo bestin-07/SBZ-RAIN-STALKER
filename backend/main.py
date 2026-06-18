@@ -616,7 +616,8 @@ async def subscribe(request: Request):
 
     # Immediate confirmation push so the user sees notifications actually work
     # right away — otherwise nothing arrives until a real rain/gap event.
-    if PUSH_AVAILABLE and VAPID_PRIVATE_KEY:
+    # Suppressed (confirm:false) on the silent re-sync the app does on load.
+    if bool(body.get("confirm", True)) and PUSH_AVAILABLE and VAPID_PRIVATE_KEY:
         await asyncio.to_thread(_send_push_sync, endpoint, p256dh, auth, {
             "type": "gap",
             "title_de": "Benachrichtigungen aktiv ✓",

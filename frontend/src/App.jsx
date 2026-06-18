@@ -63,9 +63,26 @@ export default function App() {
       return
     }
     if (Notification.permission === 'denied') { setNotifyState('denied'); return }
-    navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription()).then(sub => {
-      if (sub) setNotifyState('subscribed')
-    })
+    navigator.serviceWorker.ready
+      .then(reg => reg.pushManager.getSubscription())
+      .then(async sub => {
+        if (!sub) return
+        setNotifyState('subscribed')
+        // Re-register with the backend in case its subscription store was reset
+        // (e.g. on redeploy, ephemeral DB). Idempotent; confirm:false skips the
+        // welcome push so opening the app doesn't ping every time.
+        try {
+          const res = await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/subscribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...sub.toJSON(), confirm: false }),
+          })
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}))
+            if (data.token) { try { localStorage.setItem('push_unsub_token', data.token) } catch {} }
+          }
+        } catch {}
+      })
   }, [])
 
   const toggleNotifications = useCallback(async () => {
@@ -105,7 +122,7 @@ export default function App() {
       const subRes = await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sub),
+        body: JSON.stringify({ ...sub.toJSON(), confirm: true }),
       })
       if (subRes.ok) {
         const subData = await subRes.json().catch(() => ({}))
