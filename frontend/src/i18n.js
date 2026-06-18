@@ -76,8 +76,8 @@ const translations = {
     support_title: 'Unterstützen',
     made_by:       'Gebaut und am Laufen gehalten von Bestin Antu — einem Salzburger, der das Regen-Raten satt hatte.',
     buy_coffee:    'Spendier mir einen Kaffee',
-    coffee_scan:   'QR scannen um einen Kaffee zu spendieren',
-    coffee_soon:   'QR-Code folgt in Kürze',
+    coffee_scan:   'Spendier mir einen Kaffee',
+    coffee_soon:   'Spenden-Link folgt in Kürze',
 
     close: 'SCHLIESSEN',
 
@@ -177,8 +177,8 @@ const translations = {
     support_title: 'Support',
     made_by:       'Built and kept running by Bestin Antu — a Salzburg local who got tired of guessing the rain.',
     buy_coffee:    'Buy me a coffee',
-    coffee_scan:   'Scan to send a coffee',
-    coffee_soon:   'QR code coming soon',
+    coffee_scan:   'Buy me a coffee',
+    coffee_soon:   'Donate link coming soon',
 
     close: 'CLOSE',
 
