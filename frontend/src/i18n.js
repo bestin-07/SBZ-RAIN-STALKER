@@ -9,21 +9,21 @@ const translations = {
     then_clear:   'dann {min} Minuten trocken',
     no_gap:       'keine Lücke in den nächsten 3 Stunden',
 
-    s_clear_hours:    'stundenlang trocken, genieß es',
-    s_rain_soon:      'jetzt trocken, regen in etwa {min} min',
-    s_window_closing: 'fenster schließt, regen in {min} min, mach schnell',
-    s_rain_any:       'jetzt trocken, regen kann jeden moment beginnen',
-    s_dry_generic:    'gerade kein regen an deinem standort',
-    s_break_opens:    'es regnet, in {min} min öffnet ein {dur} min fenster',
-    s_almost_over:    'gleich vorbei, in {min} min trocken, mach dich bereit',
-    s_almost_now:     'gleich vorbei, jeden moment trocken',
-    s_stuck:          'durchgehend regen in den nächsten 3 stunden',
+    s_clear_hours:    ['stundenlang trocken, genieß es', 'trocken für stunden, lass dir zeit', 'kein tropfen in sicht, der tag gehört dir'],
+    s_rain_soon:      ['jetzt trocken, regen in etwa {min} min', 'leg los, in etwa {min} min kommt der regen', 'noch trocken, in ungefähr {min} min regnet es'],
+    s_window_closing: ['fenster schließt, regen in {min} min, mach schnell', 'beeil dich, in {min} min regnet es', 'letzte chance, {min} min bis es schüttet'],
+    s_rain_any:       ['jetzt trocken, aber regen kann jeden moment beginnen', 'jetzt oder nie, der regen ist quasi da', 'jeden moment, der regen steht vor der tür'],
+    s_dry_generic:    ['gerade kein regen an deinem standort', 'bei dir ist gerade alles trocken', 'über dir ist es gerade trocken'],
+    s_break_opens:    ['es regnet, in {min} min öffnet ein {dur} min fenster', 'halt durch, in {min} min kommen {dur} min trocken', 'noch nass, in {min} min ein {dur} min fenster'],
+    s_almost_over:    ['gleich vorbei, in {min} min trocken, mach dich bereit', 'fast geschafft, in {min} min trocken', 'halt durch, in {min} min ist es trocken'],
+    s_almost_now:     ['gleich vorbei, jeden moment trocken', 'der regen lässt nach, gleich trocken', 'fast trocken, schnapp die schuhe'],
+    s_stuck:          ['durchgehend regen in den nächsten 3 stunden', 'keine lücke für 3 stunden, gemütlicher tag', 'durchnass die ganze zeit, vielleicht ein film'],
 
-    s_night_clear:        'die ganze nacht trocken, aber vielleicht einfach schlafen?',
-    s_night_rain_coming:  'später kommt regen, aber es ist spät, bleib gemütlich',
-    s_night_dry:          'draußen trocken, aber schlafen klingt besser',
-    s_night_raining:      'es regnet, perfektes schlafwetter',
-    s_night_stuck:        'regen die ganze nacht, schlaf dich aus',
+    s_night_clear:        ['die ganze nacht trocken, aber vielleicht einfach schlafen?', 'draußen klar, aber das bett ruft', 'bis früh kein regen, schlaf gut'],
+    s_night_rain_coming:  ['später kommt regen, aber es ist spät, bleib gemütlich', 'regen kommt noch, aber das bett ist jetzt besser', 'es regnet später, aber das ist morgen dein problem'],
+    s_night_dry:          ['draußen trocken, aber schlafen klingt besser', 'alles klar, aber dein kissen auch', 'trockener himmel, gemütliches bett, du entscheidest'],
+    s_night_raining:      ['es regnet, perfektes schlafwetter', 'regen aufs dach, bestes schlaflied', 'draußen nass, drinnen warm, schlaf'],
+    s_night_stuck:        ['regen die ganze nacht, schlaf dich aus', 'nass bis früh, schlaf weiter', 'dauerregen, perfektes bettwetter'],
 
     dry:        'trocken',
     light_rain: 'leichter Regen',
@@ -129,21 +129,21 @@ const translations = {
     then_clear:   'then {min} minutes clear',
     no_gap:       'no gap in the next 3 hours',
 
-    s_clear_hours:    'clear skies for hours, go enjoy',
-    s_rain_soon:      'dry now, rain in about {min} min',
-    s_window_closing: 'window closing, rain in {min} min, make it quick',
-    s_rain_any:       'dry now, rain could start any minute',
-    s_dry_generic:    'no rain at your spot right now',
-    s_break_opens:    'raining now, a {dur} min break opens in {min} min',
-    s_almost_over:    'almost over, dry in {min} min, get ready',
-    s_almost_now:     'almost over, dry any minute now',
-    s_stuck:          'rain straight through the next 3 hours',
+    s_clear_hours:    ['clear skies for hours, go enjoy it', 'dry all afternoon, take your time', 'not a drop coming, the day is yours'],
+    s_rain_soon:      ['dry now, rain in about {min} min', 'go for it, rain rolls in around {min} min', 'still dry, about {min} min until the rain'],
+    s_window_closing: ['window closing, rain in {min} min, make it quick', 'hurry, rain hits in {min} min', 'last chance, {min} min before it pours'],
+    s_rain_any:       ['dry now, but rain could start any minute', 'go now or not at all, rain is basically here', 'any second now, the rain is at the door'],
+    s_dry_generic:    ['no rain at your spot right now', 'all clear where you are', 'dry over your head right now'],
+    s_break_opens:    ['raining now, a {dur} min break opens in {min} min', 'hang tight, {dur} min of dry starts in {min} min', 'wet now, but {min} min to a {dur} min window'],
+    s_almost_over:    ['almost over, dry in {min} min, get ready', 'nearly done, {min} min to dry', 'hold on, dry in {min} min'],
+    s_almost_now:     ['almost over, dry any minute now', 'rain is letting up, dry any second', 'nearly dry, grab your shoes'],
+    s_stuck:          ['rain straight through the next 3 hours', 'no break in sight for 3 hours, cozy day', 'wet all the way, maybe a film instead'],
 
-    s_night_clear:        'dry all night, but maybe just sleep?',
-    s_night_rain_coming:  'rain comes later, but it is late, stay cozy',
-    s_night_dry:          'dry out there, but sleep sounds better',
-    s_night_raining:      'raining, perfect sleeping weather',
-    s_night_stuck:        'rain all night, sleep tight',
+    s_night_clear:        ['dry all night, but maybe just sleep?', 'clear out, but bed sounds nice', 'no rain till morning, rest easy'],
+    s_night_rain_coming:  ['rain comes later, but it is late, stay cozy', 'rain on the way, but bed is better right now', "it will rain, but that is future you's problem, sleep"],
+    s_night_dry:          ['dry out there, but sleep sounds better', 'all clear, but so is your pillow', 'dry skies, comfy bed, you choose'],
+    s_night_raining:      ['raining, perfect sleeping weather', 'rain on the roof, best lullaby there is', 'wet outside, warm inside, sleep'],
+    s_night_stuck:        ['rain all night, sleep tight', 'wet till morning, snooze away', 'steady rain, perfect duvet weather'],
 
     dry:        'dry',
     light_rain: 'light rain',
@@ -241,10 +241,32 @@ const translations = {
   },
 }
 
+// Per-user phrase seed (set once), so different users get different one-liners.
+function phraseSeed() {
+  try {
+    let s = localStorage.getItem('phrase_seed')
+    if (s === null) { s = String(Math.floor(Math.random() * 100000)); localStorage.setItem('phrase_seed', s) }
+    return parseInt(s, 10) || 0
+  } catch { return 0 }
+}
+
+function hashKey(str) {
+  let h = 0
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+
 export function useI18n(lang) {
   const strings = translations[lang] ?? translations.de
+  const seed = phraseSeed()
+  const day = Math.floor(Date.now() / 86400000) // rotates daily; stable within a day
   return function t(key, vars = {}) {
     let str = strings[key] ?? key
+    // Array values are variant pools: pick one stably per (user seed, day, key)
+    // so it varies by user, rotates daily, and never flickers between renders.
+    if (Array.isArray(str)) {
+      str = str.length ? str[(seed + day + hashKey(key)) % str.length] : key
+    }
     for (const [k, v] of Object.entries(vars)) {
       str = str.replace(`{${k}}`, String(v))
     }

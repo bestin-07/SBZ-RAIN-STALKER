@@ -144,7 +144,9 @@ RAINING, no break in 3 h → STUCK · "rain straight through"       (s_stuck)
 
 **Note:** `gapNow` (a gap whose `startsAt <= nowSec`) routes to GO even if a station's RR still shows residual rain — trust the model when it says dry now.
 
-**Night nudge:** if the **browser-local** hour (from `nowSec`) is 22:00–05:59, `getStatus` keeps the normal headline + colour but swaps the **sub-line** for a cozy `s_night_*` variant (and drops the "make it quick" urgency — nobody sprints out at 3am). The `NOCH X MIN` countdown headline still shows when raining, so timing info isn't lost.
+**Night nudge:** if the **browser-local** hour (from `nowSec`) is **00:00–04:59 (12am–5am)**, `getStatus` keeps the normal headline + colour but swaps the **sub-line** for a cozy `s_night_*` variant (and drops the "make it quick" urgency). The `NOCH X MIN` countdown headline still shows when raining, so timing info isn't lost.
+
+**Rotating one-liners:** the `s_*` status sub-line keys in `i18n.js` are **arrays of variants** (3 each, DE & EN). `useI18n`'s `t()` picks one stably via `(phraseSeed + dayNumber + hash(key)) % pool.length` — where `phraseSeed` is a per-user random stored once in `localStorage`. Result: different users see different phrasings, the choice is stable within a day (no flicker on the minute-tick), and it rotates daily. Headlines stay fixed (brand). To add variety, just add strings to a pool; non-array values still work as plain strings.
 
 ---
 

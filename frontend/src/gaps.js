@@ -114,10 +114,10 @@ export function getStatus(
     return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null }
   }
 
-  // Browser-local clock: 22:00–05:59 → cozy night sub-lines (headline & colour
-  // stay normal; nobody's sprinting outside at 3am, so no urgency at night).
+  // Browser-local clock: 00:00–04:59 (12am–5am) → cozy night sub-lines (headline
+  // & colour stay normal; nobody's sprinting outside at 3am, so no urgency).
   const hour = new Date(nowSec * 1000).getHours()
-  const night = hour >= 22 || hour < 6
+  const night = hour < 5
 
   const isDry = currentPrecip < DRY_THRESHOLD && !precipByCode(weather?.code)
   const firstGap = gaps[0]
