@@ -76,18 +76,18 @@ function getWeatherNote(weather, t) {
   const temp = Math.round(weather.temp)
   const wind = Math.round(weather.wind ?? 0)
   const code = weather.code ?? -1
+  const v = { temp, wind }  // both available to every variant
 
-  // Snow (WMO codes 71-77 = snow fall, 85-86 = snow showers)
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) {
-    return t('weather_snow')
-  }
-  if (wind > 50) return t('weather_storm', { wind })
-  if (temp > 33)  return t('weather_scorching', { temp })
-  if (temp > 29)  return t('weather_hot', { temp })
-  if (wind > 30)  return t('weather_windy', { wind })
-  if (temp < 5)   return t('weather_freezing', { temp })
-  if (temp < 12)  return t('weather_cold', { temp })
-  if (temp >= 22 && temp <= 29 && wind < 20) return t('weather_perfect')
+  // Priority: snow > storm > fog > heat > wind > cold > perfect
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return t('weather_snow', v)
+  if (wind > 50)               return t('weather_storm', v)
+  if (code === 45 || code === 48) return t('weather_fog', v)   // fog / rime fog
+  if (temp > 33)               return t('weather_scorching', v)
+  if (temp > 29)               return t('weather_hot', v)
+  if (wind > 30)               return t('weather_windy', v)
+  if (temp < 5)                return t('weather_freezing', v)
+  if (temp < 12)               return t('weather_cold', v)
+  if (temp >= 22 && temp <= 29 && wind < 20) return t('weather_perfect', v)
   return null
 }
 
