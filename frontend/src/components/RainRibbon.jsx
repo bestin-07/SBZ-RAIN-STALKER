@@ -8,7 +8,8 @@ function precipToColor(p) {
   if (p < DRY_THRESHOLD) return '#D4A017'
   if (p < 0.5)           return '#6CD1EB'  // sampled from RainViewer Universal Blue
   if (p < 2)             return '#1BAEE2'
-  return                        '#0077AA'
+  if (p < 5)             return '#0077AA'
+  return                        '#E05C00'  // storm/thunderstorm — matches radar warm core
 }
 
 function precipToHeight(p) {
@@ -80,6 +81,7 @@ export default function RainRibbon({ forecast, theme, t }) {
         <Legend color="#D4A017" label={t('dry')} />
         <Legend color="#6CD1EB" label={t('light_rain')} />
         <Legend color="#0077AA" label={t('heavy_rain')} />
+        <Legend color="#E05C00" label={t('storm_rain')} />
         <span className="font-mono text-xs text-muted ml-auto">{t('next_12h')}</span>
       </div>
     </div>

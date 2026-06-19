@@ -26,10 +26,11 @@ function escHtml(s) {
 // dots and the legend agree. Dry dots still recede via size/opacity, not colour.
 function precipColor(p) {
   if (p === null || p === undefined) return '#4B5563' // unknown — neutral grey
-  if (p < 0.1)  return '#D4A017'  // dry  (legend gold)
+  if (p < 0.1)  return '#D4A017'  // dry
   if (p < 0.5)  return '#6CD1EB'  // light rain  — sampled from RainViewer Universal Blue
-  if (p < 2)    return '#1BAEE2'  // moderate    — sampled from RainViewer Universal Blue
-  return               '#0077AA'  // heavy rain  — sampled from RainViewer Universal Blue
+  if (p < 2)    return '#1BAEE2'  // moderate
+  if (p < 5)    return '#0077AA'  // heavy
+  return               '#E05C00'  // storm/thunderstorm — matches radar warm core
 }
 
 function areaIcon(name, precip, dryLabel = 'dry') {

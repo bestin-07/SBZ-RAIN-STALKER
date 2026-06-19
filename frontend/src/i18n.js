@@ -28,6 +28,7 @@ const translations = {
     dry:        'trocken',
     light_rain: 'leichter Regen',
     heavy_rain: 'starker Regen',
+    storm_rain: 'Gewitter',
     next_12h:   'nächste 12 Std',
 
     checking:    'PRÜFEN',
@@ -169,6 +170,7 @@ const translations = {
     dry:        'dry',
     light_rain: 'light rain',
     heavy_rain: 'heavy rain',
+    storm_rain: 'storm',
     next_12h:   'next 12 hours',
 
     checking:    'CHECKING',
