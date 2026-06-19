@@ -67,6 +67,8 @@ export default function App() {
   const [notifyMsg, setNotifyMsg] = useState(null)
   const [notifyModalOpen, setNotifyModalOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
+  const privacyOpenRef = useRef(false)
+  useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
   const [iosHintDismissed, setIosHintDismissed] = useState(() => saved('ios_hint_dismissed', '') === '1')
@@ -327,13 +329,16 @@ export default function App() {
     return () => clearInterval(id)
   }, [location, loadData])
 
-  // Make the browser / Android back button close the About panel instead of
-  // navigating away from the app: push a history entry while it's open and
-  // close on popstate.
+  // Back button closes the InfoPanel — unless PrivacyPanel is stacked on top,
+  // in which case PrivacyPanel's own popstate handler handles the back press.
+  // privacyOpenRef is a ref (not state) so the check is synchronous and never stale.
   useEffect(() => {
     if (!infoOpen) return
     window.history.pushState({ infoPanel: true }, '')
-    const onPop = () => setInfoOpen(false)
+    const onPop = () => {
+      if (privacyOpenRef.current) return
+      setInfoOpen(false)
+    }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [infoOpen])
