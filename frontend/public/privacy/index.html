@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy · Gemma Raus</title>
+  <link rel="canonical" href="https://www.gemmaraus.at/privacy/" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0E0F11; color: #E7EAF0; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; }
+    .wrap { max-width: 680px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+
+    a       { color: #D4A017; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .logo   { font-family: 'Courier New', monospace; font-weight: 700; letter-spacing: .18em; font-size: .9rem; text-transform: uppercase; color: #D4A017; margin-bottom: 2.5rem; display: block; }
+    h1      { font-size: 1rem; letter-spacing: .15em; text-transform: uppercase; color: #6B7280; margin: 0 0 2rem; font-weight: 400; }
+    h2      { font-size: .75rem; letter-spacing: .13em; text-transform: uppercase; color: #4B5563; margin: 2.5rem 0 .75rem; padding-top: 1.5rem; border-top: 1px solid #1F2229; font-weight: 400; }
+    p       { font-size: .9rem; color: #9CA3AF; line-height: 1.75; margin: 0 0 .85rem; }
+    ul      { margin: 0 0 .85rem; padding-left: 1.4rem; }
+    li      { font-size: .9rem; color: #9CA3AF; line-height: 1.75; margin-bottom: .25rem; }
+    .chip   { display: inline-block; background: #16181D; border: 1px solid #1F2229; border-radius: 5px; padding: .15rem .55rem; font-size: .78rem; color: #6B7280; margin: .1rem; }
+    .back   { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #1F2229; font-size: .82rem; color: #4B5563; }
+    .date   { color: #374151; font-size: .78rem; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="logo" href="/">← Gemma Raus</a>
+    <h1>Privacy Policy</h1>
+
+    <p>Gemma Raus is a personal project by <strong style="color:#E7EAF0">Bestin Antu</strong>. This page explains what data is processed and why.</p>
+
+    <h2>What we collect</h2>
+    <p>We collect only what's strictly needed to make the app work:</p>
+    <ul>
+      <li><strong style="color:#E7EAF0">Push subscription endpoint</strong> — a browser-generated token used to deliver rain notifications to your device. It contains no name, email, or location. Stored in our database only if you tap the bell icon and allow notifications.</li>
+    </ul>
+    <p>That's it. No account. No cookies. No analytics. No advertising trackers.</p>
+
+    <h2>What we don't collect</h2>
+    <ul>
+      <li>Your GPS location — coordinates go directly from your browser to Open-Meteo (Switzerland). We never see them.</li>
+      <li>Usage data, page views, or behaviour tracking.</li>
+      <li>Device fingerprints, IP logs, or any identifying information beyond the push token.</li>
+    </ul>
+
+    <h2>What's stored in your browser</h2>
+    <p>Two small items in <code style="color:#6B7280">localStorage</code> — no personal data:</p>
+    <ul>
+      <li><span class="chip">phrase_seed</span> a random number that rotates the status messages so they feel personal to you.</li>
+      <li><span class="chip">ios_hint_dismissed</span> remembers that you closed the iOS install hint.</li>
+    </ul>
+    <p>These stay in your browser and never leave it.</p>
+
+    <h2>Push notifications</h2>
+    <p>If you enable notifications, your browser's push service (listed below) generates a unique endpoint URL and two encryption keys. We store this on our server to send you alerts when a dry window opens.</p>
+    <p>Your endpoint passes through one of:</p>
+    <ul>
+      <li>Google FCM (Chrome / Android)</li>
+      <li>Mozilla Push Service (Firefox)</li>
+      <li>Apple APNs (Safari / iOS)</li>
+    </ul>
+    <p>These third parties are involved because push notifications are a browser-level feature — we don't control which service your browser uses.</p>
+
+    <h2>Legal basis (GDPR)</h2>
+    <ul>
+      <li>Weather data lookup: <strong style="color:#E7EAF0">legitimate interest</strong> (Art. 6(1)(f)) — the entire purpose of the app.</li>
+      <li>Push notifications: <strong style="color:#E7EAF0">consent</strong> (Art. 6(1)(a)) — you opted in by tapping the bell. You can withdraw at any time.</li>
+    </ul>
+
+    <h2>How long we keep it</h2>
+    <p>Your push endpoint is kept until you unsubscribe (bell icon → tap again to disable). On unsubscribe it's deleted immediately. Expired or inactive subscriptions are also removed automatically by the push services.</p>
+
+    <h2>Your rights</h2>
+    <ul>
+      <li><strong style="color:#E7EAF0">Withdraw consent</strong> — tap the bell icon to unsubscribe. Your endpoint is deleted immediately.</li>
+      <li><strong style="color:#E7EAF0">Access / erasure</strong> — email <a href="mailto:bestindroid@gmail.com">bestindroid@gmail.com</a> and we'll confirm deletion.</li>
+      <li><strong style="color:#E7EAF0">Complaint</strong> — you can lodge a complaint with the Austrian data protection authority (<a href="https://www.dsb.gv.at" target="_blank" rel="noopener">dsb.gv.at</a>).</li>
+    </ul>
+
+    <h2>Data controller</h2>
+    <p>
+      Bestin Antu<br>
+      Salzburg, Austria<br>
+      <a href="mailto:bestindroid@gmail.com">bestindroid@gmail.com</a>
+    </p>
+
+    <p class="date">Last updated: June 2026</p>
+
+    <div class="back">
+      <a href="/">← Back to Gemma Raus</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -97,6 +97,7 @@ const translations = {
     privacy_2: 'Im Browser werden ausschließlich Design und Spracheinstellungen gespeichert. Keine Tracking-Cookies kein Benutzerkonto.',
     privacy_3: 'Für Push-Benachrichtigungen speichern wir ein anonymes Browser-Token ohne Standortbezug. Abmelden jederzeit möglich.',
     privacy_basis: 'Rechtsgrundlage: berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO) für die Wetterabfrage; Einwilligung für Push.',
+    privacy_link:  'Vollständige Datenschutzerklärung →',
 
     support_title: 'Unterstützen',
     made_by:       'Ein kleines Salzburg-Projekt von Bestin Antu.',
@@ -224,6 +225,7 @@ const translations = {
     privacy_2: 'Only theme and language preferences are saved locally in your browser. No tracking cookies no account.',
     privacy_3: 'For push notifications we store an anonymous browser token with no location attached. Unsubscribe at any time.',
     privacy_basis: 'Legal basis: legitimate interest (Art. 6(1)(f) GDPR) for weather lookup; consent for push notifications.',
+    privacy_link:  'Full privacy policy →',
 
     support_title: 'Support',
     made_by:       'A small Salzburg project by Bestin Antu.',

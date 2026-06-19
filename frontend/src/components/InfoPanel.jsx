@@ -80,11 +80,19 @@ export default function InfoPanel({ open, onClose, t }) {
           <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3 mt-8">
             {t('privacy_title')}
           </div>
-          <div className="space-y-2 mb-8 border-l-2 border-border pl-4">
+          <div className="space-y-2 mb-3 border-l-2 border-border pl-4">
             {['privacy_1','privacy_2','privacy_3','privacy_basis'].map(k => (
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
             ))}
           </div>
+          <a
+            href="/privacy/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-xs text-primary hover:opacity-70 transition-opacity mb-8 inline-block"
+          >
+            {t('privacy_link')}
+          </a>
 
           {/* ── SUPPORT ── */}
           <div className="w-full h-px bg-border mb-8" />

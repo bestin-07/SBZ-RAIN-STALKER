@@ -78,6 +78,20 @@ export default function Header({
             </button>
           )}
 
+          {/* Privacy link — shown only before subscribing so it's present at the
+              moment of consent, then disappears once they're already subscribed. */}
+          {(notifyState === 'default' || notifyState === 'denied') && (
+            <a
+              href="/privacy/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex font-mono text-[10px] text-muted hover:text-primary transition-colors leading-none"
+              aria-label="privacy policy"
+            >
+              {lang === 'de' ? 'Datenschutz' : 'Privacy'}
+            </a>
+          )}
+
           <button
             onClick={onInfo}
             className="w-9 h-9 flex items-center justify-center rounded-lg border border-border font-mono text-sm text-muted hover:text-primary hover:border-primary transition-colors leading-none"
