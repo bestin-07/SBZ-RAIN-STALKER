@@ -1,16 +1,6 @@
 export default function PrivacyPanel({ open, onClose, t }) {
   if (!open) return null
 
-  const sections = [
-    ['privacy_page_what',    'privacy_page_what_body'],
-    ['privacy_page_notrack', 'privacy_page_notrack_body'],
-    ['privacy_page_browser', 'privacy_page_browser_body'],
-    ['privacy_page_push',    'privacy_page_push_body'],
-    ['privacy_page_basis',   'privacy_page_basis_body'],
-    ['privacy_page_rights',  'privacy_page_rights_body'],
-    ['privacy_page_who',     'privacy_page_who_body'],
-  ]
-
   return (
     <>
       <div
@@ -24,7 +14,6 @@ export default function PrivacyPanel({ open, onClose, t }) {
       >
         <div className="px-6 pt-6 pb-2">
 
-          {/* header row */}
           <div className="flex items-center justify-between mb-6">
             <span className="font-mono text-xs tracking-[0.14em] uppercase text-muted">
               {t('privacy_title')}
@@ -38,29 +27,26 @@ export default function PrivacyPanel({ open, onClose, t }) {
             </button>
           </div>
 
-          {/* summary blurb */}
-          <p className="font-mono text-sm text-muted leading-relaxed mb-6">
-            {t('privacy_1')}
+          {/* plain-language lead */}
+          <p className="font-display font-bold text-lg text-primary leading-snug mb-4">
+            {t('privacy_page_lead')}
+          </p>
+          <p className="font-mono text-sm text-muted leading-relaxed mb-4">
+            {t('privacy_page_honest')}
           </p>
           <p className="font-mono text-sm text-muted leading-relaxed mb-8">
-            {t('privacy_2')}
+            {t('privacy_page_auto')}
           </p>
 
-          <div className="w-full h-px bg-border mb-8" />
-
-          {/* detailed sections */}
-          {sections.map(([titleKey, bodyKey]) => (
-            <div key={titleKey} className="mb-6">
-              <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-2">
-                {t(titleKey)}
-              </div>
-              <p className="font-mono text-sm text-muted leading-relaxed border-l-2 border-border pl-4">
-                {t(bodyKey)}
-              </p>
-            </div>
-          ))}
-
           <div className="w-full h-px bg-border mb-6" />
+
+          {/* technical fine print */}
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
+            {t('privacy_page_tech')}
+          </div>
+          <p className="font-mono text-xs text-muted leading-relaxed border-l-2 border-border pl-4 mb-8">
+            {t('privacy_page_tech_body')}
+          </p>
 
           <button
             onClick={onClose}

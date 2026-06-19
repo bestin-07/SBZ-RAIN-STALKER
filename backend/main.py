@@ -549,10 +549,15 @@ async def run_cycle():
             except Exception as e:
                 print(f"[cycle] verify {point_name}: {e}")
 
-        # Prune rows older than PRUNE_DAYS
+        # Prune forecast rows older than PRUNE_DAYS
         cutoff = now_ts - PRUNE_DAYS * 86400
         with get_db() as (_, cur):
             cur.execute("DELETE FROM forecasts WHERE forecast_made_at < %s", (cutoff,))
+
+        # Prune push subscriptions inactive for 90 days (as stated in privacy policy)
+        sub_cutoff = now_ts - 90 * 86400
+        with get_db() as (_, cur):
+            cur.execute("DELETE FROM push_subscriptions WHERE created_at < %s", (sub_cutoff,))
 
         await check_and_push(client, now_ts)
 
