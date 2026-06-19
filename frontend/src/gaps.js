@@ -78,8 +78,9 @@ function getWeatherNote(weather, t) {
   const code = weather.code ?? -1
   const v = { temp, wind }  // both available to every variant
 
-  // Priority: snow > storm > fog > heat > wind > cold > perfect
+  // Priority: snow > thunder > storm > fog > heat > wind > cold > perfect
   if ((code >= 71 && code <= 77) || code === 85 || code === 86) return t('weather_snow', v)
+  if (code >= 95 && code <= 99) return t('weather_thunder', v)
   if (wind > 50)               return t('weather_storm', v)
   if (code === 45 || code === 48) return t('weather_fog', v)   // fog / rime fog
   if (temp > 33)               return t('weather_scorching', v)
@@ -160,10 +161,11 @@ export function getStatus(
     return { type: 'wait', headline: t('WAIT_MIN', { min: clearInMin }), sub, weather: weatherNote }
   }
 
+  const isThunder = (weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99
   return {
     type: 'stuck',
     headline: t('STUCK'),
-    sub: t(night ? 's_night_stuck' : 's_stuck'),
+    sub: t(isThunder ? 's_stuck_storm' : night ? 's_night_stuck' : 's_stuck'),
     weather: weatherNote,
   }
 }

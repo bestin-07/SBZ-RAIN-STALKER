@@ -18,6 +18,7 @@ const translations = {
     s_almost_over:    ['gleich vorbei, in {min} min trocken, mach dich bereit', 'fast geschafft, in {min} min trocken', 'halt durch, in {min} min ist es trocken'],
     s_almost_now:     ['gleich vorbei, jeden moment trocken', 'der regen lässt nach, gleich trocken', 'fast trocken, schnapp die schuhe'],
     s_stuck:          ['durchgehend regen in den nächsten 3 stunden', 'keine lücke für 3 stunden, gemütlicher tag', 'durchnass die ganze zeit, vielleicht ein film'],
+    s_stuck_storm:    ['blitz und donner — heute bleibst du drin', 'gewitter über salzburg, fühl dich wie im kino', 'donner draußen, du bist genau richtig hier'],
 
     s_night_clear:        ['die ganze nacht trocken, aber vielleicht einfach schlafen?', 'draußen klar, aber das bett ruft', 'bis früh kein regen, schlaf gut'],
     s_night_rain_coming:  ['später kommt regen, aber es ist spät, bleib gemütlich', 'regen kommt noch, aber das bett ist jetzt besser', 'es regnet später, aber das ist morgen dein problem'],
@@ -138,6 +139,7 @@ const translations = {
     weather_freezing:  ['nur {temp}°C, aber frische luft tut gut', 'eisige {temp}°C, dicke jacke und los', '{temp}°C, pack dich richtig ein'],
     weather_windy:     ['{wind} km/h wind, haare werden wild, egal', 'windig mit {wind} km/h, halt deinen hut fest', '{wind} km/h böen, einfach durch'],
     weather_storm:     ['sturm draußen, {wind} km/h, vielleicht ein filmtag', '{wind} km/h, das ist ein drinbleiben', 'wilder wind mit {wind} km/h, lieber abwarten'],
+    weather_thunder:   ['gewitter über salzburg — bleib in sicherheit', 'blitz und donner, {temp}°, besser drinbleiben', 'gewitter draußen, kein schritt nach draußen'],
     weather_snow:      ['es schneit, winterschuhe an und trotzdem raus', 'schnee draußen, warm einpacken und genießen', 'frischer schnee, stiefel und mantel, dann los'],
     weather_fog:       ['neblig draußen, achte auf die sicht', 'dichter nebel, langsam und sichtbar bleiben', 'diesig, mit licht fahren wenn du radelst'],
   },
@@ -160,6 +162,7 @@ const translations = {
     s_almost_over:    ['almost over, dry in {min} min, get ready', 'nearly done, {min} min to dry', 'hold on, dry in {min} min'],
     s_almost_now:     ['almost over, dry any minute now', 'rain is letting up, dry any second', 'nearly dry, grab your shoes'],
     s_stuck:          ['rain straight through the next 3 hours', 'no break in sight for 3 hours, cozy day', 'wet all the way, maybe a film instead'],
+    s_stuck_storm:    ['thunder outside — you\'re exactly where you should be', 'lightning show tonight, best seat is right here', 'nature\'s going full drama — stay safe inside'],
 
     s_night_clear:        ['dry all night, but maybe just sleep?', 'clear out, but bed sounds nice', 'no rain till morning, rest easy'],
     s_night_rain_coming:  ['rain comes later, but it is late, stay cozy', 'rain on the way, but bed is better right now', "it will rain, but that is future you's problem, sleep"],
@@ -280,6 +283,7 @@ const translations = {
     weather_freezing:  ['only {temp}°C, but fresh air is worth it', 'freezing {temp}°C, big coat and go', '{temp}°C, bundle up properly'],
     weather_windy:     ['{wind} km/h winds, hair chaos guaranteed, worth it', 'windy at {wind} km/h, hold onto your hat', '{wind} km/h gusts, lean into it'],
     weather_storm:     ['storm out there, {wind} km/h, a film day maybe', '{wind} km/h, this one is a stay inside', 'wild wind at {wind} km/h, better to wait it out'],
+    weather_thunder:   ['thunderstorm over salzburg — stay safe', 'lightning outside, {temp}°, better stay in', 'thunder and lightning, not the night to be out'],
     weather_snow:      ['it is snowing, warm boots on and go anyway', 'snow out there, bundle up and enjoy it', 'fresh snow, boots and a coat, then go'],
     weather_fog:       ['foggy out there, mind the visibility', 'thick fog, take it slow and stay visible', 'misty out, lights on if you are cycling'],
   },
