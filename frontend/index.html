@@ -103,17 +103,16 @@
   </head>
   <body>
     <div id="root">
-      <!-- Crawlable fallback: shown to no-JS bots and briefly while the app
-           loads, then replaced by React. Real content, not cloaking. -->
-      <div style="max-width:640px;margin:0 auto;padding:3rem 1.25rem;font-family:system-ui,sans-serif;color:#1b2a44;">
-        <h1 style="font-size:1.6rem;letter-spacing:0.12em;margin:0 0 .25rem;">GEMMA RAUS</h1>
-        <p style="color:#6b7280;margin:0 0 1.5rem;">Regenradar &amp; Trockenfenster für Salzburg</p>
-        <p>Gemma Raus zeigt dir hyperlokal, <strong>wann du in Salzburg trocken rausgehen kannst</strong>. Die App findet die nächste trockene Lücke an deinem genauen GPS-Standort mit einem 1-km-Regen-Nowcast, Live-Messstationen (GeoSphere TAWES), Open-Meteo und RainViewer-Radar. Kostenlos, ohne Account, installierbar als App.</p>
-        <h2 style="font-size:1.05rem;margin:1.5rem 0 .5rem;">Häufige Fragen</h2>
-        <p><strong>Regnet es gleich in Salzburg?</strong> Die App zeigt einen Live-Countdown bis zum nächsten Regen und warnt, wenn das trockene Fenster schließt.</p>
-        <p><strong>Wann kann ich rausgehen, ohne nass zu werden?</strong> Gemma Raus findet trockene Fenster von mindestens 30 Minuten in den nächsten 3 Stunden.</p>
-        <p><a href="/regenradar-salzburg/">Mehr zum Regenradar für Salzburg</a></p>
-        <p style="margin-top:1.5rem;color:#6b7280;">Bitte aktiviere JavaScript für die Live-Karte und den Regen-Countdown.</p>
+      <!-- Crawlable fallback for search bots; styled to match the dark app so
+           the brief flash before React mounts is invisible to real users. -->
+      <div style="background:#0E0F11;min-height:100vh;max-width:640px;margin:0 auto;padding:3rem 1.25rem;font-family:system-ui,sans-serif;color:#9CA3AF;">
+        <h1 style="font-size:1.6rem;letter-spacing:0.12em;margin:0 0 .25rem;color:#E7EAF0;">GEMMA RAUS</h1>
+        <p style="color:#6B7280;margin:0 0 1.5rem;">Regenradar &amp; Trockenfenster für Salzburg</p>
+        <p>Gemma Raus zeigt dir hyperlokal, <strong style="color:#E7EAF0;">wann du in Salzburg trocken rausgehen kannst</strong>. Die App findet die nächste trockene Lücke an deinem genauen GPS-Standort mit einem 1-km-Regen-Nowcast, Live-Messstationen (GeoSphere TAWES), Open-Meteo und RainViewer-Radar. Kostenlos, ohne Account, installierbar als App.</p>
+        <h2 style="font-size:1.05rem;margin:1.5rem 0 .5rem;color:#E7EAF0;">Häufige Fragen</h2>
+        <p><strong style="color:#E7EAF0;">Regnet es gleich in Salzburg?</strong> Die App zeigt einen Live-Countdown bis zum nächsten Regen und warnt, wenn das trockene Fenster schließt.</p>
+        <p><strong style="color:#E7EAF0;">Wann kann ich rausgehen, ohne nass zu werden?</strong> Gemma Raus findet trockene Fenster von mindestens 30 Minuten in den nächsten 3 Stunden.</p>
+        <p><a href="/regenradar-salzburg/" style="color:#D4A017;">Mehr zum Regenradar für Salzburg</a></p>
       </div>
     </div>
     <script type="module" src="/src/main.jsx"></script>
