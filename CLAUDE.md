@@ -199,6 +199,9 @@ Live-confirmed 2026-06: the metadata endpoint returns `{ ..., stations: [...] }`
 ### Backend push & accuracy now use the nowcast (aligned with the app)
 `backend/main.py` previously computed push alerts and accuracy from Open-Meteo only — the lagging model — so it could miss convective rain and fire stale alerts. It now mirrors the frontend: `fetch_timeline()` prefers the GeoSphere 1 km/15-min nowcast (Open-Meteo fallback) for the forward timeline, and `fetch_now_precip()` uses nearest TAWES stations (Open-Meteo current fallback) for the live reading. `check_and_push` anchors a real "now" slot from TAWES before running `_analyze_forecast`; `run_cycle` stores nowcast predictions and verifies them against TAWES actuals. **24/7 caveat:** this only runs continuously if the Railway service stays awake (always-on plan); Web Push still reaches closed browsers via the service worker, subject to OS battery throttling.
 
+### Far-from-Salzburg handling
+If the user's location is **> 50 km** from Salzburg centre (`kmFromSalzburg` vs `FAR_KM` in App.jsx), the app shows the `FarAway` screen ("Salzburg misses you") with a **View Salzburg center** button (calls `useDefaultLocation`) instead of loading unreliable far-away data — `loadData` early-returns past 50 km. Within 50 km but outside the bounding box, the softer `isOutsideSalzburg` banner still shows.
+
 ### Geolocation: user gesture + denied-state handling (Safari/Firefox)
 Do **not** auto-request `getCurrentPosition` on mount — Safari and Firefox suppress or never show the permission prompt unless the call originates from a user gesture (Chrome is lenient, which masked this). The request is triggered only by the "GET MY LOCATION" button; App tracks a `locating` state for the button's loading label.
 

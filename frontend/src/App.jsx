@@ -7,11 +7,14 @@ import GapBanner from './components/GapBanner'
 import RainRibbon from './components/RainRibbon'
 import RadarMap from './components/RadarMap'
 import LocationPrompt from './components/LocationPrompt'
+import FarAway from './components/FarAway'
 import InfoPanel from './components/InfoPanel'
 
 const REFRESH_MS = 5 * 60 * 1000
 
 const SBZ_BOUNDS = { minLat: 47.35, maxLat: 48.20, minLon: 12.50, maxLon: 13.80 }
+const SBZ_CENTER = { lat: 47.8009, lon: 13.0448 }
+const FAR_KM = 50  // beyond this, the app is the wrong tool — offer Salzburg instead
 
 function saved(key, fallback) {
   try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
@@ -20,6 +23,14 @@ function saved(key, fallback) {
 function isOutsideSalzburg(loc) {
   return loc.lat < SBZ_BOUNDS.minLat || loc.lat > SBZ_BOUNDS.maxLat ||
          loc.lon < SBZ_BOUNDS.minLon || loc.lon > SBZ_BOUNDS.maxLon
+}
+
+function kmFromSalzburg(loc) {
+  const R = 6371, r = Math.PI / 180
+  const dLat = (loc.lat - SBZ_CENTER.lat) * r, dLon = (loc.lon - SBZ_CENTER.lon) * r
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(loc.lat * r) * Math.cos(SBZ_CENTER.lat * r) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 // VAPID public key (base64url) → Uint8Array. The most compatible form for
@@ -71,6 +82,7 @@ export default function App() {
 
   const t = useI18n(lang)
   const status = getStatus(currentPrecip, gaps, currentWeather, t, tickNow, trend)
+  const farAway = location ? kmFromSalzburg(location) > FAR_KM : false
 
   // Tick every minute so the "rain in X" / "dry in X" countdown moves live
   // between the 5-minute data refreshes (re-synced on each refresh).
@@ -232,6 +244,7 @@ export default function App() {
 
   const loadData = useCallback(async () => {
     if (!location) return
+    if (kmFromSalzburg(location) > FAR_KM) return  // too far — FarAway screen shown instead
     setLoading(true)
     try {
       const [forecastResult, accuracyResult, areaResult, stationResult, nowcastResult] = await Promise.allSettled([
@@ -362,6 +375,12 @@ export default function App() {
           error={locationError}
           onRequest={requestLocation}
           onUseDefault={useDefaultLocation}
+          t={t}
+        />
+      ) : farAway ? (
+        <FarAway
+          km={Math.round(kmFromSalzburg(location))}
+          onViewSalzburg={useDefaultLocation}
           t={t}
         />
       ) : (

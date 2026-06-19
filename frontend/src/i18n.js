@@ -57,6 +57,10 @@ const translations = {
     loc_use_default: 'Stattdessen Salzburg verwenden',
     made_with_love: 'Für Salzburg, mit Liebe',
     recenter:       'Auf meinen Standort zentrieren',
+    far_title:      'Salzburg vermisst dich',
+    far_body:       'Gemma Raus ist nur für Salzburg gemacht, und du bist gerade rund {km} km entfernt. Hier passen die Daten leider nicht.',
+    far_view:       'Salzburg ansehen',
+    far_note:       'Komm vorbei, dann sagt dir Gemma Raus wieder, wann du trocken rauskommst.',
 
     info_title: 'Über Gemma Raus',
     info_p1: 'Gemma Raus zeigt dir genau wann du rausgehen kannst, an deinem GPS-Standort. Regen, Temperatur und Wind werden berücksichtigt.',
@@ -180,6 +184,10 @@ const translations = {
     loc_use_default: 'Use Salzburg center instead',
     made_with_love: 'For Salzburg, with love',
     recenter:       'Center on my location',
+    far_title:      'Salzburg misses you',
+    far_body:       'Gemma Raus is made just for Salzburg, and you are about {km} km away right now. The data does not fit out here.',
+    far_view:       'View Salzburg center',
+    far_note:       'Come visit, and Gemma Raus will tell you when to head out dry again.',
 
     info_title: 'About Gemma Raus',
     info_p1: 'Gemma Raus tells you exactly when to head outside at your GPS location. Rain, temperature and wind are all considered.',
