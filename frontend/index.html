@@ -14,24 +14,36 @@
     <link rel="manifest" href="/manifest.json" />
 
     <!-- Primary meta -->
-    <meta name="description" content="Hyper-local rain-window tracker für Salzburg. Wann kann ich rausgehen ohne nass zu werden?" />
-    <meta name="keywords" content="regen salzburg, regenradar, wetter salzburg, trocken fenster, gemma raus" />
-    <meta name="robots" content="index, follow" />
+    <title>Gemma Raus – Regenradar & Trockenfenster für Salzburg</title>
+    <meta name="description" content="Gemma Raus zeigt hyperlokal, wann du in Salzburg trocken rausgehen kannst: Live-Regenradar, 1-km-Nowcast und Messstationen finden die nächste trockene Lücke. Kostenlos, ohne Account." />
+    <meta name="keywords" content="regen salzburg, regenradar salzburg, wetter salzburg, regnet es in salzburg, wann regnet es salzburg, trockenes fenster, nowcast salzburg, rain radar salzburg, gemma raus" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="Bestin Antu" />
+    <link rel="canonical" href="https://www.gemmaraus.at/" />
+
+    <!-- Local / geo -->
+    <meta name="geo.region" content="AT-5" />
+    <meta name="geo.placename" content="Salzburg" />
+    <meta name="geo.position" content="47.8095;13.0550" />
+    <meta name="ICBM" content="47.8095, 13.0550" />
 
     <!-- Open Graph -->
     <meta property="og:type"        content="website" />
-    <meta property="og:title"       content="Gemma Raus — Salzburg Rain Tracker" />
-    <meta property="og:description" content="Find the next dry window at your exact GPS location in Salzburg." />
-    <meta property="og:image"       content="/og-image.png" />
+    <meta property="og:site_name"   content="Gemma Raus" />
+    <meta property="og:title"       content="Gemma Raus – Regenradar & Trockenfenster für Salzburg" />
+    <meta property="og:description" content="Wann kannst du in Salzburg trocken rausgehen? Live-Regenradar und 1-km-Nowcast finden die nächste trockene Lücke." />
+    <meta property="og:url"         content="https://www.gemmaraus.at/" />
+    <meta property="og:image"       content="https://www.gemmaraus.at/og-image.png" />
     <meta property="og:image:width"  content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:locale"      content="de_AT" />
+    <meta property="og:locale:alternate" content="en_US" />
 
     <!-- Twitter / X card -->
     <meta name="twitter:card"        content="summary_large_image" />
-    <meta name="twitter:title"       content="Gemma Raus — Salzburg Rain Tracker" />
-    <meta name="twitter:description" content="Find the next dry window at your exact GPS location in Salzburg." />
-    <meta name="twitter:image"       content="/og-image.png" />
+    <meta name="twitter:title"       content="Gemma Raus – Regenradar für Salzburg" />
+    <meta name="twitter:description" content="Wann kannst du in Salzburg trocken rausgehen? Finde die nächste trockene Lücke." />
+    <meta name="twitter:image"       content="https://www.gemmaraus.at/og-image.png" />
 
     <!-- Icons -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -44,10 +56,52 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
 
-    <title>GEMMA RAUS</title>
+    <!-- Structured data: app + FAQ (rich results) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Gemma Raus",
+      "alternateName": "Gemma Raus Salzburg",
+      "url": "https://www.gemmaraus.at/",
+      "description": "Hyperlokaler Regenfenster-Tracker für Salzburg. Findet die nächste trockene Lücke an deinem genauen Standort mit 1-km-Radar-Nowcast, Messstationen und Live-Regenradar.",
+      "applicationCategory": "WeatherApplication",
+      "operatingSystem": "Web, iOS, Android",
+      "browserRequirements": "Requires JavaScript",
+      "inLanguage": ["de", "en"],
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+      "areaServed": { "@type": "City", "name": "Salzburg", "address": { "@type": "PostalAddress", "addressCountry": "AT" } },
+      "author": { "@type": "Person", "name": "Bestin Antu" }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "Wann kann ich in Salzburg rausgehen, ohne nass zu werden?", "acceptedAnswer": { "@type": "Answer", "text": "Gemma Raus prüft an deinem genauen Standort einen 1-km-Regen-Nowcast, Live-Messstationen und Open-Meteo und zeigt dir die nächste trockene Lücke von mindestens 30 Minuten." } },
+        { "@type": "Question", "name": "Regnet es gleich in Salzburg?", "acceptedAnswer": { "@type": "Answer", "text": "Die App zeigt einen Live-Countdown bis zum nächsten Regen an deinem Standort und warnt, wenn das trockene Fenster schließt." } },
+        { "@type": "Question", "name": "Ist Gemma Raus kostenlos?", "acceptedAnswer": { "@type": "Answer", "text": "Ja, Gemma Raus ist komplett kostenlos, ohne Account und ohne Tracking, und lässt sich als App auf dem Startbildschirm installieren." } },
+        { "@type": "Question", "name": "Welche Wetterdaten nutzt Gemma Raus?", "acceptedAnswer": { "@type": "Answer", "text": "Einen GeoSphere 1-km-Radar-Nowcast, Open-Meteo, GeoSphere TAWES-Wetterstationen und RainViewer-Radar." } }
+      ]
+    }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Crawlable fallback: shown to no-JS bots and briefly while the app
+           loads, then replaced by React. Real content, not cloaking. -->
+      <div style="max-width:640px;margin:0 auto;padding:3rem 1.25rem;font-family:system-ui,sans-serif;color:#1b2a44;">
+        <h1 style="font-size:1.6rem;letter-spacing:0.12em;margin:0 0 .25rem;">GEMMA RAUS</h1>
+        <p style="color:#6b7280;margin:0 0 1.5rem;">Regenradar &amp; Trockenfenster für Salzburg</p>
+        <p>Gemma Raus zeigt dir hyperlokal, <strong>wann du in Salzburg trocken rausgehen kannst</strong>. Die App findet die nächste trockene Lücke an deinem genauen GPS-Standort mit einem 1-km-Regen-Nowcast, Live-Messstationen (GeoSphere TAWES), Open-Meteo und RainViewer-Radar. Kostenlos, ohne Account, installierbar als App.</p>
+        <h2 style="font-size:1.05rem;margin:1.5rem 0 .5rem;">Häufige Fragen</h2>
+        <p><strong>Regnet es gleich in Salzburg?</strong> Die App zeigt einen Live-Countdown bis zum nächsten Regen und warnt, wenn das trockene Fenster schließt.</p>
+        <p><strong>Wann kann ich rausgehen, ohne nass zu werden?</strong> Gemma Raus findet trockene Fenster von mindestens 30 Minuten in den nächsten 3 Stunden.</p>
+        <p style="margin-top:1.5rem;color:#6b7280;">Bitte aktiviere JavaScript für die Live-Karte und den Regen-Countdown.</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

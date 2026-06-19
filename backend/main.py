@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -574,6 +574,22 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
+
+
+# Canonical-host redirect: send alternate gemmaraus.* hosts (e.g. the apex
+# gemmaraus.at) to the canonical one, 301, so SEO doesn't split across domains.
+# Off unless CANONICAL_HOST is set (e.g. "www.gemmaraus.at"); safe by default.
+CANONICAL_HOST = os.getenv("CANONICAL_HOST", "").strip().lower()
+
+
+@app.middleware("http")
+async def canonical_redirect(request: Request, call_next):
+    if CANONICAL_HOST:
+        host = (request.headers.get("host") or "").split(":")[0].lower()
+        if host and host != CANONICAL_HOST and "gemmaraus" in host:
+            target = request.url.replace(netloc=CANONICAL_HOST, scheme="https")
+            return RedirectResponse(str(target), status_code=301)
+    return await call_next(request)
 
 
 # Security headers on every response

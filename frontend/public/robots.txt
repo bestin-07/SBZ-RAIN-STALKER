@@ -1,4 +1,6 @@
+# Gemma Raus — allow everything, point crawlers to the sitemap
 User-agent: *
 Allow: /
+Disallow: /api/
 
-Sitemap: /sitemap.xml
+Sitemap: https://www.gemmaraus.at/sitemap.xml

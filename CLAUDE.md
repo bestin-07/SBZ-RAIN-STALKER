@@ -175,6 +175,7 @@ RAINING, no break in 3 h → STUCK · "rain straight through"       (s_stuck)
 | `VITE_DONATE_URL` | Frontend **build** + Railway | Donate link for the Support button (PayPal.me/Stripe/Ko-fi); empty = button hidden |
 | `VAPID_PRIVATE_KEY` | Backend (Railway secret) | Push notification signing |
 | `VAPID_PUBLIC_KEY` | Backend (Railway secret) | Push notification public key |
+| `CANONICAL_HOST` | Backend (Railway) | If set (e.g. `www.gemmaraus.at`), 301-redirects other `gemmaraus.*` hosts (apex) to it so SEO consolidates to one domain. Unset = no redirect. |
 
 **`VITE_*` are build-time, not runtime.** They're baked into the JS bundle by Vite during `npm run build`. In the Docker build, Railway service variables only reach the build if declared as `ARG` in the Dockerfile's `frontend` stage (see `ARG VITE_DONATE_URL` / `ARG VITE_BACKEND_URL`). Changing one in Railway requires a **rebuild/redeploy** to take effect — restarting the container is not enough.
 
