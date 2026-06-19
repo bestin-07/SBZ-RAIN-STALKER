@@ -351,11 +351,11 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [privacyOpen])
 
-  const openPrivacy = useCallback((fromModal = false) => {
-    setInfoOpen(false)
-    // If opened from the NotifyModal, keep the modal alive so the user
-    // returns to it when they close the privacy panel (back button or ✕).
-    if (!fromModal) setNotifyModalOpen(false)
+  // source: 'info' | 'modal' | null
+  // Keep the originating panel alive underneath so back/✕ returns the user to it.
+  const openPrivacy = useCallback((source = null) => {
+    if (source !== 'info')  setInfoOpen(false)
+    if (source !== 'modal') setNotifyModalOpen(false)
     setPrivacyOpen(true)
   }, [])
 
@@ -433,13 +433,13 @@ export default function App() {
         </>
       )}
 
-      <InfoPanel open={infoOpen} onClose={closeInfo} onPrivacy={openPrivacy} t={t} />
+      <InfoPanel open={infoOpen} onClose={closeInfo} onPrivacy={() => openPrivacy('info')} t={t} />
 
       {notifyModalOpen && (
         <NotifyModal
           onConfirm={handleNotifyConfirm}
           onDismiss={() => setNotifyModalOpen(false)}
-          onPrivacy={() => openPrivacy(true)}
+          onPrivacy={() => openPrivacy('modal')}
           t={t}
         />
       )}
