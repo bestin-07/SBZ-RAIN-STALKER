@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Accuracy · Admin</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0E0F11; color: #E7EAF0; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    h1 { font-size: 1.1rem; letter-spacing: .15em; text-transform: uppercase; color: #9CA3AF; margin: 0 0 1.5rem; }
+    h2 { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #6B7280; margin: 2rem 0 .6rem; }
+    input { width: 100%; max-width: 320px; background: #16181D; border: 1px solid #2A2E37; color: #E7EAF0; padding: .7rem .8rem; border-radius: 8px; font: inherit; }
+    .hint { color: #6B7280; font-size: .8rem; margin-top: .6rem; }
+    .err { color: #F87171; font-size: .85rem; margin-top: .8rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid #1F2229; }
+    th { color: #6B7280; font-weight: 400; font-size: .8rem; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .acc { font-weight: 700; }
+    .good { color: #34D399; } .mid { color: #FBBF24; } .bad { color: #F87171; } .none { color: #6B7280; }
+    .cards { display: flex; flex-wrap: wrap; gap: .75rem; }
+    .card { background: #16181D; border: 1px solid #1F2229; border-radius: 10px; padding: .8rem 1rem; min-width: 110px; }
+    .card .k { color: #6B7280; font-size: .75rem; } .card .v { font-size: 1.3rem; margin-top: .2rem; }
+    .muted { color: #6B7280; font-size: .8rem; }
+    a { color: #60A5FA; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Accuracy · Admin</h1>
+
+    <div id="gate">
+      <input id="key" type="password" placeholder="admin key, then Enter" autocomplete="off" autofocus />
+      <div class="hint">Hidden dashboard. The key is checked on the server.</div>
+      <div id="err" class="err" style="display:none"></div>
+    </div>
+
+    <div id="dash" style="display:none"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id)
+    const KEY_STORE = 'gr_admin_key'
+
+    function cls(acc) {
+      if (acc === null || acc === undefined) return 'none'
+      if (acc >= 75) return 'good'; if (acc >= 55) return 'mid'; return 'bad'
+    }
+    function pct(a) { return a === null || a === undefined ? '—' : a + '%' }
+    function tstr(t) { return t ? new Date(t * 1000).toLocaleString() : '—' }
+
+    async function load(key) {
+      $('err').style.display = 'none'
+      let res
+      try {
+        res = await fetch('/api/admin/accuracy', { headers: { 'X-Admin-Key': key } })
+      } catch { showErr('Network error.'); return }
+      if (res.status === 401) { showErr('Wrong key.'); sessionStorage.removeItem(KEY_STORE); return }
+      if (res.status === 503) { showErr('Admin not configured (set ADMIN_KEY on the server).'); return }
+      if (!res.ok) { showErr('Error ' + res.status); return }
+      const d = await res.json()
+      sessionStorage.setItem(KEY_STORE, key)
+      render(d)
+    }
+
+    function showErr(m) { const e = $('err'); e.textContent = m; e.style.display = 'block' }
+
+    function render(d) {
+      $('gate').style.display = 'none'
+      const s = d.summary
+      const hz = d.by_horizon
+      const horizonRows = Object.keys(hz).map(h => {
+        const r = hz[h]
+        return `<tr><td>${h}</td>
+          <td class="num acc ${cls(r.accuracy)}">${pct(r.accuracy)}</td>
+          <td class="num">${r.correct}/${r.total}</td>
+          <td class="num">${r.false_alarms}</td>
+          <td class="num">${r.missed}</td></tr>`
+      }).join('')
+      const pointRows = Object.keys(d.by_point).map(p => {
+        const r = d.by_point[p]
+        return `<tr><td>${p}</td>
+          <td class="num acc ${cls(r.accuracy)}">${pct(r.accuracy)}</td>
+          <td class="num">${r.correct}/${r.total}</td></tr>`
+      }).join('')
+
+      $('dash').innerHTML = `
+        <div class="cards">
+          <div class="card"><div class="k">verified</div><div class="v">${s.verified}</div></div>
+          <div class="card"><div class="k">pending</div><div class="v">${s.pending}</div></div>
+          <div class="card"><div class="k">total rows</div><div class="v">${s.total_rows}</div></div>
+        </div>
+        <p class="muted">Window: last ${d.window_days} days · dry threshold ${d.dry_threshold} mm · last forecast ${tstr(s.last_forecast_at)}</p>
+
+        <h2>By horizon</h2>
+        <table><thead><tr><th>horizon</th><th class="num">accuracy</th><th class="num">correct</th><th class="num">false alarm</th><th class="num">missed</th></tr></thead>
+        <tbody>${horizonRows}</tbody></table>
+        <p class="muted">false alarm = predicted rain, stayed dry · missed = predicted dry, it rained</p>
+
+        <h2>By point</h2>
+        <table><thead><tr><th>point</th><th class="num">accuracy</th><th class="num">correct</th></tr></thead>
+        <tbody>${pointRows}</tbody></table>
+
+        <p class="muted" style="margin-top:2rem"><a href="#" id="refresh">refresh</a> · <a href="#" id="logout">logout</a></p>`
+      $('dash').style.display = 'block'
+      $('refresh').onclick = (e) => { e.preventDefault(); load(sessionStorage.getItem(KEY_STORE)) }
+      $('logout').onclick = (e) => { e.preventDefault(); sessionStorage.removeItem(KEY_STORE); location.reload() }
+    }
+
+    $('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') load($('key').value.trim()) })
+    const saved = sessionStorage.getItem(KEY_STORE)
+    if (saved) load(saved)
+  </script>
+</body>
+</html>

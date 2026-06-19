@@ -2,5 +2,6 @@
 User-agent: *
 Allow: /
 Disallow: /api/
+Disallow: /admin/
 
 Sitemap: https://www.gemmaraus.at/sitemap.xml

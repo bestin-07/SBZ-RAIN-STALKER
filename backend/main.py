@@ -13,6 +13,7 @@ import base64
 import os
 import re
 import uuid
+import secrets
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -741,6 +742,81 @@ def get_accuracy(request: Request):
         }
 
     return result
+
+
+ADMIN_KEY = os.getenv("ADMIN_KEY", "")
+
+
+@app.get("/api/admin/accuracy")
+@limiter.limit("20/minute")
+def admin_accuracy(request: Request):
+    """Detailed accuracy dashboard data. Requires the X-Admin-Key header to
+    match the ADMIN_KEY env var. Disabled (503) if ADMIN_KEY is unset."""
+    if not ADMIN_KEY:
+        return JSONResponse({"error": "admin not configured"}, status_code=503)
+    provided = request.headers.get("x-admin-key", "")
+    if not provided or not secrets.compare_digest(provided, ADMIN_KEY):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    conn = get_db()
+    th = DRY_THRESHOLD
+    window_days = 30
+    cutoff = int(datetime.now(timezone.utc).timestamp()) - window_days * 86400
+
+    def horizon_stats(h):
+        row = conn.execute(
+            """
+            SELECT COUNT(*),
+                   SUM(CASE WHEN (predicted_precip < ? AND actual_precip < ?) OR
+                                 (predicted_precip >= ? AND actual_precip >= ?) THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN predicted_precip >= ? AND actual_precip < ?  THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN predicted_precip < ?  AND actual_precip >= ? THEN 1 ELSE 0 END)
+            FROM forecasts WHERE verified=1 AND horizon_minutes=? AND forecast_made_at > ?
+            """,
+            (th, th, th, th, th, th, th, th, h, cutoff),
+        ).fetchone()
+        total, correct, false_alarm, missed = (v or 0 for v in row)
+        return {
+            "total": total, "correct": correct,
+            "accuracy": round(correct / total * 100, 1) if total else None,
+            "false_alarms": false_alarm,  # predicted rain, stayed dry
+            "missed": missed,             # predicted dry, it rained
+        }
+
+    by_point = {}
+    for p in POINTS:
+        row = conn.execute(
+            """
+            SELECT COUNT(*),
+                   SUM(CASE WHEN (predicted_precip < ? AND actual_precip < ?) OR
+                                 (predicted_precip >= ? AND actual_precip >= ?) THEN 1 ELSE 0 END)
+            FROM forecasts WHERE verified=1 AND point_name=? AND forecast_made_at > ?
+            """,
+            (th, th, th, th, p["name"], cutoff),
+        ).fetchone()
+        total, correct = row[0] or 0, row[1] or 0
+        by_point[p["name"]] = {
+            "total": total, "correct": correct,
+            "accuracy": round(correct / total * 100, 1) if total else None,
+        }
+
+    srow = conn.execute("SELECT COUNT(*), COALESCE(SUM(verified),0) FROM forecasts").fetchone()
+    total_rows, verified = srow[0] or 0, srow[1] or 0
+    last_made = conn.execute("SELECT MAX(forecast_made_at) FROM forecasts").fetchone()[0]
+
+    return {
+        "window_days": window_days,
+        "dry_threshold": th,
+        "summary": {
+            "total_rows": total_rows,
+            "verified": verified,
+            "pending": total_rows - verified,
+            "last_forecast_at": last_made,
+            "points": [p["name"] for p in POINTS],
+        },
+        "by_horizon": {f"{h}min": horizon_stats(h) for h in [30, 60, 90]},
+        "by_point": by_point,
+    }
 
 
 @app.get("/api/health")
