@@ -99,7 +99,7 @@ const translations = {
     privacy_basis: 'Rechtsgrundlage: berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO) für die Wetterabfrage; Einwilligung für Push.',
 
     support_title: 'Unterstützen',
-    made_by:       'Gebaut und am Laufen gehalten von Bestin Antu — einem Salzburger, der das Regen-Raten satt hatte.',
+    made_by:       'Ein kleines Salzburg-Projekt von Bestin Antu.',
     buy_coffee:    'Spendier mir einen Kaffee',
     coffee_scan:   'Spendier mir einen Kaffee',
     coffee_soon:   'Spenden-Link folgt in Kürze',
@@ -226,7 +226,7 @@ const translations = {
     privacy_basis: 'Legal basis: legitimate interest (Art. 6(1)(f) GDPR) for weather lookup; consent for push notifications.',
 
     support_title: 'Support',
-    made_by:       'Built and kept running by Bestin Antu — a Salzburg local who got tired of guessing the rain.',
+    made_by:       'A small Salzburg project by Bestin Antu.',
     buy_coffee:    'Buy me a coffee',
     coffee_scan:   'Buy me a coffee',
     coffee_soon:   'Donate link coming soon',
