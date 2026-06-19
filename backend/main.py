@@ -5,9 +5,11 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from contextlib import contextmanager, asynccontextmanager
+import psycopg2
+import psycopg2.pool
 import httpx
 import asyncio
-import sqlite3
 import json
 import base64
 import os
@@ -15,7 +17,6 @@ import re
 import uuid
 import secrets
 from datetime import datetime, timezone
-from contextlib import asynccontextmanager
 
 try:
     from pywebpush import webpush, WebPushException
@@ -32,75 +33,91 @@ POINTS = [
     {"name": "maxglan",    "lat": 47.7930, "lon": 13.0250},
 ]
 
-# Sanitise DB_PATH to prevent path traversal via env var
-_raw_db = os.getenv("DB_PATH", "accuracy.db")
-DB_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    os.path.basename(_raw_db)
-)
+DRY_THRESHOLD = 0.1
+VAPID_CONTACT = os.getenv("VAPID_CONTACT", "mailto:gemmaraus@example.com")
+MAX_PUSH_SUBS = 50_000
+PRUNE_DAYS    = 8
 
-DRY_THRESHOLD   = 0.1
-VAPID_CONTACT   = os.getenv("VAPID_CONTACT", "mailto:gemmaraus@example.com")
-MAX_PUSH_SUBS   = 50_000   # cap to prevent DB exhaustion
-PRUNE_DAYS      = 8        # keep forecast rows for 8 days
-
-# Push endpoint must start with a known push service domain
 _PUSH_ORIGIN_RE = re.compile(
     r'^https://(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|'
     r'[a-z0-9-]+\.notify\.windows\.com|[a-z0-9-]+\.push\.apple\.com|'
     r'[a-z0-9-]+\.mozilla\.com)/'
 )
 
-# VAPID keys — loaded at startup
-VAPID_PRIVATE_KEY = None
-VAPID_PUBLIC_KEY  = None
+VAPID_PRIVATE_KEY: str | None = None
+VAPID_PUBLIC_KEY:  str | None = None
 
-# Shared SQLite connection (check_same_thread=False for async safety)
-_db_conn: sqlite3.Connection | None = None
-
-
-def get_db() -> sqlite3.Connection:
-    return _db_conn  # type: ignore[return-value]
+_db_pool: psycopg2.pool.ThreadedConnectionPool | None = None
 
 
 # ---------------------------------------------------------------------------
-# DB init
+# DB connection pool
 # ---------------------------------------------------------------------------
+
+@contextmanager
+def get_db():
+    """Yield (conn, cursor). Auto-commits on clean exit, rolls back on error."""
+    conn = _db_pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            yield conn, cur
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        _db_pool.putconn(conn)
+
 
 def init_db():
-    global _db_conn
-    _db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    _db_conn.execute("PRAGMA journal_mode=WAL")
-    _db_conn.execute("PRAGMA busy_timeout=5000")
-    _db_conn.execute("""
-        CREATE TABLE IF NOT EXISTS forecasts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            point_name TEXT NOT NULL,
-            forecast_made_at INTEGER NOT NULL,
-            target_time INTEGER NOT NULL,
-            horizon_minutes INTEGER NOT NULL,
-            predicted_precip REAL NOT NULL,
-            actual_precip REAL,
-            verified INTEGER DEFAULT 0
+    global _db_pool
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise RuntimeError(
+            "DATABASE_URL is not set — add a PostgreSQL service on Railway "
+            "and link it to this service"
         )
-    """)
-    _db_conn.execute("CREATE INDEX IF NOT EXISTS idx_target ON forecasts(target_time, verified)")
-    _db_conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
-    _db_conn.execute("""
-        CREATE TABLE IF NOT EXISTS push_subscriptions (
-            endpoint TEXT PRIMARY KEY,
-            p256dh TEXT NOT NULL,
-            auth TEXT NOT NULL,
-            token TEXT NOT NULL,
-            created_at REAL NOT NULL
-        )
-    """)
-    # Migration: add token column if upgrading from older schema
+    _db_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, dsn=db_url)
+
+    with get_db() as (_, cur):
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS forecasts (
+                id               BIGSERIAL PRIMARY KEY,
+                point_name       TEXT             NOT NULL,
+                forecast_made_at BIGINT           NOT NULL,
+                target_time      BIGINT           NOT NULL,
+                horizon_minutes  INTEGER          NOT NULL,
+                predicted_precip DOUBLE PRECISION NOT NULL,
+                actual_precip    DOUBLE PRECISION,
+                verified         INTEGER          DEFAULT 0
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_target
+            ON forecasts (target_time, verified)
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                endpoint   TEXT             PRIMARY KEY,
+                p256dh     TEXT             NOT NULL,
+                auth       TEXT             NOT NULL,
+                token      TEXT             NOT NULL DEFAULT '',
+                created_at DOUBLE PRECISION NOT NULL
+            )
+        """)
+
+    # Parse host from URL for the log (mask credentials)
     try:
-        _db_conn.execute("ALTER TABLE push_subscriptions ADD COLUMN token TEXT NOT NULL DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass  # column already exists
-    _db_conn.commit()
+        host = db_url.split("@")[-1].split("/")[0]
+    except Exception:
+        host = "unknown"
+    print(f"[db] PostgreSQL connected → {host}")
 
 
 # ---------------------------------------------------------------------------
@@ -108,12 +125,11 @@ def init_db():
 # ---------------------------------------------------------------------------
 
 def _prepare_vapid_private(priv_str: str):
-    """pywebpush/py_vapid needs the private key as base64url-encoded DER — a PEM
-    fails with 'Could not deserialize key data'. Accept PEM or base64url-DER and
-    return (base64url_DER_private, derived_base64url_public)."""
+    """Accept PEM or base64url-DER; return (base64url_DER_PKCS8, derived_pub_b64).
+    pywebpush requires base64url-DER, not PEM."""
     from cryptography.hazmat.primitives.serialization import (
-        load_pem_private_key, load_der_private_key, Encoding, PublicFormat,
-        PrivateFormat, NoEncryption,
+        load_pem_private_key, load_der_private_key,
+        Encoding, PublicFormat, PrivateFormat, NoEncryption,
     )
     s = (priv_str or "").strip()
     if "BEGIN" in s:
@@ -121,10 +137,10 @@ def _prepare_vapid_private(priv_str: str):
     else:
         raw = base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
         key = load_der_private_key(raw, password=None)
-    der = key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+    der     = key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
     priv_b64 = base64.urlsafe_b64encode(der).rstrip(b"=").decode()
-    pub = key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
-    pub_b64 = base64.urlsafe_b64encode(pub).rstrip(b"=").decode()
+    pub     = key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+    pub_b64  = base64.urlsafe_b64encode(pub).rstrip(b"=").decode()
     return priv_b64, pub_b64
 
 
@@ -137,20 +153,21 @@ def init_vapid():
         VAPID_PUBLIC_KEY = env_pub
         try:
             priv_b64, derived_pub = _prepare_vapid_private(env_priv)
-            VAPID_PRIVATE_KEY = priv_b64  # normalized so pywebpush can parse it
+            VAPID_PRIVATE_KEY = priv_b64
             if derived_pub != env_pub.rstrip("="):
-                print("[vapid] *** WARNING: VAPID_PUBLIC_KEY does NOT match VAPID_PRIVATE_KEY — "
-                      f"push will fail. Correct public key for this private key is: {derived_pub}")
+                print("[vapid] *** WARNING: public key does NOT match private key — push will fail")
             else:
-                print("[vapid] Loaded from env (key pair verified + normalized for pywebpush ✓)")
+                print("[vapid] Loaded from env (pair verified ✓)")
         except Exception as e:
             VAPID_PRIVATE_KEY = env_priv
-            print(f"[vapid] *** Could NOT parse VAPID_PRIVATE_KEY — push will fail: {e}")
+            print(f"[vapid] *** Could not parse private key — push will fail: {e}")
         return
 
-    conn = get_db()
-    priv_row = conn.execute("SELECT value FROM settings WHERE key='vapid_private_key'").fetchone()
-    pub_row  = conn.execute("SELECT value FROM settings WHERE key='vapid_public_key'").fetchone()
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = 'vapid_private_key'")
+        priv_row = cur.fetchone()
+        cur.execute("SELECT value FROM settings WHERE key = 'vapid_public_key'")
+        pub_row = cur.fetchone()
 
     if priv_row and pub_row:
         VAPID_PUBLIC_KEY = pub_row[0]
@@ -161,23 +178,33 @@ def init_vapid():
         print("[vapid] Loaded from database")
         return
 
+    # Generate a fresh keypair and persist it
     from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, SECP256R1
     from cryptography.hazmat.primitives.serialization import (
-        Encoding, PublicFormat, PrivateFormat, NoEncryption
+        Encoding, PublicFormat, PrivateFormat, NoEncryption,
     )
     private_key = generate_private_key(SECP256R1())
-    der       = private_key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
-    priv_b64  = base64.urlsafe_b64encode(der).rstrip(b"=").decode()
-    pub_bytes = private_key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
-    pub_b64   = base64.urlsafe_b64encode(pub_bytes).rstrip(b"=").decode()
+    der      = private_key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+    priv_b64 = base64.urlsafe_b64encode(der).rstrip(b"=").decode()
+    pub_b64  = base64.urlsafe_b64encode(
+        private_key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+    ).rstrip(b"=").decode()
 
     VAPID_PRIVATE_KEY = priv_b64
     VAPID_PUBLIC_KEY  = pub_b64
 
-    conn.execute("INSERT OR REPLACE INTO settings VALUES ('vapid_private_key', ?)", (priv_b64,))
-    conn.execute("INSERT OR REPLACE INTO settings VALUES ('vapid_public_key',  ?)", (pub_b64,))
-    conn.commit()
-    print(f"[vapid] Generated new keypair. Public key: {pub_b64[:20]}...")
+    with get_db() as (_, cur):
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES ('vapid_private_key', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (priv_b64,),
+        )
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES ('vapid_public_key', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (pub_b64,),
+        )
+    print(f"[vapid] Generated new keypair — public key: {pub_b64[:20]}…")
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +212,7 @@ def init_vapid():
 # ---------------------------------------------------------------------------
 
 def _send_push_sync(endpoint: str, p256dh: str, auth: str, payload: dict) -> bool:
-    """Returns False if the subscription is expired/gone and should be deleted."""
+    """Returns False if the subscription is expired/gone (should be deleted)."""
     try:
         webpush(
             subscription_info={"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}},
@@ -197,12 +224,10 @@ def _send_push_sync(endpoint: str, p256dh: str, auth: str, payload: dict) -> boo
         return True
     except WebPushException as e:
         if e.response is not None and e.response.status_code in (404, 410):
-            return False  # Subscription expired
+            return False  # subscription expired
         print(f"[push] WebPushException: {e}")
         return True
     except Exception as e:
-        # e.g. a malformed VAPID key — never let a push failure 500 the caller
-        # (this is what broke /api/subscribe). Keep the subscription.
         print(f"[push] send error: {e}")
         return True
 
@@ -210,11 +235,13 @@ def _send_push_sync(endpoint: str, p256dh: str, auth: str, payload: dict) -> boo
 async def push_to_all(payload: dict):
     if not PUSH_AVAILABLE or not VAPID_PRIVATE_KEY:
         return
-    conn = get_db()
-    subs = conn.execute(
-        "SELECT endpoint, p256dh, auth FROM push_subscriptions LIMIT ?",
-        (MAX_PUSH_SUBS,)
-    ).fetchall()
+
+    with get_db() as (_, cur):
+        cur.execute(
+            "SELECT endpoint, p256dh, auth FROM push_subscriptions LIMIT %s",
+            (MAX_PUSH_SUBS,),
+        )
+        subs = cur.fetchall()
 
     expired = []
     for endpoint, p256dh, auth in subs:
@@ -223,9 +250,11 @@ async def push_to_all(payload: dict):
             expired.append(endpoint)
 
     if expired:
-        for ep in expired:
-            conn.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (ep,))
-        conn.commit()
+        with get_db() as (_, cur):
+            cur.execute(
+                "DELETE FROM push_subscriptions WHERE endpoint = ANY(%s)",
+                (expired,),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +328,7 @@ async def _load_tawes_stations(client: httpx.AsyncClient):
         r = await client.get(f"{GEOSPHERE}/station/current/tawes-v1-10min/metadata", timeout=10)
         r.raise_for_status()
         out = []
-        for s in r.json().get("stations", [])[:500]:  # cap at 500 stations
+        for s in r.json().get("stations", [])[:500]:
             if s.get("is_active") is False:
                 continue
             try:
@@ -379,25 +408,25 @@ def _analyze_forecast(times, precips, now_ts):
                     1 for t2, p2 in slots if t2 >= gap_t and p2 < DRY_THRESHOLD
                     and t2 < next(
                         (t3 for t3, p3 in slots if t3 > gap_t and p3 >= DRY_THRESHOLD),
-                        gap_t + 99999
+                        gap_t + 99999,
                     )
                 )
-                gap_min = gap_slots * 15
-                if gap_min >= 10:
-                    return {"type": "gap", "gap_in_min": gap_in_min, "gap_min": gap_min}
+                if gap_slots * 15 >= 10:
+                    return {"type": "gap", "gap_in_min": gap_in_min, "gap_min": gap_slots * 15}
     else:
         window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 30 * 60]
         for rain_t, p in window:
             if p >= DRY_THRESHOLD:
-                rain_in_min = max(0, round((rain_t - now_ts) / 60))
-                return {"type": "rain_incoming", "rain_in_min": rain_in_min}
+                return {"type": "rain_incoming",
+                        "rain_in_min": max(0, round((rain_t - now_ts) / 60))}
 
     return None
 
 
 def _cooldown_ok(key: str, seconds: int, now_ts: int) -> bool:
-    conn = get_db()
-    row  = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
+        row = cur.fetchone()
     return (now_ts - float(row[0])) >= seconds if row else True
 
 
@@ -407,11 +436,11 @@ def _build_payload(event: dict) -> dict:
         x, y = int(event["gap_in_min"]), int(event["gap_min"])
         if x == 0:
             return {"type": "gap",
-                    "title_de": "Jetzt trocken",   "body_de": f"{y} Minuten Fenster — rausgehen!",
-                    "title_en": "Dry now",          "body_en": f"{y} minute window — go!"}
+                    "title_de": "Jetzt trocken",    "body_de": f"{y} Minuten Fenster — rausgehen!",
+                    "title_en": "Dry now",           "body_en": f"{y} minute window — go!"}
         return {"type": "gap",
-                "title_de": f"Lücke in {x} Min.", "body_de": f"{y} Minuten trocken — bereit machen",
-                "title_en": f"Gap in {x} min",    "body_en": f"{y} minutes dry — get ready"}
+                "title_de": f"Lücke in {x} Min.",  "body_de": f"{y} Minuten trocken — bereit machen",
+                "title_en": f"Gap in {x} min",      "body_en": f"{y} minutes dry — get ready"}
     if t == "rain_incoming":
         x = int(event["rain_in_min"])
         if x <= 5:
@@ -419,8 +448,8 @@ def _build_payload(event: dict) -> dict:
                     "title_de": "Regen kommt gleich", "body_de": "Jetzt noch schnell reinkommen",
                     "title_en": "Rain arriving now",   "body_en": "Head inside soon"}
         return {"type": "rain",
-                "title_de": f"Regen in {x} Min.", "body_de": "Schnell noch raus oder drin bleiben",
-                "title_en": f"Rain in {x} min",   "body_en": "Get out now or stay in"}
+                "title_de": f"Regen in {x} Min.",   "body_de": "Schnell noch raus oder drin bleiben",
+                "title_en": f"Rain in {x} min",      "body_en": "Get out now or stay in"}
     return {}
 
 
@@ -430,9 +459,7 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         try:
             times, precips = await fetch_timeline(client, point)
             now_precip     = await fetch_now_precip(client, point)
-            times   = [now_ts] + list(times)
-            precips = [now_precip] + list(precips)
-            ev = _analyze_forecast(times, precips, now_ts)
+            ev = _analyze_forecast([now_ts] + list(times), [now_precip] + list(precips), now_ts)
             if ev:
                 events.append(ev)
         except Exception as e:
@@ -441,7 +468,6 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
     if not events:
         return
 
-    conn = get_db()
     gap_events  = [e for e in events if e["type"] == "gap"]
     rain_events = [e for e in events if e["type"] == "rain_incoming"]
     sent = False
@@ -449,17 +475,23 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
     if gap_events and _cooldown_ok("last_gap_push_ts", 45 * 60, now_ts):
         best = min(gap_events, key=lambda e: e["gap_in_min"])
         await push_to_all(_build_payload(best))
-        conn.execute("INSERT OR REPLACE INTO settings VALUES ('last_gap_push_ts', ?)", (str(float(now_ts)),))
+        with get_db() as (_, cur):
+            cur.execute(
+                "INSERT INTO settings (key, value) VALUES ('last_gap_push_ts', %s)"
+                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                (str(float(now_ts)),),
+            )
         sent = True
 
     if not sent and rain_events and _cooldown_ok("last_rain_push_ts", 60 * 60, now_ts):
         best = min(rain_events, key=lambda e: e["rain_in_min"])
         await push_to_all(_build_payload(best))
-        conn.execute("INSERT OR REPLACE INTO settings VALUES ('last_rain_push_ts', ?)", (str(float(now_ts)),))
-        sent = True
-
-    if sent:
-        conn.commit()
+        with get_db() as (_, cur):
+            cur.execute(
+                "INSERT INTO settings (key, value) VALUES ('last_rain_push_ts', %s)"
+                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                (str(float(now_ts)),),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -468,9 +500,10 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
 
 async def run_cycle():
     now_ts = int(datetime.now(timezone.utc).timestamp())
-    conn   = get_db()
 
     async with httpx.AsyncClient() as client:
+        # Store new forecasts for all points × horizons
+        forecast_rows = []
         for point in POINTS:
             try:
                 times, precips = await fetch_timeline(client, point)
@@ -478,19 +511,29 @@ async def run_cycle():
                     target_ts = now_ts + horizon * 60
                     best_idx  = min(range(len(times)), key=lambda i: abs(times[i] - target_ts), default=None)
                     if best_idx is not None:
-                        conn.execute(
-                            "INSERT INTO forecasts (point_name, forecast_made_at, target_time, horizon_minutes, predicted_precip) VALUES (?,?,?,?,?)",
-                            (point["name"], now_ts, target_ts, horizon, precips[best_idx]),
+                        forecast_rows.append(
+                            (point["name"], now_ts, target_ts, horizon, precips[best_idx])
                         )
             except Exception as e:
-                print(f"[cycle] forecast failed for {point['name']}: {e}")
+                print(f"[cycle] forecast {point['name']}: {e}")
 
-        conn.commit()
+        if forecast_rows:
+            with get_db() as (_, cur):
+                cur.executemany(
+                    "INSERT INTO forecasts"
+                    " (point_name, forecast_made_at, target_time, horizon_minutes, predicted_precip)"
+                    " VALUES (%s, %s, %s, %s, %s)",
+                    forecast_rows,
+                )
 
-        rows = conn.execute(
-            "SELECT id, point_name FROM forecasts WHERE verified=0 AND target_time < ?",
-            (now_ts - 120,),
-        ).fetchall()
+        # Verify past predictions whose target time has passed
+        with get_db() as (_, cur):
+            cur.execute(
+                "SELECT id, point_name FROM forecasts"
+                " WHERE verified = 0 AND target_time < %s",
+                (now_ts - 120,),
+            )
+            rows = cur.fetchall()
 
         for row_id, point_name in rows:
             point = next((p for p in POINTS if p["name"] == point_name), None)
@@ -498,19 +541,18 @@ async def run_cycle():
                 continue
             try:
                 actual = await fetch_now_precip(client, point)
-                conn.execute(
-                    "UPDATE forecasts SET actual_precip=?, verified=1 WHERE id=?",
-                    (actual, row_id),
-                )
+                with get_db() as (_, cur):
+                    cur.execute(
+                        "UPDATE forecasts SET actual_precip = %s, verified = 1 WHERE id = %s",
+                        (actual, row_id),
+                    )
             except Exception as e:
-                print(f"[cycle] verify failed for {point_name}: {e}")
+                print(f"[cycle] verify {point_name}: {e}")
 
-        conn.commit()
-
-        # Prune old rows to keep DB from growing unbounded
+        # Prune rows older than PRUNE_DAYS
         cutoff = now_ts - PRUNE_DAYS * 86400
-        conn.execute("DELETE FROM forecasts WHERE forecast_made_at < ?", (cutoff,))
-        conn.commit()
+        with get_db() as (_, cur):
+            cur.execute("DELETE FROM forecasts WHERE forecast_made_at < %s", (cutoff,))
 
         await check_and_push(client, now_ts)
 
@@ -542,8 +584,8 @@ async def lifespan(app: FastAPI):
         await task
     except asyncio.CancelledError:
         pass
-    if _db_conn:
-        _db_conn.close()
+    if _db_pool:
+        _db_pool.closeall()
 
 
 # ---------------------------------------------------------------------------
@@ -563,10 +605,9 @@ async def generic_exception_handler(request: Request, exc: Exception):
     return JSONResponse({"error": "internal error"}, status_code=500)
 
 
-# CORS — locked to production origin; override via ALLOWED_ORIGINS env var
+# CORS — same-origin in prod; open for localhost dev
 _allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 if not _allowed_origins:
-    # Same-origin deployment: CORS only needed for localhost dev
     _allowed_origins = ["http://localhost:5173", "http://localhost:4173"]
 
 app.add_middleware(
@@ -577,18 +618,15 @@ app.add_middleware(
 )
 
 
-# Canonical-host redirect: send alternate gemmaraus.* hosts (e.g. the apex
-# gemmaraus.at) to the canonical one, 301, so SEO doesn't split across domains.
-# Off unless CANONICAL_HOST is set (e.g. "www.gemmaraus.at"); safe by default.
+# Canonical-host redirect: non-canonical gemmaraus.* hosts → www.gemmaraus.at (301)
+# Set CANONICAL_HOST=www.gemmaraus.at to activate. ACME challenge paths are exempt.
 CANONICAL_HOST = os.getenv("CANONICAL_HOST", "").strip().lower()
 
 
 @app.middleware("http")
 async def canonical_redirect(request: Request, call_next):
     if CANONICAL_HOST:
-        host = (request.headers.get("host") or "").split(":")[0].lower()
-        # Never redirect ACME cert-validation challenges — that would break
-        # HTTPS certificate issuance/renewal.
+        host   = (request.headers.get("host") or "").split(":")[0].lower()
         is_acme = request.url.path.startswith("/.well-known/acme-challenge/")
         if host and host != CANONICAL_HOST and "gemmaraus" in host and not is_acme:
             target = request.url.replace(netloc=CANONICAL_HOST, scheme="https")
@@ -600,12 +638,12 @@ async def canonical_redirect(request: Request, call_next):
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
-    response.headers["X-Content-Type-Options"]  = "nosniff"
-    response.headers["X-Frame-Options"]          = "DENY"
-    response.headers["Referrer-Policy"]          = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"]       = "geolocation=(self), camera=(), microphone=()"
+    response.headers["X-Content-Type-Options"]   = "nosniff"
+    response.headers["X-Frame-Options"]           = "DENY"
+    response.headers["Referrer-Policy"]           = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"]        = "geolocation=(self), camera=(), microphone=()"
     response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
-    response.headers["Content-Security-Policy"]  = (
+    response.headers["Content-Security-Policy"]   = (
         "default-src 'self'; "
         "script-src 'self' 'wasm-unsafe-eval'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
@@ -637,7 +675,6 @@ def get_vapid_public_key():
 @app.post("/api/subscribe")
 @limiter.limit("30/minute")
 async def subscribe(request: Request):
-    # Body size guard
     content_length = int(request.headers.get("content-length", 0))
     if content_length > 4096:
         return JSONResponse({"error": "payload too large"}, status_code=413)
@@ -647,7 +684,6 @@ async def subscribe(request: Request):
     p256dh   = body.get("keys", {}).get("p256dh", "")
     auth     = body.get("keys", {}).get("auth", "")
 
-    # Validate fields
     if not endpoint or not p256dh or not auth:
         return JSONResponse({"error": "invalid subscription"}, status_code=400)
     if not _PUSH_ORIGIN_RE.match(endpoint) or len(endpoint) > 500:
@@ -657,26 +693,28 @@ async def subscribe(request: Request):
     if len(auth) < 20 or len(auth) > 100:
         return JSONResponse({"error": "invalid auth"}, status_code=400)
 
-    conn = get_db()
-
-    # Cap total subscriptions to prevent DB exhaustion
-    count = conn.execute("SELECT COUNT(*) FROM push_subscriptions").fetchone()[0]
-    if count >= MAX_PUSH_SUBS:
-        return JSONResponse({"error": "service at capacity"}, status_code=503)
-
     token = str(uuid.uuid4())
-    conn.execute(
-        "INSERT OR REPLACE INTO push_subscriptions (endpoint, p256dh, auth, token, created_at) VALUES (?,?,?,?,?)",
-        (endpoint, p256dh, auth, token, datetime.now(timezone.utc).timestamp()),
-    )
-    conn.commit()
+    with get_db() as (_, cur):
+        cur.execute("SELECT COUNT(*) FROM push_subscriptions")
+        if cur.fetchone()[0] >= MAX_PUSH_SUBS:
+            return JSONResponse({"error": "service at capacity"}, status_code=503)
 
-    # Immediate confirmation push so the user sees notifications actually work
-    # right away — otherwise nothing arrives until a real rain/gap event.
-    # Suppressed (confirm:false) on the silent re-sync the app does on load.
+        cur.execute(
+            """
+            INSERT INTO push_subscriptions (endpoint, p256dh, auth, token, created_at)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (endpoint) DO UPDATE SET
+                p256dh     = EXCLUDED.p256dh,
+                auth       = EXCLUDED.auth,
+                token      = EXCLUDED.token,
+                created_at = EXCLUDED.created_at
+            """,
+            (endpoint, p256dh, auth, token, datetime.now(timezone.utc).timestamp()),
+        )
+
     if bool(body.get("confirm", True)) and PUSH_AVAILABLE and VAPID_PRIVATE_KEY:
         await asyncio.to_thread(_send_push_sync, endpoint, p256dh, auth, {
-            "type": "gap",
+            "type":     "gap",
             "title_de": "Benachrichtigungen aktiv ✓",
             "body_de":  "Du bekommst Bescheid bei Regenlücken.",
             "title_en": "Notifications on ✓",
@@ -700,44 +738,44 @@ async def unsubscribe(request: Request):
     if not endpoint or not token:
         return JSONResponse({"error": "endpoint and token required"}, status_code=400)
 
-    conn = get_db()
-    row  = conn.execute(
-        "SELECT token FROM push_subscriptions WHERE endpoint=?", (endpoint,)
-    ).fetchone()
+    with get_db() as (_, cur):
+        cur.execute("SELECT token FROM push_subscriptions WHERE endpoint = %s", (endpoint,))
+        row = cur.fetchone()
+        if not row:
+            return {"ok": True}
+        if row[0] != token:
+            return JSONResponse({"error": "invalid token"}, status_code=403)
+        cur.execute("DELETE FROM push_subscriptions WHERE endpoint = %s", (endpoint,))
 
-    if not row:
-        return {"ok": True}  # already gone
-    if row[0] != token:
-        return JSONResponse({"error": "invalid token"}, status_code=403)
-
-    conn.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (endpoint,))
-    conn.commit()
     return {"ok": True}
 
 
 @app.get("/api/accuracy")
 @limiter.limit("30/minute")
 def get_accuracy(request: Request):
-    conn   = get_db()
     cutoff = int(datetime.now(timezone.utc).timestamp()) - 7 * 86400
     result = {}
 
     for horizon in [30, 60, 90]:
-        row = conn.execute(
-            """
-            SELECT COUNT(*) as total,
-                   SUM(CASE WHEN (predicted_precip < ? AND actual_precip < ?) OR
-                                 (predicted_precip >= ? AND actual_precip >= ?)
-                            THEN 1 ELSE 0 END) as correct
-            FROM forecasts
-            WHERE verified=1 AND horizon_minutes=? AND forecast_made_at > ?
-            """,
-            (DRY_THRESHOLD, DRY_THRESHOLD, DRY_THRESHOLD, DRY_THRESHOLD, horizon, cutoff),
-        ).fetchone()
-        total, correct = row
+        with get_db() as (_, cur):
+            cur.execute(
+                """
+                SELECT COUNT(*),
+                       SUM(CASE WHEN (predicted_precip < %s AND actual_precip < %s) OR
+                                     (predicted_precip >= %s AND actual_precip >= %s)
+                                THEN 1 ELSE 0 END)
+                FROM forecasts
+                WHERE verified = 1
+                  AND horizon_minutes = %s
+                  AND forecast_made_at > %s
+                """,
+                (DRY_THRESHOLD, DRY_THRESHOLD, DRY_THRESHOLD, DRY_THRESHOLD, horizon, cutoff),
+            )
+            total, correct = cur.fetchone()
+        correct = correct or 0
         result[f"{horizon}min"] = {
             "total":    total   or 0,
-            "correct":  correct or 0,
+            "correct":  correct,
             "accuracy": round(correct / total * 100, 1) if total and total > 0 else None,
         }
 
@@ -750,72 +788,78 @@ ADMIN_KEY = os.getenv("ADMIN_KEY", "")
 @app.get("/api/admin/accuracy")
 @limiter.limit("20/minute")
 def admin_accuracy(request: Request):
-    """Detailed accuracy dashboard data. Requires the X-Admin-Key header to
-    match the ADMIN_KEY env var. Disabled (503) if ADMIN_KEY is unset."""
+    """Detailed accuracy dashboard. Requires X-Admin-Key header matching ADMIN_KEY env var."""
     if not ADMIN_KEY:
         return JSONResponse({"error": "admin not configured"}, status_code=503)
     provided = request.headers.get("x-admin-key", "")
     if not provided or not secrets.compare_digest(provided, ADMIN_KEY):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
-    conn = get_db()
-    th = DRY_THRESHOLD
+    th          = DRY_THRESHOLD
     window_days = 30
-    cutoff = int(datetime.now(timezone.utc).timestamp()) - window_days * 86400
+    cutoff      = int(datetime.now(timezone.utc).timestamp()) - window_days * 86400
 
     def horizon_stats(h):
-        row = conn.execute(
-            """
-            SELECT COUNT(*),
-                   SUM(CASE WHEN (predicted_precip < ? AND actual_precip < ?) OR
-                                 (predicted_precip >= ? AND actual_precip >= ?) THEN 1 ELSE 0 END),
-                   SUM(CASE WHEN predicted_precip >= ? AND actual_precip < ?  THEN 1 ELSE 0 END),
-                   SUM(CASE WHEN predicted_precip < ?  AND actual_precip >= ? THEN 1 ELSE 0 END)
-            FROM forecasts WHERE verified=1 AND horizon_minutes=? AND forecast_made_at > ?
-            """,
-            (th, th, th, th, th, th, th, th, h, cutoff),
-        ).fetchone()
-        total, correct, false_alarm, missed = (v or 0 for v in row)
+        with get_db() as (_, cur):
+            cur.execute(
+                """
+                SELECT COUNT(*),
+                       SUM(CASE WHEN (predicted_precip < %s AND actual_precip < %s) OR
+                                     (predicted_precip >= %s AND actual_precip >= %s) THEN 1 ELSE 0 END),
+                       SUM(CASE WHEN predicted_precip >= %s AND actual_precip < %s  THEN 1 ELSE 0 END),
+                       SUM(CASE WHEN predicted_precip < %s  AND actual_precip >= %s THEN 1 ELSE 0 END)
+                FROM forecasts
+                WHERE verified = 1 AND horizon_minutes = %s AND forecast_made_at > %s
+                """,
+                (th, th, th, th, th, th, th, th, h, cutoff),
+            )
+            total, correct, false_alarm, missed = (v or 0 for v in cur.fetchone())
         return {
-            "total": total, "correct": correct,
-            "accuracy": round(correct / total * 100, 1) if total else None,
-            "false_alarms": false_alarm,  # predicted rain, stayed dry
-            "missed": missed,             # predicted dry, it rained
+            "total":       total,
+            "correct":     correct,
+            "accuracy":    round(correct / total * 100, 1) if total else None,
+            "false_alarms": false_alarm,
+            "missed":      missed,
         }
 
     by_point = {}
     for p in POINTS:
-        row = conn.execute(
-            """
-            SELECT COUNT(*),
-                   SUM(CASE WHEN (predicted_precip < ? AND actual_precip < ?) OR
-                                 (predicted_precip >= ? AND actual_precip >= ?) THEN 1 ELSE 0 END)
-            FROM forecasts WHERE verified=1 AND point_name=? AND forecast_made_at > ?
-            """,
-            (th, th, th, th, p["name"], cutoff),
-        ).fetchone()
-        total, correct = row[0] or 0, row[1] or 0
+        with get_db() as (_, cur):
+            cur.execute(
+                """
+                SELECT COUNT(*),
+                       SUM(CASE WHEN (predicted_precip < %s AND actual_precip < %s) OR
+                                     (predicted_precip >= %s AND actual_precip >= %s) THEN 1 ELSE 0 END)
+                FROM forecasts
+                WHERE verified = 1 AND point_name = %s AND forecast_made_at > %s
+                """,
+                (th, th, th, th, p["name"], cutoff),
+            )
+            total, correct = cur.fetchone()
         by_point[p["name"]] = {
-            "total": total, "correct": correct,
+            "total":    total   or 0,
+            "correct":  correct or 0,
             "accuracy": round(correct / total * 100, 1) if total else None,
         }
 
-    srow = conn.execute("SELECT COUNT(*), COALESCE(SUM(verified),0) FROM forecasts").fetchone()
-    total_rows, verified = srow[0] or 0, srow[1] or 0
-    last_made = conn.execute("SELECT MAX(forecast_made_at) FROM forecasts").fetchone()[0]
+    with get_db() as (_, cur):
+        cur.execute("SELECT COUNT(*), COALESCE(SUM(verified), 0) FROM forecasts")
+        total_rows, verified = cur.fetchone()
+        cur.execute("SELECT MAX(forecast_made_at) FROM forecasts")
+        last_made = cur.fetchone()[0]
 
     return {
-        "window_days": window_days,
+        "window_days":  window_days,
         "dry_threshold": th,
         "summary": {
-            "total_rows": total_rows,
-            "verified": verified,
-            "pending": total_rows - verified,
+            "total_rows":       total_rows or 0,
+            "verified":         verified   or 0,
+            "pending":          (total_rows or 0) - (verified or 0),
             "last_forecast_at": last_made,
-            "points": [p["name"] for p in POINTS],
+            "points":           [p["name"] for p in POINTS],
         },
         "by_horizon": {f"{h}min": horizon_stats(h) for h in [30, 60, 90]},
-        "by_point": by_point,
+        "by_point":   by_point,
     }
 
 
