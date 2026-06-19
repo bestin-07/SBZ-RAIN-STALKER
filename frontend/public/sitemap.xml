@@ -10,4 +10,10 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://www.gemmaraus.at/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://www.gemmaraus.at/" />
   </url>
+  <url>
+    <loc>https://www.gemmaraus.at/regenradar-salzburg/</loc>
+    <lastmod>2026-06-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
 </urlset>

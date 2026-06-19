@@ -586,7 +586,10 @@ CANONICAL_HOST = os.getenv("CANONICAL_HOST", "").strip().lower()
 async def canonical_redirect(request: Request, call_next):
     if CANONICAL_HOST:
         host = (request.headers.get("host") or "").split(":")[0].lower()
-        if host and host != CANONICAL_HOST and "gemmaraus" in host:
+        # Never redirect ACME cert-validation challenges — that would break
+        # HTTPS certificate issuance/renewal.
+        is_acme = request.url.path.startswith("/.well-known/acme-challenge/")
+        if host and host != CANONICAL_HOST and "gemmaraus" in host and not is_acme:
             target = request.url.replace(netloc=CANONICAL_HOST, scheme="https")
             return RedirectResponse(str(target), status_code=301)
     return await call_next(request)
