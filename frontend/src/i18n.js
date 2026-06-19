@@ -106,9 +106,9 @@ const translations = {
     privacy_basis: 'Rechtsgrundlage: berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO) für die Wetterabfrage; Einwilligung für Push.',
     privacy_link:  'Datenschutzerklärung lesen →',
 
-    privacy_page_lead:     'Wir speichern nichts — außer einem zufälligen Browser-Token, damit wir dir Regenbenachrichtigungen schicken können.',
-    privacy_page_honest:   'Ehrlich gesagt wissen wir nicht mal wem der gehört. Kein Name, keine E-Mail, kein Standort. Nur ein kryptischer Schlüssel den dein Browser generiert hat.',
-    privacy_page_auto:     'Nach 3 Monaten Inaktivität wird er automatisch gelöscht. Oder sofort, wenn du die Glocke antipps.',
+    privacy_page_lead:     'Wir speichern gar nichts. Punkt.',
+    privacy_page_honest:   'Einzige Ausnahme: wenn du aktiv die Glocke antippst und Benachrichtigungen einschaltest, speichern wir einen zufälligen Browser-Token damit wir dir Regenbenachrichtigungen schicken können. Ehrlich gesagt wissen wir nicht mal wem der gehört — kein Name, keine E-Mail, kein Standort. Nur ein kryptischer Schlüssel den dein Browser generiert hat.',
+    privacy_page_auto:     'Wenn du Benachrichtigungen wieder ausschaltest, wird er sofort gelöscht. Ansonsten nach 3 Monaten automatisch.',
     privacy_page_tech:     'Technisches',
     privacy_page_tech_body:'GPS-Koordinaten gehen direkt von deinem Browser an Open-Meteo (Schweiz) — wir sehen sie nie. Push-Tokens laufen über Google FCM / Mozilla / Apple APNs (US-Dienste, die unter EU-Standardvertragsklauseln arbeiten). Keine Cookies, kein Tracking, kein Analytics. Rechtsgrundlage: berechtigtes Interesse (DSGVO Art. 6 Abs. 1 lit. f) für Wetter, Einwilligung (lit. a) für Push.',
 
@@ -247,9 +247,9 @@ const translations = {
     privacy_basis: 'Legal basis: legitimate interest (Art. 6(1)(f) GDPR) for weather lookup; consent for push notifications.',
     privacy_link:  'Read privacy policy →',
 
-    privacy_page_lead:     'We store nothing — except a random browser token so we can send you rain notifications.',
-    privacy_page_honest:   'Honestly, we don\'t even know who it belongs to. No name, no email, no location. Just a cryptic key your browser generated.',
-    privacy_page_auto:     'After 3 months of inactivity it gets deleted automatically. Or immediately if you tap the bell to unsubscribe.',
+    privacy_page_lead:     'We store nothing. Full stop.',
+    privacy_page_honest:   'The one exception: if you actively tap the bell and turn on notifications, we store a random browser token so we can send you rain alerts. Honestly, we don\'t even know who it belongs to — no name, no email, no location. Just a cryptic key your browser generated.',
+    privacy_page_auto:     'Turn notifications off and it\'s deleted immediately. Otherwise it clears automatically after 3 months.',
     privacy_page_tech:     'Technical',
     privacy_page_tech_body:'GPS coordinates go directly from your browser to Open-Meteo (Switzerland) — we never see them. Push tokens route through Google FCM / Mozilla / Apple APNs (US-based services operating under EU Standard Contractual Clauses). No cookies, no tracking, no analytics. Legal basis: legitimate interest (GDPR Art. 6(1)(f)) for weather, consent (Art. 6(1)(a)) for push.',
 
