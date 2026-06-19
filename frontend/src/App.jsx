@@ -409,6 +409,7 @@ export default function App() {
           error={locationError}
           onRequest={requestLocation}
           onUseDefault={useDefaultLocation}
+          onPrivacy={openPrivacy}
           t={t}
         />
       ) : farAway ? (

@@ -12,7 +12,7 @@ function detectBrowser() {
 const ERR_KEY = { denied: 'loc_denied', timeout: 'loc_timeout',
                   unavailable: 'loc_unavailable', unsupported: 'location_not_supported' }
 
-export default function LocationPrompt({ onRequest, onUseDefault, error, loading, t }) {
+export default function LocationPrompt({ onRequest, onUseDefault, error, loading, onPrivacy, t }) {
   const helpKey = `loc_help_${detectBrowser()}`
   return (
     <div className="min-h-screen bg-bg flex flex-col items-start justify-center px-6 pb-safe md:items-center">
@@ -71,6 +71,12 @@ export default function LocationPrompt({ onRequest, onUseDefault, error, loading
         <div className="font-mono text-xs text-muted mt-4 max-w-xs leading-relaxed">
           {t('privacy')}
         </div>
+        <button
+          onClick={onPrivacy}
+          className="font-mono text-xs text-muted hover:text-primary transition-colors mt-1"
+        >
+          {t('privacy_worried')}
+        </button>
 
         <div className="font-mono text-xs text-muted mt-10 flex items-center gap-1.5 opacity-70">
           <span>{t('made_with_love')}</span>
