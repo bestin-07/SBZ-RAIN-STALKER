@@ -71,24 +71,37 @@ export function detectGaps(times, precips) {
   return { currentPrecip, gaps, nextRainAt, dryEndsOpen }
 }
 
-function getWeatherNote(weather, t) {
+function getWeatherNote(weather, t, { night = false, evening = false } = {}) {
   if (!weather || weather.temp === null || weather.temp === undefined) return null
   const temp = Math.round(weather.temp)
   const wind = Math.round(weather.wind ?? 0)
   const code = weather.code ?? -1
-  const v = { temp, wind }  // both available to every variant
+  const v = { temp, wind }
 
-  // Priority: snow > thunder > storm > fog > heat > wind > cold > perfect
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return t('weather_snow', v)
+  // Safety/hazard notes are always shown regardless of time
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) {
+    // Snow at night: suppress the "go anyway" encouragement — just skip
+    if (night) return null
+    return t('weather_snow', v)
+  }
   if (code >= 95 && code <= 99) return t('weather_thunder', v)
-  if (wind > 50)               return t('weather_storm', v)
-  if (code === 45 || code === 48) return t('weather_fog', v)   // fog / rime fog
-  if (temp > 33)               return t('weather_scorching', v)
-  if (temp > 29)               return t('weather_hot', v)
-  if (wind > 30)               return t('weather_windy', v)
-  if (temp < 5)                return t('weather_freezing', v)
-  if (temp < 12)               return t('weather_cold', v)
-  if (temp >= 22 && temp <= 29 && wind < 20) return t('weather_perfect', v)
+  if (wind > 50)                return t('weather_storm', v)
+  if (code === 45 || code === 48) return t('weather_fog', v)
+
+  // "Go outside" notes — suppressed when they'd clash with wind-down/sleep sub-lines
+  if (temp > 33) {
+    if (night) return null  // scorching at midnight needs no action
+    return t('weather_scorching', v)
+  }
+  if (temp > 29) {
+    if (night) return null  // hot night, no "go!" advice
+    return t('weather_hot', v)
+  }
+  if (wind > 30) return t('weather_windy', v)
+  if (temp < 5)  return t('weather_freezing', v)
+  if (temp < 12) return t('weather_cold', v)
+  // "Perfect weather" is an invitation to go out — irrelevant in the evening/night
+  if (!night && !evening && temp >= 22 && temp <= 29 && wind < 20) return t('weather_perfect', v)
   return null
 }
 
@@ -109,8 +122,6 @@ export function getStatus(
   currentPrecip, gaps, weather, t = k => k,
   nowSec = Math.floor(Date.now() / 1000), trend = {},
 ) {
-  const weatherNote = getWeatherNote(weather, t)
-
   if (currentPrecip === null) {
     return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null }
   }
@@ -120,6 +131,7 @@ export function getStatus(
   const hour    = new Date(nowSec * 1000).getHours()
   const night   = hour < 5
   const evening = hour >= 18   // 18:00–23:59 — wind-down tone, no "go sprint outside"
+  const weatherNote = getWeatherNote(weather, t, { night, evening })
 
   const isDry = currentPrecip < DRY_THRESHOLD && !precipByCode(weather?.code)
   const firstGap = gaps[0]
