@@ -82,6 +82,7 @@ const translations = {
     notify_blocked:     'Benachrichtigungen sind blockiert. Erlaube sie in den Website-Einstellungen (Schloss-Symbol in der Adressleiste → Berechtigungen → Benachrichtigungen) und lade neu.',
 
     install_title:  'App installieren',
+    ios_install:    'Installieren: Teilen-Symbol tippen, dann „Zum Home-Bildschirm".',
     install_brave:  'Brave oder Samsung Browser: Menü (⋮) dann "Zum Startbildschirm hinzufügen"',
     install_safari: 'Safari auf iOS: Teilen-Symbol tippen dann "Zum Home-Bildschirm"',
     install_note:   'Nach der Installation öffnet die App ohne Adressleiste wie eine native App.',
@@ -203,6 +204,7 @@ const translations = {
     notify_blocked:     'Notifications are blocked. Allow them in site settings (lock icon in the address bar → Permissions → Notifications) and reload.',
 
     install_title:  'Install app',
+    ios_install:    'Install: tap the Share icon, then "Add to Home Screen".',
     install_brave:  'Brave or Samsung Browser: menu (⋮) then "Add to home screen"',
     install_safari: 'Safari on iOS: tap the share icon then "Add to Home Screen"',
     install_note:   'Once installed the app opens without an address bar like a native app.',

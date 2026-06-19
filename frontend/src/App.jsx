@@ -54,10 +54,16 @@ export default function App() {
   const [notifyMsg, setNotifyMsg] = useState(null)
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
+  const [iosHintDismissed, setIosHintDismissed] = useState(() => saved('ios_hint_dismissed', '') === '1')
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
                     || window.navigator.standalone === true
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
              || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  // iOS Safari has no install prompt — show a manual "Share → Add to Home Screen"
+  // hint. Only Safari can do it (Chrome/Firefox on iOS use CriOS/FxiOS).
+  const isIOSSafari = isIOS && /Safari/.test(navigator.userAgent)
+                   && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent)
+  const showIosHint = isIOSSafari && !isStandalone && !iosHintDismissed
 
   const t = useI18n(lang)
   const status = getStatus(currentPrecip, gaps, currentWeather, t, tickNow, trend)
@@ -324,6 +330,11 @@ export default function App() {
         const { outcome } = await installPromptRef.current.userChoice
         if (outcome === 'accepted') setInstallable(false)
       }
+    },
+    iosHint: showIosHint,
+    onDismissIosHint: () => {
+      setIosHintDismissed(true)
+      try { localStorage.setItem('ios_hint_dismissed', '1') } catch {}
     },
   }
 

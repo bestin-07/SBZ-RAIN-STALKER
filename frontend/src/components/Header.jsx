@@ -5,6 +5,7 @@ export default function Header({
   onInfo,
   notifyState, onNotifyToggle,
   installable, onInstall,
+  iosHint, onDismissIosHint,
   t,
 }) {
   const acc30 = accuracy?.['30min']?.accuracy
@@ -97,6 +98,14 @@ export default function Header({
           <span>{lang === 'de' ? 'App zum Startbildschirm hinzufügen' : 'Add to home screen'}</span>
           <span className="text-base leading-none">⊕</span>
         </button>
+      )}
+
+      {/* iOS Safari can't auto-prompt — show the manual Share → Add to Home Screen hint */}
+      {iosHint && (
+        <div className="w-full flex items-center justify-between gap-3 px-4 py-2 bg-surface border-t border-border font-mono text-xs text-muted">
+          <span className="leading-relaxed">{t('ios_install')}</span>
+          <button onClick={onDismissIosHint} aria-label="dismiss" className="shrink-0 text-muted hover:text-primary px-1">✕</button>
+        </div>
       )}
     </header>
   )
