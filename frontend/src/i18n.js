@@ -110,7 +110,7 @@ const translations = {
     privacy_page_honest:   'Ehrlich gesagt wissen wir nicht mal wem der gehört. Kein Name, keine E-Mail, kein Standort. Nur ein kryptischer Schlüssel den dein Browser generiert hat.',
     privacy_page_auto:     'Nach 3 Monaten Inaktivität wird er automatisch gelöscht. Oder sofort, wenn du die Glocke antipps.',
     privacy_page_tech:     'Technisches',
-    privacy_page_tech_body:'GPS-Koordinaten gehen direkt von deinem Browser an Open-Meteo (Schweiz) — wir sehen sie nie. Push-Tokens laufen über Google FCM / Mozilla / Apple APNs. Keine Cookies, kein Tracking, kein Analytics. Rechtsgrundlage: berechtigtes Interesse (DSGVO Art. 6 Abs. 1 lit. f) für Wetter, Einwilligung (lit. a) für Push.',
+    privacy_page_tech_body:'GPS-Koordinaten gehen direkt von deinem Browser an Open-Meteo (Schweiz) — wir sehen sie nie. Push-Tokens laufen über Google FCM / Mozilla / Apple APNs (US-Dienste, die unter EU-Standardvertragsklauseln arbeiten). Keine Cookies, kein Tracking, kein Analytics. Rechtsgrundlage: berechtigtes Interesse (DSGVO Art. 6 Abs. 1 lit. f) für Wetter, Einwilligung (lit. a) für Push.',
 
     support_title: 'Unterstützen',
     made_by:       'Ein kleines Salzburg-Projekt von Bestin Antu.',
@@ -251,7 +251,7 @@ const translations = {
     privacy_page_honest:   'Honestly, we don\'t even know who it belongs to. No name, no email, no location. Just a cryptic key your browser generated.',
     privacy_page_auto:     'After 3 months of inactivity it gets deleted automatically. Or immediately if you tap the bell to unsubscribe.',
     privacy_page_tech:     'Technical',
-    privacy_page_tech_body:'GPS coordinates go directly from your browser to Open-Meteo (Switzerland) — we never see them. Push tokens route through Google FCM / Mozilla / Apple APNs. No cookies, no tracking, no analytics. Legal basis: legitimate interest (GDPR Art. 6(1)(f)) for weather, consent (Art. 6(1)(a)) for push.',
+    privacy_page_tech_body:'GPS coordinates go directly from your browser to Open-Meteo (Switzerland) — we never see them. Push tokens route through Google FCM / Mozilla / Apple APNs (US-based services operating under EU Standard Contractual Clauses). No cookies, no tracking, no analytics. Legal basis: legitimate interest (GDPR Art. 6(1)(f)) for weather, consent (Art. 6(1)(a)) for push.',
 
     support_title: 'Support',
     made_by:       'A small Salzburg project by Bestin Antu.',
