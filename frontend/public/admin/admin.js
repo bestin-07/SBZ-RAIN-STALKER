@@ -158,6 +158,24 @@ function render(d) {
   $('logout').onclick  = (e) => { e.preventDefault(); sessionStorage.removeItem(KEY_STORE); location.reload() }
 }
 
+// Auto-logout after 30 min of inactivity
+const INACTIVITY_MS = 30 * 60 * 1000
+let _logoutTimer
+
+function _resetInactivity() {
+  clearTimeout(_logoutTimer)
+  if (sessionStorage.getItem(KEY_STORE)) {
+    _logoutTimer = setTimeout(() => {
+      sessionStorage.removeItem(KEY_STORE)
+      location.reload()
+    }, INACTIVITY_MS)
+  }
+}
+
+;['click', 'keydown', 'mousemove', 'touchstart'].forEach(ev =>
+  document.addEventListener(ev, _resetInactivity, { passive: true })
+)
+
 $('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') load($('key').value.trim()) })
 const saved = sessionStorage.getItem(KEY_STORE)
-if (saved) load(saved)
+if (saved) { _resetInactivity(); load(saved) }
