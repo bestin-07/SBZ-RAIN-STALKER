@@ -20,6 +20,9 @@ const translations = {
     s_stuck:          ['durchgehend regen in den nächsten 3 stunden', 'keine lücke für 3 stunden, gemütlicher tag', 'durchnass die ganze zeit, vielleicht ein film'],
     s_stuck_storm:    ['blitz und donner — heute bleibst du drin', 'gewitter über salzburg, fühl dich wie im kino', 'donner draußen, du bist genau richtig hier'],
 
+    s_evening_clear:      ['ruhiger abend vor dir, kein regen in sicht — entspann dich', 'trocken bis spät, perfekt zum runterkommen', 'schöner abend, genieß die ruhe'],
+    s_evening_dry:        ['trockener abend, gute zeit zum durchatmen', 'kein regen in sicht — ruhiger abend', 'trocken draußen, gemütlicher abend'],
+    s_evening_stuck:      ['regenabend — perfekte entschuldigung zum drinbleiben', 'regen den ganzen abend, mach es dir gemütlich', 'abends regen, der sofa ruft'],
     s_night_clear:        ['die ganze nacht trocken, aber vielleicht einfach schlafen?', 'draußen klar, aber das bett ruft', 'bis früh kein regen, schlaf gut'],
     s_night_rain_coming:  ['später kommt regen, aber es ist spät, bleib gemütlich', 'regen kommt noch, aber das bett ist jetzt besser', 'es regnet später, aber das ist morgen dein problem'],
     s_night_dry:          ['draußen trocken, aber schlafen klingt besser', 'alles klar, aber dein kissen auch', 'trockener himmel, gemütliches bett, du entscheidest'],
@@ -164,6 +167,9 @@ const translations = {
     s_stuck:          ['rain straight through the next 3 hours', 'no break in sight for 3 hours, cozy day', 'wet all the way, maybe a film instead'],
     s_stuck_storm:    ['thunder outside — you\'re exactly where you should be', 'lightning show tonight, best seat is right here', 'nature\'s going full drama — stay safe inside'],
 
+    s_evening_clear:      ['clear evening ahead, time to wind down', 'dry and quiet out there — perfect evening pace', 'no rain tonight, settle in and breathe'],
+    s_evening_dry:        ['dry evening, good moment to slow down', 'quiet night out, no rush', 'no rain, calm evening ahead'],
+    s_evening_stuck:      ['rainy evening — perfect excuse to stay in', 'rain all evening, the couch has been waiting', 'evening rain, best kind of background noise'],
     s_night_clear:        ['dry all night, but maybe just sleep?', 'clear out, but bed sounds nice', 'no rain till morning, rest easy'],
     s_night_rain_coming:  ['rain comes later, but it is late, stay cozy', 'rain on the way, but bed is better right now', "it will rain, but that is future you's problem, sleep"],
     s_night_dry:          ['dry out there, but sleep sounds better', 'all clear, but so is your pillow', 'dry skies, comfy bed, you choose'],

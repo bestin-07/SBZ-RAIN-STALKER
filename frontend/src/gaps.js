@@ -117,8 +117,9 @@ export function getStatus(
 
   // Browser-local clock: 00:00–04:59 (12am–5am) → cozy night sub-lines (headline
   // & colour stay normal; nobody's sprinting outside at 3am, so no urgency).
-  const hour = new Date(nowSec * 1000).getHours()
-  const night = hour < 5
+  const hour    = new Date(nowSec * 1000).getHours()
+  const night   = hour < 5
+  const evening = hour >= 18   // 18:00–23:59 — wind-down tone, no "go sprint outside"
 
   const isDry = currentPrecip < DRY_THRESHOLD && !precipByCode(weather?.code)
   const firstGap = gaps[0]
@@ -130,11 +131,12 @@ export function getStatus(
   if (isDry || gapNow) {
     let sub
     if (trend.dryEndsOpen) {
-      sub = t(night ? 's_night_clear' : 's_clear_hours')
+      sub = t(night ? 's_night_clear' : evening ? 's_evening_clear' : 's_clear_hours')
     } else if (trend.nextRainAt) {
       if (night) {
         sub = t('s_night_rain_coming')
       } else {
+        // Evening or day: same urgency — rain timing is still actionable at 9pm
         const rainInMin = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
         sub = rainInMin <= 0
           ? t('s_rain_any')
@@ -143,7 +145,7 @@ export function getStatus(
             : t('s_rain_soon', { min: rainInMin })
       }
     } else {
-      sub = t(night ? 's_night_dry' : 's_dry_generic')
+      sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     }
     return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
   }
@@ -165,7 +167,7 @@ export function getStatus(
   return {
     type: 'stuck',
     headline: t('STUCK'),
-    sub: t(isThunder ? 's_stuck_storm' : night ? 's_night_stuck' : 's_stuck'),
+    sub: t(isThunder ? 's_stuck_storm' : night ? 's_night_stuck' : evening ? 's_evening_stuck' : 's_stuck'),
     weather: weatherNote,
   }
 }
