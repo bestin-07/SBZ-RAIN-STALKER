@@ -9,6 +9,7 @@ import RadarMap from './components/RadarMap'
 import LocationPrompt from './components/LocationPrompt'
 import FarAway from './components/FarAway'
 import InfoPanel from './components/InfoPanel'
+import NotifyModal from './components/NotifyModal'
 
 const REFRESH_MS = 5 * 60 * 1000
 
@@ -63,6 +64,7 @@ export default function App() {
   const [infoOpen, setInfoOpen] = useState(false)
   const [notifyState, setNotifyState] = useState('idle')
   const [notifyMsg, setNotifyMsg] = useState(null)
+  const [notifyModalOpen, setNotifyModalOpen] = useState(false)
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
   const [iosHintDismissed, setIosHintDismissed] = useState(() => saved('ios_hint_dismissed', '') === '1')
@@ -130,12 +132,13 @@ export default function App() {
       })
   }, [])
 
+  // Bell tapped: if not yet subscribed, open the modal first so the user
+  // explicitly presses "Turn on" (cleaner consent UX). If already subscribed,
+  // unsubscribe immediately and show a brief confirmation toast.
   const toggleNotifications = useCallback(async () => {
     if (notifyState === 'unsupported') return
     if (notifyState === 'denied') { setNotifyMsg('notify_blocked'); return }
 
-    // iOS only delivers web push to an INSTALLED home-screen app. In a Safari
-    // tab, subscribe silently fails — so guide the user instead of doing nothing.
     if (notifyState !== 'subscribed' && isIOS && !isStandalone) {
       setNotifyMsg('notify_ios_install')
       return
@@ -155,9 +158,17 @@ export default function App() {
         await sub.unsubscribe()
       }
       setNotifyState('idle')
+      setNotifyMsg('notify_off')
       return
     }
 
+    // Not yet subscribed — show the opt-in modal
+    setNotifyModalOpen(true)
+  }, [notifyState, isIOS, isStandalone])
+
+  // Called when the user presses "Turn on" inside the NotifyModal
+  const handleNotifyConfirm = useCallback(async () => {
+    setNotifyModalOpen(false)
     try {
       const keyRes = await fetch(`${import.meta.env.VITE_BACKEND_URL ?? ''}/api/vapid-public-key`)
       if (!keyRes.ok) return
@@ -167,9 +178,6 @@ export default function App() {
       if (perm !== 'granted') { setNotifyState('denied'); return }
 
       const reg = await navigator.serviceWorker.ready
-      // Drop any stale subscription first. If the VAPID key changed (e.g. earlier
-      // deploys generated different keys), subscribe() throws InvalidStateError
-      // because a subscription with a different applicationServerKey exists.
       const existing = await reg.pushManager.getSubscription()
       if (existing) { try { await existing.unsubscribe() } catch {} }
       const sub = await reg.pushManager.subscribe({
@@ -193,7 +201,14 @@ export default function App() {
       console.error('Push subscribe failed', e)
       setNotifyMsg('notify_fail')
     }
-  }, [notifyState, isIOS, isStandalone])
+  }, [])
+
+  // Auto-dismiss the "turned off" toast after 3 s
+  useEffect(() => {
+    if (notifyMsg !== 'notify_off') return
+    const id = setTimeout(() => setNotifyMsg(null), 3000)
+    return () => clearTimeout(id)
+  }, [notifyMsg])
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
@@ -397,6 +412,14 @@ export default function App() {
       )}
 
       <InfoPanel open={infoOpen} onClose={closeInfo} t={t} />
+
+      {notifyModalOpen && (
+        <NotifyModal
+          onConfirm={handleNotifyConfirm}
+          onDismiss={() => setNotifyModalOpen(false)}
+          t={t}
+        />
+      )}
     </div>
   )
 }
