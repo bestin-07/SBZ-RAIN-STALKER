@@ -27,9 +27,9 @@ function escHtml(s) {
 function precipColor(p) {
   if (p === null || p === undefined) return '#4B5563' // unknown — neutral grey
   if (p < 0.1)  return '#D4A017'  // dry  (legend gold)
-  if (p < 0.5)  return '#5B9CE8'  // light rain
-  if (p < 2)    return '#3478D4'  // moderate
-  return               '#1D5EC0'  // heavy rain
+  if (p < 0.5)  return '#6CD1EB'  // light rain  — sampled from RainViewer Universal Blue
+  if (p < 2)    return '#1BAEE2'  // moderate    — sampled from RainViewer Universal Blue
+  return               '#0077AA'  // heavy rain  — sampled from RainViewer Universal Blue
 }
 
 function areaIcon(name, precip, dryLabel = 'dry') {
@@ -145,9 +145,10 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
         rvLayersRef.current = []
 
         rvLayersRef.current = frames.map((frame, i) => {
-          // 256px tiles, colour scheme 1 (Universal Blue) + smoothing.
-          // Blue gradient matches RainRibbon/area-dot scale so users see the
-          // same colour language on the chart and the map overlay.
+          // 256px tiles, colour scheme 2 (Universal Blue) + smoothing.
+          // Scheme 2 is the blue-only palette — confirmed from RainViewer's own
+          // example code and their "personal use = Universal Blue only" restriction.
+          // Scheme 1 is the classic rainbow (green/yellow/red); do NOT use it.
           // RainViewer's radar tiles only exist up to **zoom 7** — at z8+ it
           // returns a "Zoom Level Not Supported" placeholder PNG (verified by
           // decoding the tiles). So maxNativeZoom MUST be 7; Leaflet then upscales
@@ -156,7 +157,7 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
           // little real detail is lost — the fine signal comes from the GeoSphere
           // 1 km nowcast that drives the GO/WAIT status, not this visual overlay.
           const layer = L.tileLayer(
-            `${host}${frame.path}/256/{z}/{x}/{y}/1/1_1.png`,
+            `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`,
             { maxNativeZoom: 7, opacity: 0, zIndex: 200, attribution: '© RainViewer' }
           )
           layer.addTo(mapRef.current)

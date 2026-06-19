@@ -6,9 +6,9 @@ const DRY_THRESHOLD = 0.1
 
 function precipToColor(p) {
   if (p < DRY_THRESHOLD) return '#D4A017'
-  if (p < 0.5)           return '#5B9CE8'
-  if (p < 2)             return '#3478D4'
-  return                        '#1D5EC0'
+  if (p < 0.5)           return '#6CD1EB'  // sampled from RainViewer Universal Blue
+  if (p < 2)             return '#1BAEE2'
+  return                        '#0077AA'
 }
 
 function precipToHeight(p) {
@@ -78,8 +78,8 @@ export default function RainRibbon({ forecast, theme, t }) {
       </div>
       <div className="flex items-center gap-4 px-4 py-2">
         <Legend color="#D4A017" label={t('dry')} />
-        <Legend color="#5B9CE8" label={t('light_rain')} />
-        <Legend color="#1D5EC0" label={t('heavy_rain')} />
+        <Legend color="#6CD1EB" label={t('light_rain')} />
+        <Legend color="#0077AA" label={t('heavy_rain')} />
         <span className="font-mono text-xs text-muted ml-auto">{t('next_12h')}</span>
       </div>
     </div>
