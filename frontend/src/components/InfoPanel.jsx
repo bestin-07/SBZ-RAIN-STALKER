@@ -3,7 +3,7 @@
 // e.g. 'https://paypal.me/yourhandle'
 const DONATE_URL = import.meta.env.VITE_DONATE_URL || ''
 
-export default function InfoPanel({ open, onClose, t }) {
+export default function InfoPanel({ open, onClose, onPrivacy, t }) {
   if (!open) return null
 
   return (
@@ -85,14 +85,12 @@ export default function InfoPanel({ open, onClose, t }) {
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
             ))}
           </div>
-          <a
-            href="/privacy/"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={onPrivacy}
             className="font-mono text-xs text-primary hover:opacity-70 transition-opacity mb-8 inline-block"
           >
             {t('privacy_link')}
-          </a>
+          </button>
 
           {/* ── SUPPORT ── */}
           <div className="w-full h-px bg-border mb-8" />

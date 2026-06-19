@@ -1,4 +1,4 @@
-export default function NotifyModal({ onConfirm, onDismiss, t }) {
+export default function NotifyModal({ onConfirm, onDismiss, onPrivacy, t }) {
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onDismiss} />
@@ -30,14 +30,12 @@ export default function NotifyModal({ onConfirm, onDismiss, t }) {
         </button>
 
         <div className="mt-4 pt-4 border-t border-border text-center">
-          <a
-            href="/privacy/"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={onPrivacy}
             className="font-mono text-xs text-muted hover:text-primary transition-colors"
           >
             {t('notify_modal_privacy')}
-          </a>
+          </button>
         </div>
       </div>
     </>

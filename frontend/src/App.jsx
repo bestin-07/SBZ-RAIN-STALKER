@@ -10,6 +10,7 @@ import LocationPrompt from './components/LocationPrompt'
 import FarAway from './components/FarAway'
 import InfoPanel from './components/InfoPanel'
 import NotifyModal from './components/NotifyModal'
+import PrivacyPanel from './components/PrivacyPanel'
 
 const REFRESH_MS = 5 * 60 * 1000
 
@@ -65,6 +66,7 @@ export default function App() {
   const [notifyState, setNotifyState] = useState('idle')
   const [notifyMsg, setNotifyMsg] = useState(null)
   const [notifyModalOpen, setNotifyModalOpen] = useState(false)
+  const [privacyOpen, setPrivacyOpen] = useState(false)
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
   const [iosHintDismissed, setIosHintDismissed] = useState(() => saved('ios_hint_dismissed', '') === '1')
@@ -337,10 +339,27 @@ export default function App() {
   }, [infoOpen])
 
   const closeInfo = () => {
-    // Route close through history so the X button, the backdrop and the back
-    // button all consume the pushed entry consistently.
     if (window.history.state?.infoPanel) window.history.back()
     else setInfoOpen(false)
+  }
+
+  useEffect(() => {
+    if (!privacyOpen) return
+    window.history.pushState({ privacyPanel: true }, '')
+    const onPop = () => setPrivacyOpen(false)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [privacyOpen])
+
+  const openPrivacy = useCallback(() => {
+    setInfoOpen(false)
+    setNotifyModalOpen(false)
+    setPrivacyOpen(true)
+  }, [])
+
+  const closePrivacy = () => {
+    if (window.history.state?.privacyPanel) window.history.back()
+    else setPrivacyOpen(false)
   }
 
   const headerProps = {
@@ -411,15 +430,18 @@ export default function App() {
         </>
       )}
 
-      <InfoPanel open={infoOpen} onClose={closeInfo} t={t} />
+      <InfoPanel open={infoOpen} onClose={closeInfo} onPrivacy={openPrivacy} t={t} />
 
       {notifyModalOpen && (
         <NotifyModal
           onConfirm={handleNotifyConfirm}
           onDismiss={() => setNotifyModalOpen(false)}
+          onPrivacy={openPrivacy}
           t={t}
         />
       )}
+
+      <PrivacyPanel open={privacyOpen} onClose={closePrivacy} t={t} />
     </div>
   )
 }
