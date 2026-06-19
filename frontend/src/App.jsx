@@ -59,11 +59,15 @@ export default function App() {
                     || window.navigator.standalone === true
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
              || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  // iOS Safari has no install prompt — show a manual "Share → Add to Home Screen"
-  // hint. Only Safari can do it (Chrome/Firefox on iOS use CriOS/FxiOS).
-  const isIOSSafari = isIOS && /Safari/.test(navigator.userAgent)
-                   && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent)
-  const showIosHint = isIOSSafari && !isStandalone && !iosHintDismissed
+  // iOS install hints. Safari can install via Share → Add to Home Screen; every
+  // other iOS browser (Chrome/Firefox/Edge/Opera = CriOS/FxiOS/...) cannot install
+  // at all on iOS, so point those users to Safari. Returns the i18n key, or null.
+  const _ua = navigator.userAgent
+  const isIOSSafari = isIOS && /Safari/.test(_ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(_ua)
+  const isIOSOther  = isIOS && /CriOS|FxiOS|EdgiOS|OPiOS/.test(_ua)
+  const iosHint = (!isStandalone && !iosHintDismissed)
+    ? (isIOSSafari ? 'ios_install' : isIOSOther ? 'ios_open_safari' : null)
+    : null
 
   const t = useI18n(lang)
   const status = getStatus(currentPrecip, gaps, currentWeather, t, tickNow, trend)
@@ -331,7 +335,7 @@ export default function App() {
         if (outcome === 'accepted') setInstallable(false)
       }
     },
-    iosHint: showIosHint,
+    iosHint,
     onDismissIosHint: () => {
       setIosHintDismissed(true)
       try { localStorage.setItem('ios_hint_dismissed', '1') } catch {}

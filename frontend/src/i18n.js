@@ -83,6 +83,7 @@ const translations = {
 
     install_title:  'App installieren',
     ios_install:    'Installieren: Teilen-Symbol tippen, dann „Zum Home-Bildschirm".',
+    ios_open_safari:'Zum Installieren in Safari öffnen (andere iPhone-Browser können das nicht).',
     install_brave:  'Brave oder Samsung Browser: Menü (⋮) dann "Zum Startbildschirm hinzufügen"',
     install_safari: 'Safari auf iOS: Teilen-Symbol tippen dann "Zum Home-Bildschirm"',
     install_note:   'Nach der Installation öffnet die App ohne Adressleiste wie eine native App.',
@@ -205,6 +206,7 @@ const translations = {
 
     install_title:  'Install app',
     ios_install:    'Install: tap the Share icon, then "Add to Home Screen".',
+    ios_open_safari:'To install, open this in Safari (other iPhone browsers can\'t).',
     install_brave:  'Brave or Samsung Browser: menu (⋮) then "Add to home screen"',
     install_safari: 'Safari on iOS: tap the share icon then "Add to Home Screen"',
     install_note:   'Once installed the app opens without an address bar like a native app.',

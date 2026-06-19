@@ -100,10 +100,10 @@ export default function Header({
         </button>
       )}
 
-      {/* iOS Safari can't auto-prompt — show the manual Share → Add to Home Screen hint */}
+      {/* iOS install hint: Safari = manual Share→A2HS; other iOS browsers = open in Safari */}
       {iosHint && (
         <div className="w-full flex items-center justify-between gap-3 px-4 py-2 bg-surface border-t border-border font-mono text-xs text-muted">
-          <span className="leading-relaxed">{t('ios_install')}</span>
+          <span className="leading-relaxed">{t(iosHint)}</span>
           <button onClick={onDismissIosHint} aria-label="dismiss" className="shrink-0 text-muted hover:text-primary px-1">✕</button>
         </div>
       )}
