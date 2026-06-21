@@ -82,14 +82,18 @@ async function tawesNearestIds(lat, lon, n = 6) {
     }
   }
   if (!_tawesStations.length) return [ANCHOR_STATION_ID]
-  const nearest = [..._tawesStations]
+  // Cap at 15 km: a mountain station 20+ km away can be raining while the
+  // city is dry — including it in the MAX reading causes false WAIT status.
+  // If fewer than 2 stations fall within 15 km, fall back to the 2 nearest
+  // regardless of distance so we always have something to compare.
+  const sorted = [..._tawesStations]
     .map(s => ({ id: s.id, dist: haversineKm(lat, lon, s.lat, s.lon) }))
     .sort((a, b) => a.dist - b.dist)
-    .slice(0, n)
-    .map(s => s.id)
+  const withinCap = sorted.filter(s => s.dist <= 15)
+  const candidates = (withinCap.length >= 2 ? withinCap : sorted).slice(0, n).map(s => s.id)
   // Always include the airport anchor so a cell over the city is caught even
   // when the user's nearest stations are dry.
-  return nearest.includes(ANCHOR_STATION_ID) ? nearest : [...nearest, ANCHOR_STATION_ID]
+  return candidates.includes(ANCHOR_STATION_ID) ? candidates : [...candidates, ANCHOR_STATION_ID]
 }
 
 export async function fetchNearbyStationPrecip(lat, lon) {
