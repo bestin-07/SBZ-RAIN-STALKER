@@ -66,6 +66,9 @@ export default function App() {
   const [notifyState, setNotifyState] = useState('idle')
   const [notifyMsg, setNotifyMsg] = useState(null)
   const [notifyModalOpen, setNotifyModalOpen] = useState(false)
+  const [locationAccuracy, setLocationAccuracy] = useState(null) // metres from pos.coords.accuracy
+  const [upgradingLocation, setUpgradingLocation] = useState(false)
+  const [accuracyDismissed, setAccuracyDismissed] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
   useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
@@ -234,6 +237,7 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       pos => {
         setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude })
+        setLocationAccuracy(Math.round(pos.coords.accuracy))
         setLocationError(null)
         setLocating(false)
       },
@@ -246,6 +250,21 @@ export default function App() {
       // sufficient for a 1 km nowcast grid. GPS (true) forces hardware
       // that cold-starts in 30-60 s, causing near-certain 10 s timeouts.
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    )
+  }, [])
+
+  // User-initiated GPS upgrade — only called from the accuracy banner,
+  // so the browser allows the prompt and GPS has 30 s to warm up.
+  const upgradeLocation = useCallback(() => {
+    setUpgradingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude })
+        setLocationAccuracy(Math.round(pos.coords.accuracy))
+        setUpgradingLocation(false)
+      },
+      () => { setUpgradingLocation(false) },
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     )
   }, [])
 
@@ -441,6 +460,25 @@ export default function App() {
           {isOutsideSalzburg(location) && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
+            </div>
+          )}
+          {locationAccuracy > 100 && !accuracyDismissed && (
+            <div className="px-4 py-2 bg-surface border-b border-border shrink-0 flex items-center gap-3">
+              <span className="font-mono text-xs text-muted flex-1">
+                📍 ~{locationAccuracy}m {t('loc_accuracy')}
+              </span>
+              <button
+                onClick={upgradeLocation}
+                disabled={upgradingLocation}
+                className="font-mono text-xs text-primary hover:opacity-70 transition-opacity disabled:opacity-40 shrink-0"
+              >
+                {upgradingLocation ? '…' : t('loc_improve')}
+              </button>
+              <button
+                onClick={() => setAccuracyDismissed(true)}
+                className="font-mono text-xs text-muted hover:text-primary transition-colors shrink-0"
+                aria-label="dismiss"
+              >✕</button>
             </div>
           )}
           <GapBanner status={status} />
