@@ -30,6 +30,7 @@ const translations = {
     s_night_stuck:        ['regen die ganze nacht, schlaf dich aus', 'nass bis früh, schlaf weiter', 'dauerregen, perfektes bettwetter'],
 
     dry:        'trocken',
+    contact_line: 'Fragen oder Feedback?',
     light_rain: 'leichter Regen',
     heavy_rain: 'starker Regen',
     storm_rain: 'Gewitter',
@@ -179,6 +180,7 @@ const translations = {
     s_night_stuck:        ['rain all night, sleep tight', 'wet till morning, snooze away', 'steady rain, perfect duvet weather'],
 
     dry:        'dry',
+    contact_line: 'Questions or feedback?',
     light_rain: 'light rain',
     heavy_rain: 'heavy rain',
     storm_rain: 'storm',

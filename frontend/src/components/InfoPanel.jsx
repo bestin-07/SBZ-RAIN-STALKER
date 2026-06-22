@@ -115,12 +115,15 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             )}
           </div>
 
-          <a
-            href="mailto:contact@gemmaraus.at"
-            className="font-mono text-xs text-primary hover:opacity-70 transition-opacity mb-10 inline-block"
-          >
-            contact@gemmaraus.at
-          </a>
+          <div className="mb-10">
+            <p className="font-mono text-xs text-muted mb-2">{t('contact_line')}</p>
+            <a
+              href="mailto:contact@gemmaraus.at"
+              className="font-mono text-xs text-primary hover:opacity-70 transition-opacity"
+            >
+              contact@gemmaraus.at
+            </a>
+          </div>
 
           <button
             onClick={onClose}
