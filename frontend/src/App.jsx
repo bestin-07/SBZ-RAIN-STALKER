@@ -242,7 +242,10 @@ export default function App() {
         // 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
         setLocationError(err.code === 1 ? 'denied' : err.code === 3 ? 'timeout' : 'unavailable')
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      // enableHighAccuracy: false — network/WiFi location (100-500m) is
+      // sufficient for a 1 km nowcast grid. GPS (true) forces hardware
+      // that cold-starts in 30-60 s, causing near-certain 10 s timeouts.
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
     )
   }, [])
 
