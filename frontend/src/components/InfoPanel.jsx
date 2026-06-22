@@ -100,7 +100,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             {t('made_by')}
           </p>
 
-          <div className="mb-10">
+          <div className="mb-6">
             {DONATE_URL ? (
               <a
                 href={DONATE_URL}
@@ -114,6 +114,13 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
               <span className="font-mono text-xs text-muted">{t('coffee_soon')}</span>
             )}
           </div>
+
+          <a
+            href="mailto:contact@gemmaraus.at"
+            className="font-mono text-xs text-primary hover:opacity-70 transition-opacity mb-10 inline-block"
+          >
+            contact@gemmaraus.at
+          </a>
 
           <button
             onClick={onClose}
