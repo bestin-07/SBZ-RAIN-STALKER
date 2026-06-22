@@ -446,20 +446,28 @@ def _build_payload(event: dict) -> dict:
         x, y = int(event["gap_in_min"]), int(event["gap_min"])
         if x == 0:
             return {"type": "gap",
-                    "title_de": "Jetzt trocken",    "body_de": f"{y} Minuten Fenster — rausgehen!",
-                    "title_en": "Dry now",           "body_en": f"{y} minute window — go!"}
+                    "title_de": "Salzburg: Gerade trocken",
+                    "body_de":  f"{y} Min. Fenster — App öffnen für deinen genauen Standort",
+                    "title_en": "Salzburg: Dry right now",
+                    "body_en":  f"{y} min window — open app for your exact spot"}
         return {"type": "gap",
-                "title_de": f"Lücke in {x} Min.",  "body_de": f"{y} Minuten trocken — bereit machen",
-                "title_en": f"Gap in {x} min",      "body_en": f"{y} minutes dry — get ready"}
+                "title_de": f"Salzburg: Lücke in {x} Min.",
+                "body_de":  f"{y} Min. trocken — App öffnen für deinen genauen Standort",
+                "title_en": f"Salzburg: Gap in {x} min",
+                "body_en":  f"{y} min dry — open app for your exact spot"}
     if t == "rain_incoming":
         x = int(event["rain_in_min"])
         if x <= 5:
             return {"type": "rain",
-                    "title_de": "Regen kommt gleich", "body_de": "Jetzt noch schnell reinkommen",
-                    "title_en": "Rain arriving now",   "body_en": "Head inside soon"}
+                    "title_de": "Regen naht Salzburg",
+                    "body_de":  "Gleich los — App für genaue Details",
+                    "title_en": "Rain approaching Salzburg",
+                    "body_en":  "Coming any minute — open app for details"}
         return {"type": "rain",
-                "title_de": f"Regen in {x} Min.",   "body_de": "Schnell noch raus oder drin bleiben",
-                "title_en": f"Rain in {x} min",      "body_en": "Get out now or stay in"}
+                "title_de": f"Regen naht Salzburg in {x} Min.",
+                "body_de":  "App öffnen für deinen genauen Standort",
+                "title_en": f"Rain approaching Salzburg in {x} min",
+                "body_en":  "Open app for your exact location"}
     return {}
 
 
