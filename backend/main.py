@@ -341,10 +341,15 @@ async def _load_tawes_stations(client: httpx.AsyncClient):
     return _tawes_stations
 
 
+TAWES_CAP_KM = 15  # mirror the frontend cap — distant mountain stations cause false "raining now"
+
 async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
     stations = await _load_tawes_stations(client)
     if stations:
-        ids = [s[0] for s in sorted(stations, key=lambda s: _haversine_km(lat, lon, s[1], s[2]))[:n]]
+        scored  = sorted(stations, key=lambda s: _haversine_km(lat, lon, s[1], s[2]))
+        within  = [s for s in scored if _haversine_km(lat, lon, s[1], s[2]) <= TAWES_CAP_KM]
+        capped  = (within if len(within) >= 2 else scored)[:n]
+        ids = [s[0] for s in capped]
     else:
         ids = ["11150"]
     if "11150" not in ids:
@@ -392,12 +397,17 @@ async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
 # Push notification logic
 # ---------------------------------------------------------------------------
 
-def _analyze_forecast(times, precips, now_ts):
+def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0):
     slots   = sorted(zip(times, precips), key=lambda s: s[0])
     current = min(slots, key=lambda s: abs(s[0] - now_ts), default=None)
     if current is None:
         return None
-    is_raining = current[1] >= DRY_THRESHOLD
+    # Require BOTH the live reading AND the nowcast current slot to agree it's
+    # raining before sending a "gap opening" push — this prevents a single
+    # distant TAWES station from triggering a false gap notification when the
+    # nowcast (which drives the actual forecast) already shows dry.
+    nowcast_raining = current[1] >= DRY_THRESHOLD
+    is_raining = nowcast_raining and now_precip_live >= DRY_THRESHOLD
 
     if is_raining:
         window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 15 * 60]
@@ -459,7 +469,10 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         try:
             times, precips = await fetch_timeline(client, point)
             now_precip     = await fetch_now_precip(client, point)
-            ev = _analyze_forecast([now_ts] + list(times), [now_precip] + list(precips), now_ts)
+            ev = _analyze_forecast(
+                [now_ts] + list(times), [now_precip] + list(precips),
+                now_ts, now_precip_live=now_precip,
+            )
             if ev:
                 events.append(ev)
         except Exception as e:
