@@ -48,6 +48,16 @@ export default function PrivacyPanel({ open, onClose, t }) {
             {t('privacy_page_tech_body')}
           </p>
 
+          <div className="w-full h-px bg-border mb-6" />
+
+          {/* terms of use */}
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
+            {t('privacy_terms_title')}
+          </div>
+          <p className="font-mono text-xs text-muted leading-relaxed border-l-2 border-border pl-4 mb-8">
+            {t('privacy_terms_body')}
+          </p>
+
           <button
             onClick={onClose}
             className="font-display font-bold text-sm tracking-[0.15em] uppercase px-6 py-3 bg-primary text-bg transition-opacity hover:opacity-80"

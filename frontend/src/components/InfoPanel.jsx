@@ -82,6 +82,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
           </div>
           <div className="space-y-2 mb-3 border-l-2 border-border pl-4">
             <p className="font-mono text-xs text-muted leading-relaxed">{t('privacy_page_lead')}</p>
+            <p className="font-mono text-xs text-muted leading-relaxed">{t('privacy_page_honest')}</p>
             <p className="font-mono text-xs text-muted leading-relaxed">{t('privacy_page_auto')}</p>
           </div>
           <button
