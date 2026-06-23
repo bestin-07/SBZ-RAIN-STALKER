@@ -96,20 +96,28 @@ async function tawesNearestIds(lat, lon, n = 6) {
   return candidates.includes(ANCHOR_STATION_ID) ? candidates : [...candidates, ANCHOR_STATION_ID]
 }
 
+// Returns { precip, temp } — both from actual sensor readings, not model.
+// precip = max RR across nearest stations (mm / 10 min).
+// temp   = average TL across stations that report it (°C), null if none.
 export async function fetchNearbyStationPrecip(lat, lon) {
   try {
     const ids = await tawesNearestIds(lat, lon, 6)
     const r = await fetch(
-      `${GEOSPHERE_TAWES}?parameters=RR&station_ids=${ids.join(',')}`,
+      `${GEOSPHERE_TAWES}?parameters=RR,TL&station_ids=${ids.join(',')}`,
       { signal: AbortSignal.timeout(6000) }
     )
     if (!r.ok) return null
-    const data = await r.json()
-    // Confirmed response path (live): features[].properties.parameters.RR.data[0]
-    const values = (data?.features ?? [])
+    const features = (await r.json())?.features ?? []
+    const rrVals = features
       .map(f => f?.properties?.parameters?.RR?.data?.[0])
       .filter(v => typeof v === 'number' && !isNaN(v))
-    return values.length ? Math.max(...values) : null
+    const tlVals = features
+      .map(f => f?.properties?.parameters?.TL?.data?.[0])
+      .filter(v => typeof v === 'number' && !isNaN(v))
+    return {
+      precip: rrVals.length ? Math.max(...rrVals) : null,
+      temp:   tlVals.length ? +(tlVals.reduce((a, b) => a + b, 0) / tlVals.length).toFixed(1) : null,
+    }
   } catch {
     return null
   }

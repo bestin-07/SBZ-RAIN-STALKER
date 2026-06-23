@@ -308,7 +308,9 @@ export default function App() {
         // - Open-Meteo current.precip   — model-measured last hour (can lag)
         // - GeoSphere TAWES nearest 6+airport — actual station obs, 10-min updates
         const measured      = data.current?.precipitation ?? 0
-        const stationPrecip = stationResult?.status === 'fulfilled' ? (stationResult.value ?? 0) : 0
+        const stationData   = stationResult?.status === 'fulfilled' ? stationResult.value : null
+        const stationPrecip = stationData?.precip ?? 0
+        const stationTemp   = stationData?.temp ?? null
         const nowPrecip     = Math.max(measured, stationPrecip)
 
         // Gap timeline: prefer the GeoSphere 1 km / 15-min radar nowcast (catches
@@ -331,7 +333,7 @@ export default function App() {
         setTrend({ nextRainAt, dryEndsOpen })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
-          temp: data.current?.temperature_2m ?? null,
+          temp: stationTemp ?? data.current?.temperature_2m ?? null,
           wind: data.current?.wind_speed_10m ?? null,
           code: data.current?.weather_code ?? null,
         })
