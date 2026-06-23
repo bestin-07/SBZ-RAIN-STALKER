@@ -25,7 +25,7 @@ SBZ-RAIN-STALKER/
 │   │   └── components/
 │   │       ├── Header.jsx       # Top bar: theme/lang/notify/guide/refresh
 │   │       ├── GapBanner.jsx    # Main status display (GO/WAIT/STUCK)
-│   │       ├── RainRibbon.jsx   # 12h precipitation bar chart
+│   │       ├── RainRibbon.jsx   # 3h precipitation bar chart (radar nowcast only)
 │   │       ├── RadarMap.jsx     # Leaflet map with DWD+RainViewer overlay
 │   │       ├── LocationPrompt.jsx # Initial loading/permission screen
 │   │       └── InfoPanel.jsx    # Slide-up guide + about + data sources
@@ -65,7 +65,7 @@ Sources are queried in parallel on every refresh. The **gap timeline** (GO/WAIT/
 - **URL:** `https://api.open-meteo.com/v1/forecast`
 - **Params:** `minutely_15=precipitation&forecast_minutely_15=48&current=temperature_2m,wind_speed_10m,weather_code,precipitation`
 - **Update cycle:** ~hourly model run, can lag 2-3h on convective alpine rain
-- **Used for:** the 12 h RainRibbon overview chart, weather notes (temp/wind/code), current measured precipitation, and **fallback** gap timeline if the nowcast is unavailable
+- **Used for:** weather notes (temp/wind/code), current measured precipitation, and **fallback** gap timeline + ribbon if the nowcast is unavailable. The Open-Meteo 3–12 h tail is no longer shown in the ribbon — stripped 2026-06 because it looked as confident as radar but isn't.
 - **Critical limitation:** ICON-EU is frequently blind to fast-moving convective cells in the Alps. `precipitation=0.00` and `weather_code=3` (partly cloudy) during active heavy rain is confirmed behavior — which is exactly why it is no longer the primary gap source.
 
 ### 2. GeoSphere Austria TAWES Stations (`api.js: fetchNearbyStationPrecip`)
@@ -213,7 +213,7 @@ If the prompt still never appears, the permission is usually pre-**blocked/dismi
 - A **"Use Salzburg center" fallback** (`useDefaultLocation`, 47.8009/13.0448) lets the app work even if GPS never resolves.
 
 ### Nearby-town dots & API rate limits
-`fetchAreaPrecip()` shows precip for the 12 surrounding towns. It uses a **single batched Open-Meteo request** (comma-separated `latitude`/`longitude` → array response in order), not 12 separate calls — gentler on the rate limit and it no longer drops towns when individual calls get throttled (the old behaviour made the dots "disappear"). It always returns every AREA (precip `null` on failure) so dots render consistently. **All weather/radar calls are client-side (browser → Open-Meteo / GeoSphere directly); none go through the Railway backend**, so public-API rate limits apply per user IP, not to our server. The backend only calls Open-Meteo for its own 5 accuracy points every 5 min.
+`fetchAreaPrecip()` shows precip for the 12 surrounding towns. It uses a **single batched Open-Meteo request** (comma-separated `latitude`/`longitude` → array response in order), not 12 separate calls — gentler on the rate limit and it no longer drops towns when individual calls get throttled (the old behaviour made the dots "disappear"). It always returns every AREA (precip `null` on failure) so dots render consistently. **All weather/radar calls are client-side (browser → Open-Meteo / GeoSphere directly); none go through the Railway backend**, so public-API rate limits apply per user IP, not to our server. The backend calls GeoSphere nowcast + TAWES for its own 11 accuracy points every 5 min (expanded from 5 in 2026-06: added itzling, liefering, parsch, aigen, gneis, taxham for full city coverage). Push notifications require ≥3/11 points to agree (majority vote) before firing, preventing single-point false alarms.
 
 ### RainViewer Animated Radar — now the sole radar overlay
 `RadarMap.jsx` uses the RainViewer API for animated radar tiles (~40 min past + 2 nowcast frames). It is now the **only** radar overlay (DWD removed — see above).
