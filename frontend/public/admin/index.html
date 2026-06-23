@@ -94,6 +94,32 @@
     .src-track { flex: 1; height: 4px; background: #1F2229; border-radius: 3px; overflow: hidden; }
     .src-fill  { height: 100%; border-radius: 3px; background: #34D399; }
     .src-pct   { color: #4B5563; font-size: .75rem; width: 3.5rem; text-align: right; }
+
+    /* metric context note */
+    .metric-note { color: #4B5563; font-size: .75rem; letter-spacing: 0; text-transform: none;
+                   font-weight: 400; margin: 0 0 .75rem; display: block; line-height: 1.5; }
+
+    /* skill breakdown cards */
+    .skill-card  { background: #0d0f13; border: 1px solid #1a1d24; border-radius: 10px;
+                   padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    .skill-title { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase;
+                   color: #4B5563; margin-bottom: .75rem; }
+    .skill-row   { display: flex; align-items: baseline; gap: .6rem; padding: .3rem 0;
+                   border-bottom: 1px solid #13151a; font-size: .8rem; flex-wrap: wrap; }
+    .skill-row:last-child { border-bottom: none; }
+    .skill-label { color: #6B7280; flex: 1 1 14rem; }
+    .skill-label em { color: #4B5563; font-style: normal; }
+    .skill-val   { font-variant-numeric: tabular-nums; font-weight: 600;
+                   color: #E7EAF0; white-space: nowrap; }
+    .skill-note  { color: #374151; font-size: .72rem; flex: 1 1 100%; margin-left: 0; }
+    .skill-divider { width: 100%; height: 1px; background: #1F2229; margin: .4rem 0; }
+    .warn-note   { color: #FBBF24 !important; opacity: .6; }
+    .muted-row .skill-val { color: #4B5563; }
+    .hit-row  .skill-val  { color: #34D399; }
+    .fa-row   .skill-val  { color: #F87171; }
+    .miss-row .skill-val  { color: #FBBF24; }
+    .skill-csi-row        { background: rgba(255,255,255,.015); margin: 0 -.5rem;
+                            padding: .4rem .5rem; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -109,6 +135,6 @@
     <div id="dash" style="display:none"></div>
   </div>
 
-  <script src="/admin/admin.js?v=3"></script>
+  <script src="/admin/admin.js?v=4"></script>
 </body>
 </html>

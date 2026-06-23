@@ -1034,19 +1034,29 @@ def admin_accuracy(request: Request):
                        SUM(CASE WHEN (predicted_precip < %s AND actual_precip < %s) OR
                                      (predicted_precip >= %s AND actual_precip >= %s) THEN 1 ELSE 0 END),
                        SUM(CASE WHEN predicted_precip >= %s AND actual_precip < %s  THEN 1 ELSE 0 END),
-                       SUM(CASE WHEN predicted_precip < %s  AND actual_precip >= %s THEN 1 ELSE 0 END)
+                       SUM(CASE WHEN predicted_precip < %s  AND actual_precip >= %s THEN 1 ELSE 0 END),
+                       SUM(CASE WHEN predicted_precip >= %s AND actual_precip >= %s THEN 1 ELSE 0 END),
+                       SUM(CASE WHEN actual_precip >= %s                            THEN 1 ELSE 0 END)
                 FROM forecasts
                 WHERE verified = 1 AND horizon_minutes = %s AND forecast_made_at > %s
                 """,
-                (th, th, th, th, th, th, th, th, h, cutoff),
+                (th, th, th, th, th, th, th, th, th, th, th, h, cutoff),
             )
-            total, correct, false_alarm, missed = (v or 0 for v in cur.fetchone())
+            total, correct, false_alarm, missed, hits, actual_rain = (v or 0 for v in cur.fetchone())
+        denom_csi = hits + false_alarm + missed
+        denom_far = hits + false_alarm
         return {
-            "total":       total,
-            "correct":     correct,
-            "accuracy":    round(correct / total * 100, 1) if total else None,
+            "total":        total,
+            "correct":      correct,
+            "accuracy":     round(correct / total * 100, 1) if total else None,
             "false_alarms": false_alarm,
-            "missed":      missed,
+            "missed":       missed,
+            "hits":         hits,
+            "actual_rain":  actual_rain,
+            "base_rate":    round(actual_rain / total * 100, 2) if total else 0,
+            "csi":          round(hits / denom_csi * 100, 1) if denom_csi > 0 else None,
+            "pod":          round(hits / actual_rain * 100, 1) if actual_rain > 0 else None,
+            "far":          round(false_alarm / denom_far * 100, 1) if denom_far > 0 else None,
         }
 
     by_point = {}
@@ -1112,19 +1122,29 @@ def admin_dashboard(request: Request):
                           SUM(CASE WHEN (predicted_precip < %s AND actual_precip < %s)
                                      OR (predicted_precip >= %s AND actual_precip >= %s)
                                    THEN 1 ELSE 0 END),
-                          SUM(CASE WHEN predicted_precip >= %s AND actual_precip < %s THEN 1 ELSE 0 END),
-                          SUM(CASE WHEN predicted_precip <  %s AND actual_precip >= %s THEN 1 ELSE 0 END)
+                          SUM(CASE WHEN predicted_precip >= %s AND actual_precip <  %s THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN predicted_precip <  %s AND actual_precip >= %s THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN predicted_precip >= %s AND actual_precip >= %s THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN actual_precip >= %s                            THEN 1 ELSE 0 END)
                    FROM forecasts
                    WHERE verified=1 AND horizon_minutes=%s
                      AND forecast_made_at > %s AND actual_precip IS NOT NULL""",
-                (th,) * 8 + (h, cutoff_7d),
+                (th,) * 10 + (th, h, cutoff_7d),
             )
-            total, correct, fa, missed = (v or 0 for v in cur.fetchone())
+            total, correct, fa, missed, hits, actual_rain = (v or 0 for v in cur.fetchone())
+        denom_csi = hits + fa + missed
+        denom_far = hits + fa
         health[f"{h}min"] = {
             "total":        total,
             "accuracy":     round((correct or 0) / total * 100, 1) if total else None,
             "false_alarms": int(fa),
             "missed":       int(missed),
+            "hits":         int(hits),
+            "actual_rain":  int(actual_rain),
+            "base_rate":    round(actual_rain / total * 100, 2) if total else 0,
+            "csi":          round(hits / denom_csi * 100, 1) if denom_csi > 0 else None,
+            "pod":          round(hits / actual_rain * 100, 1) if actual_rain > 0 else None,
+            "far":          round(fa / denom_far * 100, 1) if denom_far > 0 else None,
         }
 
     # Current calibrated thresholds

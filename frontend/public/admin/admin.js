@@ -8,8 +8,12 @@ function colorCls(acc) {
   if (acc === null || acc === undefined) return 'none'
   return acc >= 95 ? 'good' : acc >= 85 ? 'mid' : 'bad'
 }
-function pct(a) {
-  return (a === null || a === undefined) ? null : a + '%'
+function csiCls(v) {
+  if (v === null || v === undefined) return 'none'
+  return v >= 70 ? 'good' : v >= 40 ? 'mid' : 'bad'
+}
+function pct(a, decimals = 1) {
+  return (a === null || a === undefined) ? null : a.toFixed(decimals) + '%'
 }
 function tstr(t) {
   if (!t) return '—'
@@ -42,19 +46,33 @@ function pill(n, type) {
 function showErr(m) { $('err').textContent = m }
 
 // ── circular gauge SVG ────────────────────────────────────────────────────────
+// opts.csiMode — use CSI color thresholds (≥70 green, ≥40 amber) instead of accuracy thresholds
+// opts.sub     — bottom label override
 
-function gauge(accuracy, label, falseAlarms) {
+function gauge(value, label, falseAlarms, opts = {}) {
   const R    = 48
   const circ = +(2 * Math.PI * R).toFixed(1)   // 301.6
-  const acc  = accuracy ?? 0
-  const off  = +(circ * (1 - acc / 100)).toFixed(1)
-  const col  = accuracy === null ? '#374151'
-    : acc >= 95 ? '#34D399'
-    : acc >= 85 ? '#FBBF24' : '#EF4444'
-  const centerTxt = accuracy === null ? '—' : acc.toFixed(1) + '%'
-  const faLabel   = falseAlarms === 0
-    ? `<text x="60" y="84" text-anchor="middle" fill="#34D399" font-size="8" font-family="ui-monospace,monospace">clean ✓</text>`
-    : `<text x="60" y="84" text-anchor="middle" fill="#F87171" font-size="8" font-family="ui-monospace,monospace">${falseAlarms} false alarm${falseAlarms !== 1 ? 's' : ''}</text>`
+  const v    = value ?? 0
+  const off  = +(circ * (1 - v / 100)).toFixed(1)
+
+  const col = value === null
+    ? '#374151'
+    : opts.csiMode
+      ? (v >= 70 ? '#34D399' : v >= 40 ? '#FBBF24' : '#EF4444')
+      : (v >= 95 ? '#34D399' : v >= 85 ? '#FBBF24' : '#EF4444')
+
+  const centerTxt = value === null
+    ? (opts.nullText || '—')
+    : v.toFixed(1) + '%'
+
+  let bottomLine = ''
+  if (opts.sub) {
+    bottomLine = `<text x="60" y="84" text-anchor="middle" fill="#4B5563" font-size="8" font-family="ui-monospace,monospace">${opts.sub}</text>`
+  } else if (falseAlarms !== null && falseAlarms !== undefined) {
+    bottomLine = falseAlarms === 0
+      ? `<text x="60" y="84" text-anchor="middle" fill="#34D399" font-size="8" font-family="ui-monospace,monospace">clean ✓</text>`
+      : `<text x="60" y="84" text-anchor="middle" fill="#F87171" font-size="8" font-family="ui-monospace,monospace">${falseAlarms} false alarm${falseAlarms !== 1 ? 's' : ''}</text>`
+  }
 
   return `
     <div class="gauge-wrap">
@@ -67,9 +85,79 @@ function gauge(accuracy, label, falseAlarms) {
               font-size="18" font-weight="700" font-family="ui-monospace,monospace">${centerTxt}</text>
         <text x="60" y="70" text-anchor="middle" fill="#6B7280"
               font-size="9" font-family="ui-monospace,monospace">${label}</text>
-        ${falseAlarms !== null ? faLabel : ''}
+        ${bottomLine}
       </svg>
       <div class="gauge-sub">${label}</div>
+    </div>`
+}
+
+// ── skill breakdown card ──────────────────────────────────────────────────────
+
+function skillBreakdown(key, h) {
+  if (!h || !h.total) return ''
+  const label     = key.replace('min', ' MIN')
+  const correctDry = Math.max(0, (h.total || 0) - (h.false_alarms || 0) - (h.missed || 0) - (h.hits || 0))
+  const oneInN     = h.base_rate > 0 ? Math.round(100 / h.base_rate) : null
+
+  const podTxt = h.pod  !== null && h.pod  !== undefined ? `<span class="${csiCls(h.pod)}">${h.pod.toFixed(1)}%</span>`  : '<span class="nodata">no rain events yet</span>'
+  const farTxt = h.far  !== null && h.far  !== undefined ? `${h.far.toFixed(1)}%`   : '<span class="nodata">—</span>'
+  const csiTxt = h.csi  !== null && h.csi  !== undefined ? `<span class="${csiCls(h.csi)}">${h.csi.toFixed(1)}%</span>`  : '<span class="nodata">not enough rain data yet</span>'
+
+  return `
+    <div class="skill-card">
+      <div class="skill-title">${label} · slot-by-slot breakdown</div>
+
+      <div class="skill-row">
+        <span class="skill-label">Total verified slots</span>
+        <span class="skill-val">${h.total.toLocaleString()}</span>
+        <span class="skill-note">each slot = one 15-min window that has since elapsed</span>
+      </div>
+
+      <div class="skill-divider"></div>
+
+      <div class="skill-row muted-row">
+        <span class="skill-label">Correct dry predictions <em>(predicted dry → stayed dry)</em></span>
+        <span class="skill-val">${correctDry.toLocaleString()}</span>
+        <span class="skill-note warn-note">inflates overall accuracy — Salzburg is dry most of the time</span>
+      </div>
+      <div class="skill-row hit-row">
+        <span class="skill-label">Hits <em>(predicted rain → it actually rained)</em></span>
+        <span class="skill-val good">${h.hits ?? 0}</span>
+        <span class="skill-note">the only column that proves the model works on rain</span>
+      </div>
+      <div class="skill-row fa-row">
+        <span class="skill-label">False alarms <em>(predicted rain → stayed dry)</em></span>
+        <span class="skill-val bad">${h.false_alarms ?? 0}</span>
+        <span class="skill-note">we cried wolf</span>
+      </div>
+      <div class="skill-row miss-row">
+        <span class="skill-label">Missed <em>(predicted dry → it actually rained)</em></span>
+        <span class="skill-val mid">${h.missed ?? 0}</span>
+        <span class="skill-note">we sent someone out in the rain</span>
+      </div>
+
+      <div class="skill-divider"></div>
+
+      <div class="skill-row">
+        <span class="skill-label">Base rate — how often it actually rained</span>
+        <span class="skill-val">${h.base_rate ?? 0}%</span>
+        <span class="skill-note">${oneInN ? `about 1 in every ${oneInN} slots` : '—'}</span>
+      </div>
+      <div class="skill-row">
+        <span class="skill-label">Hit Rate (POD) — when rain came, did we predict it?</span>
+        <span class="skill-val">${podTxt}</span>
+        <span class="skill-note">hits ÷ (hits + missed)</span>
+      </div>
+      <div class="skill-row">
+        <span class="skill-label">False Alarm Ratio — of our "rain" calls that were wrong</span>
+        <span class="skill-val">${farTxt}</span>
+        <span class="skill-note">false alarms ÷ (hits + false alarms)</span>
+      </div>
+      <div class="skill-row skill-csi-row">
+        <span class="skill-label">Critical Success Index (CSI) — the honest number</span>
+        <span class="skill-val">${csiTxt}</span>
+        <span class="skill-note">hits ÷ (hits + false alarms + missed) — ignores dry baseline entirely</span>
+      </div>
     </div>`
 }
 
@@ -96,15 +184,20 @@ function render(d) {
     if (!r.total) {
       return `<tr>
         <td class="label">${h}</td>
-        <td class="r nodata" colspan="4">collecting…</td>
+        <td class="r nodata" colspan="6">collecting…</td>
       </tr>`
     }
+    const csiDisplay = r.csi !== null && r.csi !== undefined
+      ? `<span class="${csiCls(r.csi)}">${r.csi.toFixed(1)}%</span>`
+      : '<span class="nodata">—</span>'
     return `<tr>
       <td class="label">${h}</td>
       ${accCell(r.accuracy)}
       <td class="r muted">${r.correct}/${r.total}</td>
       <td class="r">${pill(r.false_alarms, 'pill-red')}</td>
       <td class="r">${pill(r.missed, 'pill-amb')}</td>
+      <td class="r"><span class="good">${r.hits ?? 0}</span></td>
+      <td class="r">${csiDisplay}</td>
     </tr>`
   }).join('')
 
@@ -147,17 +240,27 @@ function render(d) {
       ${!hasData ? '&middot; <em>first verification arrives ~30 min after deploy</em>' : ''}
     </p>
 
-    <h2>By horizon</h2>
+    <h2>By horizon
+      <span class="muted" style="text-transform:none;letter-spacing:0;font-size:.72rem;margin-left:.5rem">
+        30-day window &middot; overall accuracy inflated by dry baseline &middot; CSI = honest rain skill
+      </span>
+    </h2>
     <table>
       <thead>
         <tr>
           <th>horizon</th><th class="r">accuracy</th><th class="r">correct</th>
-          <th class="r">false alarm</th><th class="r">missed</th>
+          <th class="r">false alarms</th><th class="r">missed</th>
+          <th class="r">hits</th><th class="r">CSI</th>
         </tr>
       </thead>
       <tbody>${horizonRows}</tbody>
     </table>
-    <p class="muted">false alarm = predicted rain, stayed dry &nbsp;&middot;&nbsp; missed = predicted dry, it rained</p>
+    <p class="muted">
+      false alarm = predicted rain, stayed dry &nbsp;&middot;&nbsp;
+      missed = predicted dry, it rained &nbsp;&middot;&nbsp;
+      hits = predicted rain, it rained &nbsp;&middot;&nbsp;
+      CSI = hits ÷ (hits + false alarms + missed)
+    </p>
 
     <h2>By point</h2>
     <table>
@@ -190,13 +293,25 @@ function renderDashboard(d) {
 
   const h = d.health
 
-  // health gauges
-  const gaugesHtml = `
-    <h2 style="margin-top:0;padding-top:0;border-top:none">Forecast health · 7-day</h2>
+  // row 1: overall accuracy gauges (inflated by dry baseline)
+  const accGauges = `
+    <p class="metric-note">Counts every slot including the ~99% that are dry→dry correct. High in Salzburg summers because it rarely rains.</p>
     <div class="gauges">
       ${gauge(h['30min']?.accuracy ?? null, '30 MIN', h['30min']?.false_alarms ?? null)}
       ${gauge(h['60min']?.accuracy ?? null, '60 MIN', h['60min']?.false_alarms ?? null)}
       ${gauge(h['90min']?.accuracy ?? null, '90 MIN', h['90min']?.false_alarms ?? null)}
+    </div>`
+
+  // row 2: CSI gauges (rain-only skill, ignores dry baseline)
+  const csiGauges = `
+    <p class="metric-note">Ignores all the dry→dry correct slots. Only looks at actual rain events: hits ÷ (hits + false alarms + missed). A model that always predicts dry scores 0%.</p>
+    <div class="gauges">
+      ${gauge(h['30min']?.csi ?? null, '30 MIN', null,
+          { csiMode: true, sub: h['30min']?.csi === null ? 'no rain yet' : `${h['30min']?.hits ?? 0} hits` })}
+      ${gauge(h['60min']?.csi ?? null, '60 MIN', null,
+          { csiMode: true, sub: h['60min']?.csi === null ? 'no rain yet' : `${h['60min']?.hits ?? 0} hits` })}
+      ${gauge(h['90min']?.csi ?? null, '90 MIN', null,
+          { csiMode: true, sub: h['90min']?.csi === null ? 'no rain yet' : `${h['90min']?.hits ?? 0} hits` })}
     </div>`
 
   // calibration table
@@ -241,7 +356,7 @@ function renderDashboard(d) {
       <tbody>
         ${points.map(pt => {
           const row = d.thresholds.filter(t => t.point === pt)
-          const get = h => row.find(t => t.horizon === h) || { threshold: 0.1, tuned: false }
+          const get = hv => row.find(t => t.horizon === hv) || { threshold: 0.1, tuned: false }
           return `<tr>
             <td class="label">${pt}</td>
             <td class="r">${thBadge(get(30).threshold, get(30).tuned)}</td>
@@ -272,7 +387,13 @@ function renderDashboard(d) {
     </div>`).join('')
 
   el.innerHTML = `
-    ${gaugesHtml}
+    <h2 style="margin-top:0;padding-top:0;border-top:none">Overall accuracy · 7-day</h2>
+    ${accGauges}
+
+    <h2>Rain detection skill (CSI) · 7-day</h2>
+    ${csiGauges}
+
+    ${['30min', '60min', '90min'].map(k => skillBreakdown(k, h[k])).join('')}
 
     <h2>Active thresholds
       <span class="muted" style="text-transform:none;letter-spacing:0;font-size:.72rem;margin-left:.5rem">
@@ -307,7 +428,6 @@ async function loadAll(key) {
   sessionStorage.setItem(KEY_STORE, key)
   render(await res.json())
 
-  // Load calibration dashboard alongside
   try {
     const dr = await fetch('/api/admin/dashboard', { headers: { 'X-Admin-Key': key } })
     if (dr.ok) renderDashboard(await dr.json())
