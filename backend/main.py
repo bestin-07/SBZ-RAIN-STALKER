@@ -651,6 +651,8 @@ def _build_payload(event: dict) -> dict:
     return {}
 
 
+MIN_PUSH_AGREEMENT = 3  # points that must agree before any push fires (out of 11)
+
 async def check_and_push(client: httpx.AsyncClient, now_ts: int):
     events = []
     for point in POINTS:
@@ -667,14 +669,16 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         except Exception as e:
             print(f"[push] {point['name']}: {e}")
 
-    if not events:
-        return
-
     gap_events  = [e for e in events if e["type"] == "gap"]
     rain_events = [e for e in events if e["type"] == "rain_incoming"]
+    total       = len(POINTS)
+
+    print(f"[push] {len(gap_events)}/{total} gap · {len(rain_events)}/{total} rain"
+          f" (need {MIN_PUSH_AGREEMENT} to agree)")
+
     sent = False
 
-    if gap_events and _cooldown_ok("last_gap_push_ts", 45 * 60, now_ts):
+    if len(gap_events) >= MIN_PUSH_AGREEMENT and _cooldown_ok("last_gap_push_ts", 45 * 60, now_ts):
         best = min(gap_events, key=lambda e: e["gap_in_min"])
         await push_to_all(_build_payload(best))
         with get_db() as (_, cur):
@@ -683,9 +687,10 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
                 " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
                 (str(float(now_ts)),),
             )
+        print(f"[push] gap fired — {len(gap_events)}/{total} agreed")
         sent = True
 
-    if not sent and rain_events and _cooldown_ok("last_rain_push_ts", 60 * 60, now_ts):
+    if not sent and len(rain_events) >= MIN_PUSH_AGREEMENT and _cooldown_ok("last_rain_push_ts", 60 * 60, now_ts):
         best = min(rain_events, key=lambda e: e["rain_in_min"])
         await push_to_all(_build_payload(best))
         with get_db() as (_, cur):
@@ -694,6 +699,7 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
                 " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
                 (str(float(now_ts)),),
             )
+        print(f"[push] rain fired — {len(rain_events)}/{total} agreed")
 
 
 # ---------------------------------------------------------------------------
