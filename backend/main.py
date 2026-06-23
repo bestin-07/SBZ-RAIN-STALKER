@@ -111,6 +111,36 @@ def init_db():
                 created_at DOUBLE PRECISION NOT NULL
             )
         """)
+        # Calibration columns — safe to run on existing DB (IF NOT EXISTS)
+        cur.execute("ALTER TABLE forecasts ADD COLUMN IF NOT EXISTS nowcast_source TEXT")
+        cur.execute("ALTER TABLE forecasts ADD COLUMN IF NOT EXISTS hour_of_day    INTEGER")
+        cur.execute("ALTER TABLE forecasts ADD COLUMN IF NOT EXISTS month_num      INTEGER")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS calibration_runs (
+                id                  BIGSERIAL PRIMARY KEY,
+                run_at              BIGINT           NOT NULL,
+                point_name          TEXT             NOT NULL,
+                horizon_minutes     INTEGER          NOT NULL,
+                old_threshold       DOUBLE PRECISION,
+                new_threshold       DOUBLE PRECISION,
+                sample_count        INTEGER,
+                false_alarms_before INTEGER,
+                false_alarms_after  INTEGER,
+                f1_score            DOUBLE PRECISION
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS accuracy_alerts (
+                id              BIGSERIAL PRIMARY KEY,
+                triggered_at    BIGINT           NOT NULL,
+                point_name      TEXT,
+                horizon_minutes INTEGER,
+                accuracy_7d     DOUBLE PRECISION,
+                old_threshold   DOUBLE PRECISION,
+                new_threshold   DOUBLE PRECISION,
+                action          TEXT
+            )
+        """)
 
     # Parse host from URL for the log (mask credentials)
     try:
@@ -372,12 +402,154 @@ async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, 
 
 
 async def fetch_timeline(client: httpx.AsyncClient, point: dict):
+    times, precips, _ = await _fetch_timeline_sourced(client, point)
+    return times, precips
+
+async def _fetch_timeline_sourced(client: httpx.AsyncClient, point: dict):
+    """Like fetch_timeline but also returns the source string ('geosphere'|'open_meteo')."""
     try:
-        return await fetch_nowcast_timeline(client, point)
+        times, precips = await fetch_nowcast_timeline(client, point)
+        return times, precips, "geosphere"
     except Exception:
         data = await fetch_forecast_for_point(client, point)
         return (data.get("minutely_15", {}).get("time", []),
-                data.get("minutely_15", {}).get("precipitation", []))
+                data.get("minutely_15", {}).get("precipitation", []),
+                "open_meteo")
+
+
+# ---------------------------------------------------------------------------
+# Calibration helpers
+# ---------------------------------------------------------------------------
+
+CALIB_CANDIDATES   = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+MIN_CALIB_SAMPLES  = 50
+ALERT_FLOOR        = 85.0   # 7-day accuracy % below which emergency raise fires
+ALERT_COOLDOWN_S   = 3600   # don't re-alert same (point, horizon) within 1 hour
+
+
+def get_threshold(point_name: str, horizon: int) -> float:
+    key = f"calib_threshold_{horizon}_{point_name}"
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
+        row = cur.fetchone()
+    return float(row[0]) if row else DRY_THRESHOLD
+
+
+def set_threshold(point_name: str, horizon: int, value: float):
+    key = f"calib_threshold_{horizon}_{point_name}"
+    with get_db() as (_, cur):
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES (%s, %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (key, str(round(value, 4))),
+        )
+
+
+def _score(rows, candidate: float):
+    """Return (F1, false_alarm_count) for a candidate threshold against verified rows."""
+    tp = fp = fn = 0
+    for pred, actual in rows:
+        pw = pred   >= candidate
+        aw = actual >= DRY_THRESHOLD
+        if pw and aw:      tp += 1
+        elif pw and not aw: fp += 1
+        elif not pw and aw: fn += 1
+    prec = tp / (tp + fp) if (tp + fp) else 1.0
+    rec  = tp / (tp + fn) if (tp + fn) else 1.0
+    f1   = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+    return f1, fp
+
+
+def weekly_calibrate():
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    cutoff = now_ts - 30 * 86400
+    print("[calib] running weekly calibration")
+    for point in POINTS:
+        for horizon in [30, 60, 90]:
+            with get_db() as (_, cur):
+                cur.execute(
+                    "SELECT predicted_precip, actual_precip FROM forecasts"
+                    " WHERE verified=1 AND point_name=%s AND horizon_minutes=%s"
+                    " AND forecast_made_at > %s AND actual_precip IS NOT NULL",
+                    (point["name"], horizon, cutoff),
+                )
+                rows = cur.fetchall()
+            if len(rows) < MIN_CALIB_SAMPLES:
+                continue
+            old_th = get_threshold(point["name"], horizon)
+            _, old_fa = _score(rows, old_th)
+            best_th, best_f1, best_fa = old_th, -1.0, old_fa
+            for c in CALIB_CANDIDATES:
+                f1, fa = _score(rows, c)
+                if f1 > best_f1:
+                    best_f1, best_th, best_fa = f1, c, fa
+            set_threshold(point["name"], horizon, best_th)
+            with get_db() as (_, cur):
+                cur.execute(
+                    "INSERT INTO calibration_runs"
+                    " (run_at, point_name, horizon_minutes, old_threshold, new_threshold,"
+                    "  sample_count, false_alarms_before, false_alarms_after, f1_score)"
+                    " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (now_ts, point["name"], horizon, old_th, best_th,
+                     len(rows), old_fa, best_fa, round(best_f1, 4)),
+                )
+            if best_th != old_th:
+                print(f"[calib] {point['name']} {horizon}min {old_th}→{best_th}"
+                      f" (F1={best_f1:.3f}, FA {old_fa}→{best_fa})")
+    with get_db() as (_, cur):
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES ('last_calibration_at', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (str(float(now_ts)),),
+        )
+    print("[calib] done")
+
+
+def check_accuracy_health(now_ts: int):
+    """Emergency threshold raise if 7-day accuracy drops below ALERT_FLOOR."""
+    cutoff_7d = now_ts - 7 * 86400
+    for point in POINTS:
+        for horizon in [30, 60, 90]:
+            with get_db() as (_, cur):
+                cur.execute(
+                    """SELECT COUNT(*),
+                              SUM(CASE WHEN (predicted_precip < %s AND actual_precip < %s)
+                                         OR (predicted_precip >= %s AND actual_precip >= %s)
+                                       THEN 1 ELSE 0 END)
+                       FROM forecasts
+                       WHERE verified=1 AND point_name=%s AND horizon_minutes=%s
+                         AND forecast_made_at > %s AND actual_precip IS NOT NULL""",
+                    (DRY_THRESHOLD,) * 4 + (point["name"], horizon, cutoff_7d),
+                )
+                total, correct = cur.fetchone()
+            if not total or total < 20:
+                continue
+            accuracy = (correct or 0) / total * 100
+            if accuracy >= ALERT_FLOOR:
+                continue
+            # Check cooldown — don't spam alerts
+            with get_db() as (_, cur):
+                cur.execute(
+                    "SELECT id FROM accuracy_alerts WHERE point_name=%s"
+                    " AND horizon_minutes=%s AND triggered_at > %s",
+                    (point["name"], horizon, now_ts - ALERT_COOLDOWN_S),
+                )
+                if cur.fetchone():
+                    continue
+            old_th = get_threshold(point["name"], horizon)
+            new_th = round(min(old_th * 1.5, 0.5), 4)
+            set_threshold(point["name"], horizon, new_th)
+            with get_db() as (_, cur):
+                cur.execute(
+                    "INSERT INTO accuracy_alerts"
+                    " (triggered_at, point_name, horizon_minutes, accuracy_7d,"
+                    "  old_threshold, new_threshold, action)"
+                    " VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (now_ts, point["name"], horizon, round(accuracy, 1),
+                     old_th, new_th, "raised_threshold"),
+                )
+            print(f"[alert] {point['name']} {horizon}min acc={accuracy:.1f}%"
+                  f" → threshold {old_th}→{new_th}")
 
 
 async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
@@ -397,7 +569,7 @@ async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
 # Push notification logic
 # ---------------------------------------------------------------------------
 
-def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0):
+def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, threshold: float = DRY_THRESHOLD):
     slots   = sorted(zip(times, precips), key=lambda s: s[0])
     current = min(slots, key=lambda s: abs(s[0] - now_ts), default=None)
     if current is None:
@@ -406,8 +578,8 @@ def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0):
     # raining before sending a "gap opening" push — this prevents a single
     # distant TAWES station from triggering a false gap notification when the
     # nowcast (which drives the actual forecast) already shows dry.
-    nowcast_raining = current[1] >= DRY_THRESHOLD
-    is_raining = nowcast_raining and now_precip_live >= DRY_THRESHOLD
+    nowcast_raining = current[1] >= threshold
+    is_raining = nowcast_raining and now_precip_live >= threshold
 
     if is_raining:
         window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 15 * 60]
@@ -475,11 +647,12 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
     events = []
     for point in POINTS:
         try:
-            times, precips = await fetch_timeline(client, point)
-            now_precip     = await fetch_now_precip(client, point)
+            times, precips, _ = await _fetch_timeline_sourced(client, point)
+            now_precip        = await fetch_now_precip(client, point)
+            threshold         = get_threshold(point["name"], 30)  # push uses 30-min horizon
             ev = _analyze_forecast(
                 [now_ts] + list(times), [now_precip] + list(precips),
-                now_ts, now_precip_live=now_precip,
+                now_ts, now_precip_live=now_precip, threshold=threshold,
             )
             if ev:
                 events.append(ev)
@@ -521,20 +694,22 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
 
 async def run_cycle():
     now_ts = int(datetime.now(timezone.utc).timestamp())
+    now_dt = datetime.now(timezone.utc)
 
     async with httpx.AsyncClient() as client:
         # Store new forecasts for all points × horizons
         forecast_rows = []
         for point in POINTS:
             try:
-                times, precips = await fetch_timeline(client, point)
+                times, precips, source = await _fetch_timeline_sourced(client, point)
                 for horizon in [30, 60, 90]:
                     target_ts = now_ts + horizon * 60
                     best_idx  = min(range(len(times)), key=lambda i: abs(times[i] - target_ts), default=None)
                     if best_idx is not None:
-                        forecast_rows.append(
-                            (point["name"], now_ts, target_ts, horizon, precips[best_idx])
-                        )
+                        forecast_rows.append((
+                            point["name"], now_ts, target_ts, horizon, precips[best_idx],
+                            source, now_dt.hour, now_dt.month,
+                        ))
             except Exception as e:
                 print(f"[cycle] forecast {point['name']}: {e}")
 
@@ -542,8 +717,9 @@ async def run_cycle():
             with get_db() as (_, cur):
                 cur.executemany(
                     "INSERT INTO forecasts"
-                    " (point_name, forecast_made_at, target_time, horizon_minutes, predicted_precip)"
-                    " VALUES (%s, %s, %s, %s, %s)",
+                    " (point_name, forecast_made_at, target_time, horizon_minutes, predicted_precip,"
+                    "  nowcast_source, hour_of_day, month_num)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                     forecast_rows,
                 )
 
@@ -579,6 +755,17 @@ async def run_cycle():
         sub_cutoff = now_ts - 90 * 86400
         with get_db() as (_, cur):
             cur.execute("DELETE FROM push_subscriptions WHERE created_at < %s", (sub_cutoff,))
+
+        # Health check every cycle — raises thresholds immediately if accuracy falls
+        check_accuracy_health(now_ts)
+
+        # Weekly calibration — refits all thresholds from last 30 days of verified data
+        with get_db() as (_, cur):
+            cur.execute("SELECT value FROM settings WHERE key = 'last_calibration_at'")
+            row = cur.fetchone()
+        last_calib = float(row[0]) if row else 0
+        if now_ts - last_calib >= 7 * 86400:
+            weekly_calibrate()
 
         await check_and_push(client, now_ts)
 
@@ -886,6 +1073,121 @@ def admin_accuracy(request: Request):
         },
         "by_horizon": {f"{h}min": horizon_stats(h) for h in [30, 60, 90]},
         "by_point":   by_point,
+    }
+
+
+@app.get("/api/admin/dashboard")
+@limiter.limit("20/minute")
+def admin_dashboard(request: Request):
+    """Full calibration + health dashboard. Same auth as admin_accuracy."""
+    if not ADMIN_KEY:
+        return JSONResponse({"error": "admin not configured"}, status_code=503)
+    if not secrets.compare_digest(request.headers.get("x-admin-key", ""), ADMIN_KEY):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    now_ts    = int(datetime.now(timezone.utc).timestamp())
+    cutoff_7d = now_ts - 7 * 86400
+    th        = DRY_THRESHOLD
+
+    # Health per horizon (7-day window)
+    health: dict = {}
+    for h in [30, 60, 90]:
+        with get_db() as (_, cur):
+            cur.execute(
+                """SELECT COUNT(*),
+                          SUM(CASE WHEN (predicted_precip < %s AND actual_precip < %s)
+                                     OR (predicted_precip >= %s AND actual_precip >= %s)
+                                   THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN predicted_precip >= %s AND actual_precip < %s THEN 1 ELSE 0 END),
+                          SUM(CASE WHEN predicted_precip <  %s AND actual_precip >= %s THEN 1 ELSE 0 END)
+                   FROM forecasts
+                   WHERE verified=1 AND horizon_minutes=%s
+                     AND forecast_made_at > %s AND actual_precip IS NOT NULL""",
+                (th,) * 8 + (h, cutoff_7d),
+            )
+            total, correct, fa, missed = (v or 0 for v in cur.fetchone())
+        health[f"{h}min"] = {
+            "total":        total,
+            "accuracy":     round((correct or 0) / total * 100, 1) if total else None,
+            "false_alarms": int(fa),
+            "missed":       int(missed),
+        }
+
+    # Current calibrated thresholds
+    thresholds = []
+    for p in POINTS:
+        for h in [30, 60, 90]:
+            key = f"calib_threshold_{h}_{p['name']}"
+            with get_db() as (_, cur):
+                cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
+                row = cur.fetchone()
+            thresholds.append({
+                "point":     p["name"],
+                "horizon":   h,
+                "threshold": float(row[0]) if row else DRY_THRESHOLD,
+                "tuned":     bool(row),
+            })
+
+    # Calibration meta
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = 'last_calibration_at'")
+        row = cur.fetchone()
+    last_calib = float(row[0]) if row else None
+
+    with get_db() as (_, cur):
+        cur.execute(
+            "SELECT run_at, point_name, horizon_minutes, old_threshold, new_threshold,"
+            "       sample_count, false_alarms_before, false_alarms_after, f1_score"
+            " FROM calibration_runs ORDER BY run_at DESC LIMIT 50"
+        )
+        calib_rows = [
+            {"run_at": r[0], "point": r[1], "horizon": r[2],
+             "old_th": r[3], "new_th": r[4], "samples": r[5],
+             "fa_before": r[6], "fa_after": r[7], "f1": r[8]}
+            for r in cur.fetchall()
+        ]
+
+    # Recent alerts
+    with get_db() as (_, cur):
+        cur.execute(
+            "SELECT triggered_at, point_name, horizon_minutes, accuracy_7d,"
+            "       old_threshold, new_threshold, action"
+            " FROM accuracy_alerts ORDER BY triggered_at DESC LIMIT 20"
+        )
+        alert_rows = [
+            {"at": r[0], "point": r[1], "horizon": r[2], "accuracy": r[3],
+             "old_th": r[4], "new_th": r[5], "action": r[6]}
+            for r in cur.fetchall()
+        ]
+
+    # Source health (7-day)
+    source_health = []
+    for p in POINTS:
+        with get_db() as (_, cur):
+            cur.execute(
+                "SELECT COUNT(*),"
+                "       SUM(CASE WHEN nowcast_source='geosphere' THEN 1 ELSE 0 END)"
+                " FROM forecasts WHERE point_name=%s AND forecast_made_at > %s",
+                (p["name"], cutoff_7d),
+            )
+            total, geo = cur.fetchone()
+        total = total or 0; geo = geo or 0
+        source_health.append({
+            "point":       p["name"],
+            "nowcast_pct": round(geo / total * 100, 1) if total else None,
+            "om_pct":      round((total - geo) / total * 100, 1) if total else None,
+        })
+
+    return {
+        "health":       health,
+        "thresholds":   thresholds,
+        "calibration":  {
+            "last_run":  last_calib,
+            "next_run":  (last_calib + 7 * 86400) if last_calib else None,
+            "runs":      calib_rows,
+        },
+        "alerts":       alert_rows,
+        "source_health": source_health,
     }
 
 

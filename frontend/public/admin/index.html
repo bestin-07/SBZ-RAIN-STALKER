@@ -61,6 +61,39 @@
     a:hover { text-decoration: underline; }
     .actions { margin-top: 2.5rem; color: #4B5563; font-size: .8rem; }
     .actions a { color: #60A5FA; }
+
+    /* ── gauges ───────────────────────────────────────────────────────── */
+    .gauges      { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: .5rem 0 2rem; }
+    .gauge-wrap  { display: flex; flex-direction: column; align-items: center; gap: .4rem; }
+    .gauge-wrap svg circle.track { stroke: #1a1c22; }
+    .gauge-wrap svg circle.arc   { transition: stroke-dashoffset 1.2s ease, stroke .4s; }
+    .gauge-sub   { font-size: .7rem; color: #4B5563; letter-spacing: .06em; text-transform: uppercase; }
+
+    /* calibration threshold table badges */
+    .th-badge    { display: inline-block; padding: .12rem .45rem; border-radius: 4px;
+                   font-size: .78rem; font-variant-numeric: tabular-nums;
+                   background: rgba(96,165,250,.1); color: #60A5FA; }
+    .th-raised   { background: rgba(251,191,36,.1);  color: #FBBF24; }
+    .th-default  { background: rgba(75,85,99,.12);   color: #6B7280; }
+
+    /* alert row */
+    .alert-row   { display: flex; align-items: baseline; gap: .75rem;
+                   padding: .45rem 0; border-bottom: 1px solid #141519;
+                   font-size: .82rem; }
+    .alert-row:last-child { border-bottom: none; }
+    .alert-ts    { color: #4B5563; white-space: nowrap; flex-shrink: 0; }
+    .alert-badge { padding: .1rem .4rem; border-radius: 4px; font-size: .72rem;
+                   background: rgba(248,113,113,.1); color: #F87171; flex-shrink: 0; }
+    .alert-txt   { color: #9CA3AF; }
+
+    /* source health bars */
+    .src-row   { display: flex; align-items: center; gap: .75rem; padding: .4rem 0;
+                 border-bottom: 1px solid #141519; font-size: .82rem; }
+    .src-row:last-child { border-bottom: none; }
+    .src-name  { color: #9CA3AF; width: 7rem; flex-shrink: 0; }
+    .src-track { flex: 1; height: 4px; background: #1F2229; border-radius: 3px; overflow: hidden; }
+    .src-fill  { height: 100%; border-radius: 3px; background: #34D399; }
+    .src-pct   { color: #4B5563; font-size: .75rem; width: 3.5rem; text-align: right; }
   </style>
 </head>
 <body>
