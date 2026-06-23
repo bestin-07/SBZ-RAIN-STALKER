@@ -32,7 +32,7 @@ export async function fetchForecast(lat, lon) {
   const params = new URLSearchParams({
     latitude: lat,
     longitude: lon,
-    current: 'temperature_2m,wind_speed_10m,weather_code,precipitation,cape',
+    current: 'temperature_2m,wind_speed_10m,weather_code,precipitation,cape,uv_index',
     minutely_15: 'precipitation',
     forecast_minutely_15: 48,
     timeformat: 'unixtime',

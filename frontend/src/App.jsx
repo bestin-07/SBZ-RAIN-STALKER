@@ -70,6 +70,7 @@ export default function App() {
   const [upgradingLocation, setUpgradingLocation] = useState(false)
   const [accuracyDismissed, setAccuracyDismissed] = useState(false)
   const [stormCape, setStormCape] = useState(null)
+  const [uvIndex, setUvIndex] = useState(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
   useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
@@ -338,10 +339,12 @@ export default function App() {
         // CAPE > 1500 J/kg during afternoon hours (12-21h local) signals
         // extreme convective instability. Gap timings become unreliable
         // as cells can fire and intensify within 15-20 min.
-        const cape = data.current?.cape ?? null
         const localHour = new Date().getHours()
+        const cape = data.current?.cape ?? null
         const severeStorm = cape !== null && cape >= 1500 && localHour >= 12 && localHour < 21
         setStormCape(severeStorm ? cape : null)
+        const uv = data.current?.uv_index ?? null
+        setUvIndex(uv !== null && uv >= 6 && localHour >= 7 && localHour < 20 ? uv : null)
         setLastUpdated(Date.now())
       }
 
@@ -483,6 +486,13 @@ export default function App() {
                 className="font-mono text-xs text-muted hover:text-primary transition-colors shrink-0"
                 aria-label="dismiss"
               >✕</button>
+            </div>
+          )}
+          {uvIndex !== null && (
+            <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
+              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: '#F97316' }}>
+                🌞 {uvIndex >= 8 ? t('uv_very_high') : t('uv_high')} (UV {Math.round(uvIndex)})
+              </span>
             </div>
           )}
           {stormCape && (
