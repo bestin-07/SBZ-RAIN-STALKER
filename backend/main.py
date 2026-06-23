@@ -26,11 +26,19 @@ except ImportError:
     print("[push] pywebpush not available — push notifications disabled")
 
 POINTS = [
+    # original city centre ring
     {"name": "altstadt",   "lat": 47.7985, "lon": 13.0469},
     {"name": "bahnhof",    "lat": 47.8127, "lon": 13.0449},
     {"name": "lehen",      "lat": 47.8097, "lon": 13.0200},
     {"name": "schallmoos", "lat": 47.8190, "lon": 13.0600},
     {"name": "maxglan",    "lat": 47.7930, "lon": 13.0250},
+    # extended coverage — north, west, east foothills, south
+    {"name": "itzling",    "lat": 47.8310, "lon": 13.0400},
+    {"name": "liefering",  "lat": 47.8265, "lon": 13.0170},
+    {"name": "parsch",     "lat": 47.8060, "lon": 13.0790},
+    {"name": "aigen",      "lat": 47.7790, "lon": 13.0730},
+    {"name": "gneis",      "lat": 47.7755, "lon": 13.0380},
+    {"name": "taxham",     "lat": 47.7940, "lon": 13.0060},
 ]
 
 DRY_THRESHOLD = 0.1
