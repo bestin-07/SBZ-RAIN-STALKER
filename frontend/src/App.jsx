@@ -69,6 +69,7 @@ export default function App() {
   const [locationAccuracy, setLocationAccuracy] = useState(null) // metres from pos.coords.accuracy
   const [upgradingLocation, setUpgradingLocation] = useState(false)
   const [accuracyDismissed, setAccuracyDismissed] = useState(false)
+  const [stormCape, setStormCape] = useState(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
   useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
@@ -333,6 +334,14 @@ export default function App() {
           wind: data.current?.wind_speed_10m ?? null,
           code: data.current?.weather_code ?? null,
         })
+        // Severe storm potential — Alpine/Salzburg specific threshold.
+        // CAPE > 1500 J/kg during afternoon hours (12-21h local) signals
+        // extreme convective instability. Gap timings become unreliable
+        // as cells can fire and intensify within 15-20 min.
+        const cape = data.current?.cape ?? null
+        const localHour = new Date().getHours()
+        const severeStorm = cape !== null && cape >= 1500 && localHour >= 12 && localHour < 21
+        setStormCape(severeStorm ? cape : null)
         setLastUpdated(Date.now())
       }
 
@@ -474,6 +483,13 @@ export default function App() {
                 className="font-mono text-xs text-muted hover:text-primary transition-colors shrink-0"
                 aria-label="dismiss"
               >✕</button>
+            </div>
+          )}
+          {stormCape && (
+            <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
+              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: '#FBBF24' }}>
+                ⚡ {t('storm_cape_warning')}
+              </span>
             </div>
           )}
           <GapBanner status={status} />

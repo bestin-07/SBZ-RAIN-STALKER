@@ -194,6 +194,14 @@ Do not reintroduce any `maps.dwd.de` request — the whole host is blocked for A
 ### ICON-EU Model Lag
 The Open-Meteo ICON-EU model runs roughly hourly and can be 2-3h behind convective rain events in the Alps. On fast-moving summer storms, all model-based signals (minutely_15, current.precipitation, weather_code) can show `0` while it's actively raining. The TAWES stations (fast, 10-min) and GeoSphere INCA nowcast (gridded, hourly) are meant to compensate — but only if those API calls succeed.
 
+### Storm potential banner — Alpine/Salzburg specific (CAPE ≥ 1500 J/kg)
+A yellow ⚡ banner fires when `current.cape ≥ 1500 J/kg` between 12:00–21:00 local time. This threshold is **deliberately calibrated for the Alpine environment**: orographic lifting from the Alps means convective cells can fire and intensify within 15–20 min from a clear sky. 1500 J/kg is genuinely extreme here.
+
+**Do not port this threshold blindly to other regions:**
+- Flatland Europe (Bavaria, Vienna plain): convection is slower-building, 1500 J/kg is still severe but cells take longer to fire — threshold may be appropriate but timing behaviour differs.
+- Tropical regions (Kerala, coastal India): CAPE routinely exceeds 2000–3000 J/kg; 1500 is unremarkable and would fire constantly. Recalibrate to ≥3000 J/kg or use a different index (e.g. K-index, Total Totals).
+- GeoSphere and TAWES do **not** provide realtime lightning data in their public API (APOLIS is historical only). Open-Meteo's `lightning_potential` field is unreliable for Alpine convective events — ignore it, use CAPE + Lifted Index instead.
+
 ### GeoSphere TAWES Metadata Format — VERIFIED
 Live-confirmed 2026-06: the metadata endpoint returns `{ ..., stations: [...] }` where each station object has exactly `id` (string), `lat`, `lon`, `is_active` (bool). Discovery filters out inactive stations and falls back to `station_ids=11150` only if the whole metadata fetch fails.
 
