@@ -320,15 +320,10 @@ export default function App() {
 
         const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(timeline.times, timeline.precips)
         const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
-        // Ribbon: blend nowcast (0–3 h, catches convective rain ICON-EU misses)
-        // with Open-Meteo for the 3–12 h tail where nowcast doesn't reach.
-        const nowcastEndTime = nowcast ? (nowSec + 3 * 3600) : 0
-        const omFuture = omTimes
-          .map((t, i) => ({ t, p: omPrecips[i] }))
-          .filter(s => s.t > nowcastEndTime)
-        const ribbonTimes   = nowcast ? [...timeline.times,   ...omFuture.map(s => s.t)] : omTimes
-        const ribbonPrecips = nowcast ? [...timeline.precips, ...omFuture.map(s => s.p)] : omPrecips
-        setForecast({ times: ribbonTimes, precips: ribbonPrecips })
+        // Ribbon: 3h nowcast only — radar-based, user's exact location.
+        // Open-Meteo tail (3–12h) stripped: it's a broad model and looks as
+        // confident as the radar data, which it isn't.
+        setForecast({ times: timeline.times, precips: timeline.precips, isNowcast: !!nowcast })
         setCurrentPrecip(effectivePrecip)
         setGaps(detectedGaps)
         setTrend({ nextRainAt, dryEndsOpen })

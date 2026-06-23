@@ -34,7 +34,7 @@ const translations = {
     light_rain: 'leichter Regen',
     heavy_rain: 'starker Regen',
     storm_rain: 'Gewitter',
-    next_12h:   'nächste 12 Std',
+    next_12h:   '3h · Radar',
 
     checking:    'PRÜFEN',
     reading_sky: 'Regenradar wird analysiert...',
@@ -186,7 +186,7 @@ const translations = {
     light_rain: 'light rain',
     heavy_rain: 'heavy rain',
     storm_rain: 'storm',
-    next_12h:   'next 12 hours',
+    next_12h:   '3h · radar',
 
     checking:    'CHECKING',
     reading_sky: 'reading the sky over your location',
