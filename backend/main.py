@@ -431,6 +431,7 @@ async def _fetch_timeline_sourced(client: httpx.AsyncClient, point: dict):
 
 CALIB_CANDIDATES   = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
 MIN_CALIB_SAMPLES  = 50
+MIN_RAIN_EVENTS    = 10  # minimum actual rain events needed before calibration is meaningful
 ALERT_FLOOR        = 85.0   # 7-day accuracy % below which emergency raise fires
 ALERT_COOLDOWN_S   = 3600   # don't re-alert same (point, horizon) within 1 hour
 
@@ -484,13 +485,22 @@ def weekly_calibrate():
                 rows = cur.fetchall()
             if len(rows) < MIN_CALIB_SAMPLES:
                 continue
+            actual_rain = sum(1 for _, a in rows if a >= DRY_THRESHOLD)
+            if actual_rain < MIN_RAIN_EVENTS:
+                print(f"[calib] {point['name']} {horizon}min — skip"
+                      f" (only {actual_rain} rain events, need {MIN_RAIN_EVENTS})")
+                continue
             old_th = get_threshold(point["name"], horizon)
             _, old_fa = _score(rows, old_th)
-            best_th, best_f1, best_fa = old_th, -1.0, old_fa
+            best_th, best_f1, best_fa = old_th, 0.0, old_fa
             for c in CALIB_CANDIDATES:
                 f1, fa = _score(rows, c)
                 if f1 > best_f1:
                     best_f1, best_th, best_fa = f1, c, fa
+            if best_f1 == 0.0:
+                print(f"[calib] {point['name']} {horizon}min — no F1 improvement"
+                      f" (base rate too low), keeping {old_th}")
+                continue
             set_threshold(point["name"], horizon, best_th)
             with get_db() as (_, cur):
                 cur.execute(
@@ -1212,6 +1222,30 @@ def admin_dashboard(request: Request):
             "om_pct":      round((total - geo) / total * 100, 1) if total else None,
         })
 
+    # Daily rain history — 30 days so the chart shows the full calibration window.
+    # Grouped by UTC day bucket so we don't depend on postgres date functions.
+    cutoff_30d = now_ts - 30 * 86400
+    with get_db() as (_, cur):
+        cur.execute(
+            """
+            SELECT (forecast_made_at / 86400) * 86400   AS day_ts,
+                   MAX(actual_precip)                    AS max_mm,
+                   SUM(CASE WHEN actual_precip >= %s THEN 1 ELSE 0 END) AS rain_slots,
+                   COUNT(*)                              AS total_slots
+            FROM forecasts
+            WHERE verified=1 AND actual_precip IS NOT NULL
+              AND forecast_made_at > %s
+            GROUP BY (forecast_made_at / 86400)
+            ORDER BY day_ts
+            """,
+            (th, cutoff_30d),
+        )
+        rain_history = [
+            {"day": int(r[0]), "max_mm": round(float(r[1] or 0), 2),
+             "rain_slots": int(r[2] or 0), "total_slots": int(r[3] or 0)}
+            for r in cur.fetchall()
+        ]
+
     return {
         "health":       health,
         "thresholds":   thresholds,
@@ -1222,6 +1256,7 @@ def admin_dashboard(request: Request):
         },
         "alerts":       alert_rows,
         "source_health": source_health,
+        "rain_history":  rain_history,
     }
 
 

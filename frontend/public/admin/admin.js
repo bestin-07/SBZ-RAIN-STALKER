@@ -377,6 +377,42 @@ function renderDashboard(d) {
           <span class="alert-txt">${a.accuracy}% accuracy → threshold ${(a.old_th||0).toFixed(2)}→${(a.new_th||0).toFixed(2)}</span>
         </div>`).join('')
 
+  // rain history chart (30-day actual rainfall from sensors)
+  const rainHistHtml = (() => {
+    const hist = d.rain_history || []
+    if (!hist.length) return '<p class="muted">No verified data yet.</p>'
+    const maxMm = Math.max(...hist.map(r => r.max_mm), 0.5)
+    const BAR_W = 18, BAR_H = 60, GAP = 2
+    const W = hist.length * (BAR_W + GAP)
+    const bars = hist.map((r, i) => {
+      const x    = i * (BAR_W + GAP)
+      const fill = r.max_mm < 0.1 ? '#1a1d24' : r.max_mm < 1 ? '#6CD1EB' : r.max_mm < 5 ? '#1BAEE2' : '#0077AA'
+      const h    = r.max_mm < 0.1 ? 2 : Math.max(3, Math.round((r.max_mm / maxMm) * BAR_H))
+      const y    = BAR_H - h
+      const d2   = new Date(r.day * 1000)
+      const lbl  = d2.getDate() === 1 || i === 0
+        ? d2.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
+      return `<rect x="${x}" y="${y}" width="${BAR_W}" height="${h}" fill="${fill}" rx="2">
+        <title>${d2.toLocaleDateString(undefined, {month:'short',day:'numeric'})}: ${r.max_mm}mm (${r.rain_slots} rain slots / ${r.total_slots} total)</title></rect>
+        ${lbl ? `<text x="${x}" y="${BAR_H + 10}" font-size="7" fill="#4B5563" font-family="ui-monospace,monospace">${lbl}</text>` : ''}`
+    }).join('')
+    const totalRainDays = hist.filter(r => r.max_mm >= 0.1).length
+    const totalRainSlots = hist.reduce((s, r) => s + r.rain_slots, 0)
+    return `
+      <p class="metric-note">${totalRainDays} rain day${totalRainDays !== 1 ? 's' : ''} in last 30 days · ${totalRainSlots} total wet slots · max bar = ${maxMm.toFixed(1)}mm — if this is flat/empty, CSI=0% is expected</p>
+      <div style="overflow-x:auto">
+        <svg viewBox="0 0 ${W} ${BAR_H + 14}" width="${W}" height="${BAR_H + 14}" style="display:block;min-width:${W}px">
+          ${bars}
+        </svg>
+      </div>
+      <div style="display:flex;gap:1rem;margin-top:.5rem">
+        <span style="display:flex;align-items:center;gap:.4rem;font-size:.72rem;color:#4B5563"><span style="width:10px;height:10px;background:#1a1d24;display:inline-block;border-radius:2px"></span>dry</span>
+        <span style="display:flex;align-items:center;gap:.4rem;font-size:.72rem;color:#4B5563"><span style="width:10px;height:10px;background:#6CD1EB;display:inline-block;border-radius:2px"></span>&lt;1mm</span>
+        <span style="display:flex;align-items:center;gap:.4rem;font-size:.72rem;color:#4B5563"><span style="width:10px;height:10px;background:#1BAEE2;display:inline-block;border-radius:2px"></span>1–5mm</span>
+        <span style="display:flex;align-items:center;gap:.4rem;font-size:.72rem;color:#4B5563"><span style="width:10px;height:10px;background:#0077AA;display:inline-block;border-radius:2px"></span>&gt;5mm</span>
+      </div>`
+  })()
+
   // source health
   const srcHtml = d.source_health.map(s => `
     <div class="src-row">
@@ -407,6 +443,9 @@ function renderDashboard(d) {
 
     <h2>Accuracy alerts</h2>
     ${alertsHtml}
+
+    <h2>Actual rainfall · 30-day (sensor data)</h2>
+    ${rainHistHtml}
 
     <h2>Source health · 7-day</h2>
     ${srcHtml}
