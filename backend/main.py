@@ -150,6 +150,16 @@ def init_db():
             )
         """)
 
+    # One-time fix: remove 60/90min thresholds wrongly set to 0.05 by the
+    # first calibration run (F1=0 bug — all candidates tied at 0, first one won).
+    # Deleting them lets get_threshold() fall back to DRY_THRESHOLD (0.1).
+    # 30min thresholds are kept — those runs had positive F1 scores.
+    with get_db() as (_, cur):
+        cur.execute(
+            "DELETE FROM settings WHERE key LIKE 'calib_threshold_60_%'"
+            "                        OR key LIKE 'calib_threshold_90_%'"
+        )
+
     # Parse host from URL for the log (mask credentials)
     try:
         host = db_url.split("@")[-1].split("/")[0]
