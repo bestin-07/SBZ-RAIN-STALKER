@@ -330,19 +330,27 @@ export default function App() {
 
         // Gap timeline: prefer the GeoSphere 1 km / 15-min radar nowcast (catches
         // convective rain the ICON-EU model lags on); fall back to Open-Meteo.
-        // Anchor a real "now" slot from live measurements so gap timing is exact.
+        // detectGaps runs on the RAW nowcast without a prepended TAWES slot so that
+        // the current nowcast slot (e.g. 23:15) is never shadowed by a synthetic
+        // nowSec entry (e.g. 23:17) that would push the real slot out of the
+        // detection window — which caused STUCK when the ribbon correctly showed a gap.
+        // TAWES still protects against false-GO via effectivePrecip: if sensors show
+        // active rain but the nowcast gap has already started, gapNow in getStatus
+        // routes to GO (trust the model) — the intended "clearing" behaviour.
         const nowcast = nowcastResult.status === 'fulfilled' ? nowcastResult.value : null
         const nowSec = Math.floor(Date.now() / 1000)
-        const timeline = nowcast
+        const gapTimeline = nowcast
+          ? { times: nowcast.times, precips: nowcast.precips }
+          : { times: [nowSec, ...omTimes], precips: [nowPrecip, ...omPrecips] }
+
+        const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapTimeline.precips)
+        const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
+        // Ribbon: anchor a real "now" bar from TAWES so the chart reflects the live
+        // reading, even though gap detection uses the raw nowcast above.
+        const ribbonTimeline = nowcast
           ? { times: [nowSec, ...nowcast.times], precips: [nowPrecip, ...nowcast.precips] }
           : { times: omTimes, precips: omPrecips }
-
-        const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(timeline.times, timeline.precips)
-        const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
-        // Ribbon: 3h nowcast only — radar-based, user's exact location.
-        // Open-Meteo tail (3–12h) stripped: it's a broad model and looks as
-        // confident as the radar data, which it isn't.
-        setForecast({ times: timeline.times, precips: timeline.precips, isNowcast: !!nowcast })
+        setForecast({ times: ribbonTimeline.times, precips: ribbonTimeline.precips, isNowcast: !!nowcast })
         setCurrentPrecip(effectivePrecip)
         setGaps(detectedGaps)
         setTrend({ nextRainAt, dryEndsOpen })
