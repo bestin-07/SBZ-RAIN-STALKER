@@ -96,7 +96,8 @@ export default function App() {
   const farAway = location ? kmFromSalzburg(location) > FAR_KM : false
 
   // Derived warning signals — no extra API calls, computed from existing data
-  const regionalThunder = areaPrecip.some(a => a.code != null && a.code >= 95)
+  const regionalThunder = areaPrecip.some(a => a.code != null && a.code >= 80)
+  const regionalFullStorm = areaPrecip.some(a => a.code != null && a.code >= 95)
   const windWarning     = currentWeather?.wind != null && currentWeather.wind >= 50
   const windStrong      = currentWeather?.wind != null && currentWeather.wind >= 70
   const showCloudyNote  = currentWeather?.code === 3 && status?.type === 'go'
@@ -521,7 +522,7 @@ export default function App() {
           {regionalThunder && (
             <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
               <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: '#FBBF24' }}>
-                ⚡ {t('thunder_regional')}
+                ⚡ {regionalFullStorm ? t('thunder_regional') : t('showers_regional')}
               </span>
             </div>
           )}

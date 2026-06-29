@@ -33,9 +33,12 @@ function precipColor(p) {
   return               '#E05C00'  // storm/thunderstorm — matches radar warm core
 }
 
-function areaIcon(name, precip, dryLabel = 'dry') {
+function areaIcon(name, precip, code, dryLabel = 'dry') {
   const known = precip !== null && precip !== undefined
-  const isRaining = known && precip > 0.1  // strict > avoids false wet at Open-Meteo's 0.10mm rounding boundary
+  // Use weather_code as fallback when precip lags (Open-Meteo model can report 0mm
+  // while weather_code=61/80 already shows active rain — common in convective events)
+  const codeRaining = code != null && code >= 51 && !(code >= 71 && code <= 79) // skip snow codes
+  const isRaining = (known && precip > 0.1) || codeRaining
   const color = precipColor(precip)
   const dot = isRaining ? 9 : 7
 
@@ -235,7 +238,7 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
     areaMarkersRef.current.forEach(m => m.remove())
     const dryLabel = t ? t('dry') : 'dry'
     areaMarkersRef.current = areaPrecip.map(area =>
-      L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip, dryLabel), zIndexOffset: 200 })
+      L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip, area.code, dryLabel), zIndexOffset: 200 })
         .addTo(mapRef.current)
     )
     return () => {
