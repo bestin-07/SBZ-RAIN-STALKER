@@ -311,7 +311,15 @@ export default function App() {
         const stationData   = stationResult?.status === 'fulfilled' ? stationResult.value : null
         const stationPrecip = stationData?.precip ?? 0
         const stationTemp   = stationData?.temp ?? null
-        const nowPrecip     = Math.max(measured, stationPrecip)
+        // When TAWES sensors are available and confirm 0mm, require Open-Meteo to
+        // be strictly above the threshold (not just == 0.10) before overriding.
+        // Open-Meteo model rounds to 0.10mm increments and routinely reports exactly
+        // 0.10mm during cloudy/drizzly conditions that sensors don't detect — taking
+        // the max would falsely trigger "wet" status.
+        const omForNow = stationData !== null && stationPrecip === 0
+          ? (measured > 0.1 ? measured : 0)
+          : measured
+        const nowPrecip = Math.max(omForNow, stationPrecip)
 
         // Gap timeline: prefer the GeoSphere 1 km / 15-min radar nowcast (catches
         // convective rain the ICON-EU model lags on); fall back to Open-Meteo.
