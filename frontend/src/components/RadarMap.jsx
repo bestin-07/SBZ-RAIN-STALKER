@@ -35,7 +35,7 @@ function precipColor(p) {
 
 function areaIcon(name, precip, dryLabel = 'dry') {
   const known = precip !== null && precip !== undefined
-  const isRaining = known && precip >= 0.1
+  const isRaining = known && precip > 0.1  // strict > avoids false wet at Open-Meteo's 0.10mm rounding boundary
   const color = precipColor(precip)
   const dot = isRaining ? 9 : 7
 
