@@ -10,7 +10,7 @@ const translations = {
     no_gap:       'keine Lücke in den nächsten 3 Stunden',
 
     s_clear_hours:    ['stundenlang trocken, genieß es', 'trocken für stunden, lass dir zeit', 'kein tropfen in sicht, der tag gehört dir'],
-    s_rain_soon:      ['jetzt trocken, regen in etwa {min} min', 'leg los, in etwa {min} min kommt der regen', 'noch trocken, in ungefähr {min} min regnet es'],
+    s_rain_soon:      ['jetzt trocken, regen in {low}–{high} min', 'leg los, regen kommt in {low}–{high} min', 'noch trocken, in {low}–{high} min regnet es'],
     s_window_closing: ['fenster schließt, regen in {min} min, mach schnell', 'beeil dich, in {min} min regnet es', 'letzte chance, {min} min bis es schüttet'],
     s_rain_any:       ['jetzt trocken, aber regen kann jeden moment beginnen', 'jetzt oder nie, der regen ist quasi da', 'jeden moment, der regen steht vor der tür'],
     s_dry_generic:    ['gerade kein regen an deinem standort', 'bei dir ist gerade alles trocken', 'über dir ist es gerade trocken'],
@@ -172,7 +172,7 @@ const translations = {
     no_gap:       'no gap in the next 3 hours',
 
     s_clear_hours:    ['clear skies for hours, go enjoy it', 'dry all afternoon, take your time', 'not a drop coming, the day is yours'],
-    s_rain_soon:      ['dry now, rain in about {min} min', 'go for it, rain rolls in around {min} min', 'still dry, about {min} min until the rain'],
+    s_rain_soon:      ['dry now, rain in {low}–{high} min', 'go for it, rain rolls in {low}–{high} min', 'still dry, {low}–{high} min until the rain'],
     s_window_closing: ['window closing, rain in {min} min, make it quick', 'hurry, rain hits in {min} min', 'last chance, {min} min before it pours'],
     s_rain_any:       ['dry now, but rain could start any minute', 'go now or not at all, rain is basically here', 'any second now, the rain is at the door'],
     s_dry_generic:    ['no rain at your spot right now', 'all clear where you are', 'dry over your head right now'],

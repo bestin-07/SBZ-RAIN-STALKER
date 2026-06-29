@@ -589,32 +589,18 @@ async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
 # ---------------------------------------------------------------------------
 
 def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, threshold: float = DRY_THRESHOLD):
+    """Return rain_incoming event when it's dry now and rain is arriving within 30 min.
+    Gap-opening pushes removed — they caused too many notifications and confused users.
+    Only notify when rain is actually about to arrive."""
     slots   = sorted(zip(times, precips), key=lambda s: s[0])
     current = min(slots, key=lambda s: abs(s[0] - now_ts), default=None)
     if current is None:
         return None
-    # Require BOTH the live reading AND the nowcast current slot to agree it's
-    # raining before sending a "gap opening" push — this prevents a single
-    # distant TAWES station from triggering a false gap notification when the
-    # nowcast (which drives the actual forecast) already shows dry.
-    nowcast_raining = current[1] >= threshold
-    is_raining = nowcast_raining and now_precip_live >= threshold
 
-    if is_raining:
-        window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 15 * 60]
-        for gap_t, p in window:
-            if p < DRY_THRESHOLD:
-                gap_in_min = max(0, round((gap_t - now_ts) / 60))
-                gap_slots  = sum(
-                    1 for t2, p2 in slots if t2 >= gap_t and p2 < DRY_THRESHOLD
-                    and t2 < next(
-                        (t3 for t3, p3 in slots if t3 > gap_t and p3 >= DRY_THRESHOLD),
-                        gap_t + 99999,
-                    )
-                )
-                if gap_slots * 15 >= 30:  # match frontend MIN_GAP_SLOTS=2 (30 min)
-                    return {"type": "gap", "gap_in_min": gap_in_min, "gap_min": gap_slots * 15}
-    else:
+    nowcast_dry  = current[1] < threshold
+    is_dry_now   = nowcast_dry and now_precip_live < threshold
+
+    if is_dry_now:
         window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 30 * 60]
         for rain_t, p in window:
             if p >= DRY_THRESHOLD:
@@ -632,34 +618,20 @@ def _cooldown_ok(key: str, seconds: int, now_ts: int) -> bool:
 
 
 def _build_payload(event: dict) -> dict:
-    t = event["type"]
-    if t == "gap":
-        x, y = int(event["gap_in_min"]), int(event["gap_min"])
-        if x == 0:
-            return {"type": "gap",
-                    "title_de": "Salzburg: Gerade trocken",
-                    "body_de":  f"{y} Min. Fenster — App öffnen für deinen genauen Standort",
-                    "title_en": "Salzburg: Dry right now",
-                    "body_en":  f"{y} min window — open app for your exact spot"}
-        return {"type": "gap",
-                "title_de": f"Salzburg: Lücke in {x} Min.",
-                "body_de":  f"{y} Min. trocken — App öffnen für deinen genauen Standort",
-                "title_en": f"Salzburg: Gap in {x} min",
-                "body_en":  f"{y} min dry — open app for your exact spot"}
-    if t == "rain_incoming":
-        x = int(event["rain_in_min"])
-        if x <= 5:
-            return {"type": "rain",
-                    "title_de": "Regen naht Salzburg",
-                    "body_de":  "Gleich los — App für genaue Details",
-                    "title_en": "Rain approaching Salzburg",
-                    "body_en":  "Coming any minute — open app for details"}
+    x = int(event["rain_in_min"])
+    low  = max(5, x - 10)
+    high = x + 10
+    if x <= 5:
         return {"type": "rain",
-                "title_de": f"Regen naht Salzburg in {x} Min.",
-                "body_de":  "App öffnen für deinen genauen Standort",
-                "title_en": f"Rain approaching Salzburg in {x} min",
-                "body_en":  "Open app for your exact location"}
-    return {}
+                "title_de": "Regen naht Salzburg",
+                "body_de":  "Gleich los — App für genaue Details",
+                "title_en": "Rain approaching Salzburg",
+                "body_en":  "Coming any minute — open app for details"}
+    return {"type": "rain",
+            "title_de": f"Regen naht Salzburg in {low}–{high} Min.",
+            "body_de":  "App öffnen für deinen genauen Standort",
+            "title_en": f"Rain approaching Salzburg in {low}–{high} min",
+            "body_en":  "Open app for your exact location"}
 
 
 MIN_PUSH_AGREEMENT = 3  # points that must agree before any push fires (out of 11)
@@ -680,28 +652,12 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         except Exception as e:
             print(f"[push] {point['name']}: {e}")
 
-    gap_events  = [e for e in events if e["type"] == "gap"]
-    rain_events = [e for e in events if e["type"] == "rain_incoming"]
+    rain_events = [e for e in events if e and e["type"] == "rain_incoming"]
     total       = len(POINTS)
 
-    print(f"[push] {len(gap_events)}/{total} gap · {len(rain_events)}/{total} rain"
-          f" (need {MIN_PUSH_AGREEMENT} to agree)")
+    print(f"[push] {len(rain_events)}/{total} rain_incoming (need {MIN_PUSH_AGREEMENT})")
 
-    sent = False
-
-    if len(gap_events) >= MIN_PUSH_AGREEMENT and _cooldown_ok("last_gap_push_ts", 45 * 60, now_ts):
-        best = min(gap_events, key=lambda e: e["gap_in_min"])
-        await push_to_all(_build_payload(best))
-        with get_db() as (_, cur):
-            cur.execute(
-                "INSERT INTO settings (key, value) VALUES ('last_gap_push_ts', %s)"
-                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-                (str(float(now_ts)),),
-            )
-        print(f"[push] gap fired — {len(gap_events)}/{total} agreed")
-        sent = True
-
-    if not sent and len(rain_events) >= MIN_PUSH_AGREEMENT and _cooldown_ok("last_rain_push_ts", 60 * 60, now_ts):
+    if len(rain_events) >= MIN_PUSH_AGREEMENT and _cooldown_ok("last_rain_push_ts", 60 * 60, now_ts):
         best = min(rain_events, key=lambda e: e["rain_in_min"])
         await push_to_all(_build_payload(best))
         with get_db() as (_, cur):

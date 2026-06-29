@@ -112,7 +112,8 @@ function precipByCode(code) {
          (code >= 80 && code <= 99)
 }
 
-const URGENT_MIN = 15  // dry now but rain this soon → "window closing, hurry"
+const URGENT_MIN = 15   // dry now but rain this soon → "window closing, hurry"
+const RAIN_UNCERTAINTY = 10  // ±10 min range shown for radar nowcast timing
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
 
 // nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
@@ -154,11 +155,13 @@ export function getStatus(
       } else {
         // Evening or day: same urgency — rain timing is still actionable at 9pm
         const rainInMin = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
+        const low  = Math.max(1, rainInMin - RAIN_UNCERTAINTY)
+        const high = rainInMin + RAIN_UNCERTAINTY
         sub = rainInMin <= 0
           ? t('s_rain_any')
           : rainInMin <= URGENT_MIN
             ? t('s_window_closing', { min: rainInMin })
-            : t('s_rain_soon', { min: rainInMin })
+            : t('s_rain_soon', { low, high })
       }
     } else {
       sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
