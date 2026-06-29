@@ -10,9 +10,9 @@ export default {
         primary: 'var(--c-primary)',
         muted:   'var(--c-muted)',
         dry:     '#D4A017',
-        go:      '#16A34A',
-        wait:    '#CA8A04',
-        stuck:   '#DC2626',
+        go:      '#D4A017',
+        wait:    '#1BAEE2',
+        stuck:   '#0077AA',
       },
       fontFamily: {
         sans:    ['Inter', 'system-ui', 'sans-serif'],

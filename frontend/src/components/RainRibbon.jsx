@@ -87,6 +87,7 @@ export default function RainRibbon({ forecast, theme, t }) {
       <div className="flex items-center gap-4 px-4 py-2">
         <Legend color="#D4A017" label={t('dry')} />
         <Legend color="#6CD1EB" label={t('light_rain')} />
+        <Legend color="#1BAEE2" label={t('mod_rain')} />
         <Legend color="#0077AA" label={t('heavy_rain')} />
         <Legend color="#E05C00" label={t('storm_rain')} />
         <span className="font-mono text-xs text-muted ml-auto">

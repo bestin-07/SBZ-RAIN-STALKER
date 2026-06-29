@@ -1,7 +1,7 @@
 const COLORS = {
-  go:      '#16A34A',
-  wait:    '#CA8A04',
-  stuck:   '#DC2626',
+  go:      '#D4A017',
+  wait:    '#1BAEE2',
+  stuck:   '#0077AA',
   loading: '#6B7280',
 }
 
