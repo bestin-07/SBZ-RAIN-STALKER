@@ -133,7 +133,11 @@ export function getStatus(
   const evening = hour >= 18   // 18:00–23:59 — wind-down tone, no "go sprint outside"
   const weatherNote = getWeatherNote(weather, t, { night, evening })
 
-  const isDry = currentPrecip < DRY_THRESHOLD && !precipByCode(weather?.code)
+  // Trust currentPrecip (max of TAWES sensors + nowcast + Open-Meteo precipitation).
+  // weather_code is NOT used here — it lags significantly after rain stops (code=61
+  // persists long after sensors read 0mm) and would block GO even when every source
+  // agrees it's dry. precipByCode() remains available for other callers.
+  const isDry = currentPrecip < DRY_THRESHOLD
   const firstGap = gaps[0]
   // A gap that's already started means the forecast says dry now even if a
   // station's RR still lags — trust the model and treat it as "go".
