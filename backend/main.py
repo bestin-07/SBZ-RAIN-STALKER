@@ -441,7 +441,8 @@ def get_threshold(point_name: str, horizon: int) -> float:
     with get_db() as (_, cur):
         cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
         row = cur.fetchone()
-    return float(row[0]) if row else DRY_THRESHOLD
+    val = float(row[0]) if row else DRY_THRESHOLD
+    return max(val, DRY_THRESHOLD)  # floor: never go below 0.1mm (0.05 is too noisy)
 
 
 def set_threshold(point_name: str, horizon: int, value: float):
