@@ -611,7 +611,7 @@ def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, thre
                         gap_t + 99999,
                     )
                 )
-                if gap_slots * 15 >= 10:
+                if gap_slots * 15 >= 30:  # match frontend MIN_GAP_SLOTS=2 (30 min)
                     return {"type": "gap", "gap_in_min": gap_in_min, "gap_min": gap_slots * 15}
     else:
         window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 30 * 60]
