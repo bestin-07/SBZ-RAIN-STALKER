@@ -149,6 +149,14 @@ def init_db():
                 action          TEXT
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS push_log (
+                id       BIGSERIAL PRIMARY KEY,
+                sent_at  BIGINT NOT NULL,
+                type     TEXT   NOT NULL,
+                body_en  TEXT
+            )
+        """)
 
     # Parse host from URL for the log (mask credentials)
     try:
@@ -588,17 +596,31 @@ async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
 # Push notification logic
 # ---------------------------------------------------------------------------
 
+MIN_PUSH_AGREEMENT  = 3   # points that must agree before any push fires (out of 11)
+PUSH_SESSION_HOURS  = 4   # rolling window for the session budget
+PUSH_SESSION_MAX    = 3   # max pushes within that window (all types combined)
+
+# Per-type cooldowns (seconds) — prevent re-firing the same notification
+PUSH_COOLDOWNS = {
+    "rain_incoming": 60 * 60,   # 1 h — don't nag about approaching rain
+    "gap":           45 * 60,   # 45 min
+    "rain_clearing": 90 * 60,   # 1.5 h — rain ending is less urgent to repeat
+}
+
+
 def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, threshold: float = DRY_THRESHOLD):
-    """Return rain_incoming event when it's dry now and rain is arriving within 30 min.
-    Gap-opening pushes removed — they caused too many notifications and confused users.
-    Only notify when rain is actually about to arrive."""
+    """Classify the current situation for one grid point. Returns one of:
+      rain_incoming  — dry now, rain arriving within 30 min
+      gap            — raining, a ≥30-min dry window opens ahead
+      rain_clearing  — raining, gap extends to end of forecast (rain looks done)
+    or None if nothing actionable."""
     slots   = sorted(zip(times, precips), key=lambda s: s[0])
     current = min(slots, key=lambda s: abs(s[0] - now_ts), default=None)
     if current is None:
         return None
 
-    nowcast_dry  = current[1] < threshold
-    is_dry_now   = nowcast_dry and now_precip_live < threshold
+    nowcast_dry = current[1] < threshold
+    is_dry_now  = nowcast_dry and now_precip_live < threshold
 
     if is_dry_now:
         window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 30 * 60]
@@ -606,6 +628,27 @@ def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, thre
             if p >= DRY_THRESHOLD:
                 return {"type": "rain_incoming",
                         "rain_in_min": max(0, round((rain_t - now_ts) / 60))}
+    else:
+        # Raining now — scan future slots for a ≥30-min dry window
+        future    = [(t, p) for t, p in slots if t > now_ts]
+        gap_start = None
+        gap_count = 0
+        for t, p in future:
+            if p < DRY_THRESHOLD:
+                if gap_start is None:
+                    gap_start = t
+                gap_count += 1
+            else:
+                if gap_count >= 2:
+                    return {"type": "gap",
+                            "gap_in_min": max(0, round((gap_start - now_ts) / 60)),
+                            "gap_min":    gap_count * 15}
+                gap_start = None
+                gap_count = 0
+        # Reached end of forecast still in a gap → open-ended (rain clearing)
+        if gap_count >= 2 and gap_start is not None:
+            return {"type": "rain_clearing",
+                    "clears_in_min": max(0, round((gap_start - now_ts) / 60))}
 
     return None
 
@@ -617,34 +660,86 @@ def _cooldown_ok(key: str, seconds: int, now_ts: int) -> bool:
     return (now_ts - float(row[0])) >= seconds if row else True
 
 
+def _session_budget_ok(now_ts: int) -> bool:
+    cutoff = now_ts - PUSH_SESSION_HOURS * 3600
+    with get_db() as (_, cur):
+        cur.execute("SELECT COUNT(*) FROM push_log WHERE sent_at > %s", (cutoff,))
+        count = cur.fetchone()[0]
+    return count < PUSH_SESSION_MAX
+
+
+def _log_push(now_ts: int, push_type: str, body_en: str):
+    with get_db() as (_, cur):
+        cur.execute(
+            "INSERT INTO push_log (sent_at, type, body_en) VALUES (%s, %s, %s)",
+            (now_ts, push_type, body_en),
+        )
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES (%s, %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (f"last_{push_type}_push_ts", str(float(now_ts))),
+        )
+
+
 def _build_payload(event: dict) -> dict:
-    x = int(event["rain_in_min"])
-    low  = max(5, x - 10)
-    high = x + 10
-    if x <= 5:
+    t = event["type"]
+    if t == "rain_incoming":
+        x    = int(event["rain_in_min"])
+        low  = max(5, x - 10)
+        high = x + 10
+        if x <= 5:
+            return {"type": "rain",
+                    "title_de": "Regen naht Salzburg",
+                    "body_de":  "Gleich los — App für genaue Details",
+                    "title_en": "Rain approaching Salzburg",
+                    "body_en":  "Coming any minute — open app for details"}
         return {"type": "rain",
-                "title_de": "Regen naht Salzburg",
-                "body_de":  "Gleich los — App für genaue Details",
-                "title_en": "Rain approaching Salzburg",
-                "body_en":  "Coming any minute — open app for details"}
-    return {"type": "rain",
-            "title_de": f"Regen naht Salzburg in {low}–{high} Min.",
-            "body_de":  "App öffnen für deinen genauen Standort",
-            "title_en": f"Rain approaching Salzburg in {low}–{high} min",
-            "body_en":  "Open app for your exact location"}
+                "title_de": f"Regen naht Salzburg in {low}–{high} Min.",
+                "body_de":  "App öffnen für deinen genauen Standort",
+                "title_en": f"Rain approaching Salzburg in {low}–{high} min",
+                "body_en":  "Open app for your exact location"}
+    if t == "gap":
+        x, dur = int(event["gap_in_min"]), int(event["gap_min"])
+        if x <= 5:
+            return {"type": "gap",
+                    "title_de": "Salzburg: Lücke öffnet sich",
+                    "body_de":  f"{dur} Min. trocken — App öffnen",
+                    "title_en": "Salzburg: Gap opening now",
+                    "body_en":  f"{dur} min dry — open app for your spot"}
+        return {"type": "gap",
+                "title_de": f"Salzburg: Lücke in {x} Min.",
+                "body_de":  f"{dur} Min. trocken — App öffnen",
+                "title_en": f"Salzburg: Gap in {x} min",
+                "body_en":  f"{dur} min dry — open app for your spot"}
+    if t == "rain_clearing":
+        x = int(event["clears_in_min"])
+        if x <= 5:
+            return {"type": "rain",
+                    "title_de": "Regen hört auf — Salzburg",
+                    "body_de":  "Sollte trocken bleiben — App öffnen",
+                    "title_en": "Rain clearing — Salzburg",
+                    "body_en":  "Should stay dry — open app"}
+        return {"type": "rain",
+                "title_de": f"Regen endet in {x} Min. — Salzburg",
+                "body_de":  "Sollte trocken bleiben",
+                "title_en": f"Rain ending in {x} min — Salzburg",
+                "body_en":  "Should stay dry after that"}
+    return {}
 
-
-MIN_PUSH_AGREEMENT = 3  # points that must agree before any push fires (out of 11)
 
 async def check_and_push(client: httpx.AsyncClient, now_ts: int):
+    if not _session_budget_ok(now_ts):
+        print(f"[push] session budget exhausted ({PUSH_SESSION_MAX} in {PUSH_SESSION_HOURS}h)")
+        return
+
     events = []
     for point in POINTS:
         try:
             times, precips, _ = await _fetch_timeline_sourced(client, point)
             now_precip        = await fetch_now_precip(client, point)
-            threshold         = get_threshold(point["name"], 30)  # push uses 30-min horizon
+            threshold         = get_threshold(point["name"], 30)
             ev = _analyze_forecast(
-                [now_ts] + list(times), [now_precip] + list(precips),
+                list(times), list(precips),
                 now_ts, now_precip_live=now_precip, threshold=threshold,
             )
             if ev:
@@ -652,21 +747,35 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         except Exception as e:
             print(f"[push] {point['name']}: {e}")
 
-    rain_events = [e for e in events if e and e["type"] == "rain_incoming"]
-    total       = len(POINTS)
+    total = len(POINTS)
+    by_type = {}
+    for e in events:
+        by_type.setdefault(e["type"], []).append(e)
 
-    print(f"[push] {len(rain_events)}/{total} rain_incoming (need {MIN_PUSH_AGREEMENT})")
+    counts = {k: len(v) for k, v in by_type.items()}
+    print(f"[push] votes: {counts} / {total} (need {MIN_PUSH_AGREEMENT})")
 
-    if len(rain_events) >= MIN_PUSH_AGREEMENT and _cooldown_ok("last_rain_push_ts", 60 * 60, now_ts):
-        best = min(rain_events, key=lambda e: e["rain_in_min"])
-        await push_to_all(_build_payload(best))
-        with get_db() as (_, cur):
-            cur.execute(
-                "INSERT INTO settings (key, value) VALUES ('last_rain_push_ts', %s)"
-                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-                (str(float(now_ts)),),
-            )
-        print(f"[push] rain fired — {len(rain_events)}/{total} agreed")
+    # Priority: rain_incoming > rain_clearing > gap
+    for push_type in ("rain_incoming", "rain_clearing", "gap"):
+        candidates = by_type.get(push_type, [])
+        if len(candidates) < MIN_PUSH_AGREEMENT:
+            continue
+        cooldown_key = f"last_{push_type}_push_ts"
+        if not _cooldown_ok(cooldown_key, PUSH_COOLDOWNS[push_type], now_ts):
+            print(f"[push] {push_type} cooldown active — skip")
+            continue
+        if not _session_budget_ok(now_ts):
+            print(f"[push] budget used up mid-loop")
+            break
+        # Pick the most imminent event across agreeing points
+        sort_key = "rain_in_min" if push_type == "rain_incoming" else \
+                   "clears_in_min" if push_type == "rain_clearing" else "gap_in_min"
+        best    = min(candidates, key=lambda e: e.get(sort_key, 0))
+        payload = _build_payload(best)
+        await push_to_all(payload)
+        _log_push(now_ts, push_type, payload.get("body_en", ""))
+        print(f"[push] {push_type} fired — {len(candidates)}/{total} agreed")
+        break  # one push per cycle
 
 
 # ---------------------------------------------------------------------------
@@ -1203,6 +1312,15 @@ def admin_dashboard(request: Request):
             for r in cur.fetchall()
         ]
 
+    with get_db() as (_, cur):
+        cur.execute(
+            "SELECT sent_at, type, body_en FROM push_log ORDER BY sent_at DESC LIMIT 30"
+        )
+        push_log_rows = [
+            {"sent_at": r[0], "type": r[1], "body_en": r[2]}
+            for r in cur.fetchall()
+        ]
+
     return {
         "health":       health,
         "thresholds":   thresholds,
@@ -1214,6 +1332,7 @@ def admin_dashboard(request: Request):
         "alerts":       alert_rows,
         "source_health": source_health,
         "rain_history":  rain_history,
+        "push_log":      push_log_rows,
     }
 
 
