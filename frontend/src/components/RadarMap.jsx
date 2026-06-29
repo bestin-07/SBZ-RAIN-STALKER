@@ -71,7 +71,7 @@ function areaIcon(name, precip, code, dryLabel = 'dry') {
         font-weight:${isRaining ? '600' : '400'};
         color:${isRaining ? color : '#6B7280'};
         white-space:nowrap;
-      ">${isRaining ? precip.toFixed(1) + 'mm' : dryLabel}</div>` : ''}
+      ">${isRaining ? (precip > 0.1 ? precip.toFixed(1) + 'mm' : '·') : dryLabel}</div>` : ''}
     </div>`,
     iconSize: [60, 36],
     iconAnchor: [30, dot / 2],
