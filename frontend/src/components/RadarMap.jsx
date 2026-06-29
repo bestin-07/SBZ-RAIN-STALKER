@@ -39,7 +39,9 @@ function areaIcon(name, precip, code, dryLabel = 'dry') {
   // while weather_code=61/80 already shows active rain — common in convective events)
   const codeRaining = code != null && code >= 51 && !(code >= 71 && code <= 79) // skip snow codes
   const isRaining = (known && precip > 0.1) || codeRaining
-  const color = precipColor(precip)
+  // When only the weather_code signals rain (precip still 0 due to model lag), use
+  // a light-rain blue so the dot colour matches the enlarged size.
+  const color = (codeRaining && (!known || precip <= 0.1)) ? '#6CD1EB' : precipColor(precip)
   const dot = isRaining ? 9 : 7
 
   // Every town stays readable (name always shown); raining areas pop with a
