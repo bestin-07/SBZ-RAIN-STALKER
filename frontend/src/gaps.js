@@ -169,9 +169,11 @@ export function getStatus(
       ? t('s_night_raining')
       : clearInMin <= 0
         ? t('s_almost_now')
-        : clearInMin <= ALMOST_MIN
-          ? t('s_almost_over', { min: clearInMin, dur: firstGap.durationMinutes })
-          : t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
+        : firstGap.opensEnded
+          ? t('s_clearing',    { min: clearInMin })
+          : clearInMin <= ALMOST_MIN
+            ? t('s_almost_over', { min: clearInMin, dur: firstGap.durationMinutes })
+            : t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
     return { type: 'wait', headline: t('WAIT_MIN', { min: clearInMin }), sub, weather: weatherNote }
   }
 
