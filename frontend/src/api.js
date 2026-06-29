@@ -167,16 +167,20 @@ export async function fetchAreaPrecip() {
     const lats = AREAS.map(a => a.lat).join(',')
     const lons = AREAS.map(a => a.lon).join(',')
     const r = await fetch(
-      `${OPEN_METEO}?latitude=${lats}&longitude=${lons}&current=precipitation&timezone=UTC`,
+      `${OPEN_METEO}?latitude=${lats}&longitude=${lons}&current=precipitation,weather_code&timezone=UTC`,
       { signal: AbortSignal.timeout(8000) }
     )
-    if (!r.ok) return AREAS.map(a => ({ ...a, precip: null }))
+    if (!r.ok) return AREAS.map(a => ({ ...a, precip: null, code: null }))
     const data = await r.json()
     // Multi-location requests return an array (one object per coordinate, in order);
     // a single coordinate would return a bare object.
     const arr = Array.isArray(data) ? data : [data]
-    return AREAS.map((a, i) => ({ ...a, precip: arr[i]?.current?.precipitation ?? null }))
+    return AREAS.map((a, i) => ({
+      ...a,
+      precip: arr[i]?.current?.precipitation ?? null,
+      code:   arr[i]?.current?.weather_code  ?? null,
+    }))
   } catch {
-    return AREAS.map(a => ({ ...a, precip: null }))
+    return AREAS.map(a => ({ ...a, precip: null, code: null }))
   }
 }
