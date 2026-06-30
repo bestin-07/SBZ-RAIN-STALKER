@@ -3,7 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const SALZBURG = [47.802, 13.045]
-const ZOOM = 13  // close-in on the user; radar overlay upscales from RainViewer's z7 max
+const ZOOM = 11  // shows surrounding area dots (Hallein, Bad Reichenhall, Bergheim etc)
 const BOUNDS = L.latLngBounds([47.50, 12.65], [48.10, 13.65])
 const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
 // Show RainViewer across the whole interactive zoom range. Tiles are native at
