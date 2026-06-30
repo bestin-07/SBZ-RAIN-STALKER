@@ -705,28 +705,28 @@ def _build_payload(event: dict) -> dict:
         x, dur = int(event["gap_in_min"]), int(event["gap_min"])
         if x <= 5:
             return {"type": "gap",
-                    "title_de": "Lücke über Salzburg",
-                    "body_de":  f"{dur} Min. trocken — App für deinen genauen Standort",
-                    "title_en": "Gap over Salzburg",
-                    "body_en":  f"{dur} min dry in the area — open app for your spot"}
+                    "title_de": f"Regenpause über Salzburg — {dur} Min.",
+                    "body_de":  "Gilt für die Region — check deinen Standort",
+                    "title_en": f"Rain gap over Salzburg — {dur} min",
+                    "body_en":  "Area forecast — check your spot"}
         return {"type": "gap",
-                "title_de": f"Lücke in {x} Min. über Salzburg",
-                "body_de":  f"{dur} Min. trocken — App für deinen genauen Standort",
-                "title_en": f"Gap in {x} min over Salzburg",
-                "body_en":  f"{dur} min dry in the area — open app for your spot"}
+                "title_de": f"Regenpause in {x} Min. über Salzburg",
+                "body_de":  f"{dur} Min. trocken in der Region — check deinen Standort",
+                "title_en": f"Rain gap in {x} min over Salzburg",
+                "body_en":  f"{dur} min dry in the area — check your spot"}
     if t == "rain_clearing":
         x = int(event["clears_in_min"])
         if x <= 5:
             return {"type": "rain",
                     "title_de": "Regen lässt über Salzburg nach",
-                    "body_de":  "App öffnen für deinen Standort",
-                    "title_en": "Rain easing over Salzburg",
-                    "body_en":  "Open app to check your exact spot"}
+                    "body_de":  "Sollte trocken bleiben — check deinen Standort",
+                    "title_en": "Rain clearing over Salzburg",
+                    "body_en":  "Should stay dry — check your spot"}
         return {"type": "rain",
                 "title_de": f"Regen endet in ~{x} Min. über Salzburg",
-                "body_de":  "App öffnen für deinen Standort",
-                "title_en": f"Rain easing over Salzburg in ~{x} min",
-                "body_en":  "Open app to check your exact spot"}
+                "body_de":  "Sollte trocken bleiben — check deinen Standort",
+                "title_en": f"Rain clearing over Salzburg in ~{x} min",
+                "body_en":  "Should stay dry — check your spot"}
     return {}
 
 
