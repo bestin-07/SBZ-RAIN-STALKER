@@ -682,6 +682,9 @@ def _log_push(now_ts: int, push_type: str, body_en: str):
 
 
 def _build_payload(event: dict) -> dict:
+    # All notifications are city-level (11 grid points across Salzburg),
+    # NOT the user's exact spot. Body copy makes this explicit so users
+    # who open the app and see "no rain here" aren't confused.
     t = event["type"]
     if t == "rain_incoming":
         x    = int(event["rain_in_min"])
@@ -689,41 +692,41 @@ def _build_payload(event: dict) -> dict:
         high = x + 10
         if x <= 5:
             return {"type": "rain",
-                    "title_de": "Regen naht Salzburg",
-                    "body_de":  "Gleich los — App für genaue Details",
-                    "title_en": "Rain approaching Salzburg",
-                    "body_en":  "Coming any minute — open app for details"}
+                    "title_de": "Regen erreicht Salzburg",
+                    "body_de":  "Könnte dich treffen — App für deinen Standort öffnen",
+                    "title_en": "Rain reaching Salzburg",
+                    "body_en":  "May affect your spot — open app to check"}
         return {"type": "rain",
-                "title_de": f"Regen naht Salzburg in {low}–{high} Min.",
-                "body_de":  "App öffnen für deinen genauen Standort",
-                "title_en": f"Rain approaching Salzburg in {low}–{high} min",
-                "body_en":  "Open app for your exact location"}
+                "title_de": f"Regen in {low}–{high} Min. über Salzburg",
+                "body_de":  "Könnte dich treffen — App für deinen Standort öffnen",
+                "title_en": f"Rain over Salzburg in {low}–{high} min",
+                "body_en":  "May affect your spot — open app to check"}
     if t == "gap":
         x, dur = int(event["gap_in_min"]), int(event["gap_min"])
         if x <= 5:
             return {"type": "gap",
-                    "title_de": "Salzburg: Lücke öffnet sich",
-                    "body_de":  f"{dur} Min. trocken — App öffnen",
-                    "title_en": "Salzburg: Gap opening now",
-                    "body_en":  f"{dur} min dry — open app for your spot"}
+                    "title_de": "Lücke über Salzburg",
+                    "body_de":  f"{dur} Min. trocken — App für deinen genauen Standort",
+                    "title_en": "Gap over Salzburg",
+                    "body_en":  f"{dur} min dry in the area — open app for your spot"}
         return {"type": "gap",
-                "title_de": f"Salzburg: Lücke in {x} Min.",
-                "body_de":  f"{dur} Min. trocken — App öffnen",
-                "title_en": f"Salzburg: Gap in {x} min",
-                "body_en":  f"{dur} min dry — open app for your spot"}
+                "title_de": f"Lücke in {x} Min. über Salzburg",
+                "body_de":  f"{dur} Min. trocken — App für deinen genauen Standort",
+                "title_en": f"Gap in {x} min over Salzburg",
+                "body_en":  f"{dur} min dry in the area — open app for your spot"}
     if t == "rain_clearing":
         x = int(event["clears_in_min"])
         if x <= 5:
             return {"type": "rain",
-                    "title_de": "Regen hört auf — Salzburg",
-                    "body_de":  "Sollte trocken bleiben — App öffnen",
-                    "title_en": "Rain clearing — Salzburg",
-                    "body_en":  "Should stay dry — open app"}
+                    "title_de": "Regen lässt über Salzburg nach",
+                    "body_de":  "App öffnen für deinen Standort",
+                    "title_en": "Rain easing over Salzburg",
+                    "body_en":  "Open app to check your exact spot"}
         return {"type": "rain",
-                "title_de": f"Regen endet in {x} Min. — Salzburg",
-                "body_de":  "Sollte trocken bleiben",
-                "title_en": f"Rain ending in {x} min — Salzburg",
-                "body_en":  "Should stay dry after that"}
+                "title_de": f"Regen endet in ~{x} Min. über Salzburg",
+                "body_de":  "App öffnen für deinen Standort",
+                "title_en": f"Rain easing over Salzburg in ~{x} min",
+                "body_en":  "Open app to check your exact spot"}
     return {}
 
 
