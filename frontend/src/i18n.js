@@ -2,6 +2,7 @@ const translations = {
   de: {
     GO_NOW:       'GEMMA RAUS',
     WAIT_MIN:     'NOCH {min} MIN',
+    WAIT_SOON:    'GLEICH RAUS',
     STUCK:        'BLEIB DRIN',
     dry_for:      'noch {min} Minuten trocken',
     dry_for_over: 'mehr als {min} Minuten trocken',
@@ -17,7 +18,7 @@ const translations = {
     s_break_opens:    ['es regnet, in {min} min öffnet ein {dur} min fenster', 'halt durch, in {min} min kommen {dur} min trocken', 'noch nass, in {min} min ein {dur} min fenster'],
     s_almost_over:    ['gleich vorbei — {dur} min trocken in {min} min', 'fast geschafft, {dur} min fenster öffnet in {min} min', 'halt durch, in {min} min kommen {dur} min trocken'],
     s_clearing:       ['regen hört auf — in {min} min sollte es trocken bleiben', 'zieht ab, in {min} min ist es durch', 'in {min} min vorbei — sieht gut aus für den rest des abends'],
-    s_almost_now:     ['gleich vorbei, jeden moment trocken', 'der regen lässt nach, gleich trocken', 'fast trocken, schnapp die schuhe'],
+    s_almost_now:     ['gleich durch — schau kurz raus', 'regen fast vorbei, wirf einen blick nach draußen', 'fast trocken, kurz rausschauen und los'],
     s_stuck:          ['durchgehend regen in den nächsten 3 stunden', 'keine lücke für 3 stunden, gemütlicher tag', 'durchnass die ganze zeit, vielleicht ein film'],
     s_stuck_storm:    ['blitz und donner — heute bleibst du drin', 'gewitter über salzburg, fühl dich wie im kino', 'donner draußen, du bist genau richtig hier'],
 
@@ -164,6 +165,7 @@ const translations = {
   en: {
     GO_NOW:       'GEMMA RAUS',
     WAIT_MIN:     'WAIT {min} MIN',
+    WAIT_SOON:    'ALMOST OUT',
     STUCK:        'STUCK INSIDE',
     dry_for:      'dry for {min} more minutes',
     dry_for_over: 'dry for more than {min} minutes',
@@ -179,7 +181,7 @@ const translations = {
     s_break_opens:    ['raining now, a {dur} min break opens in {min} min', 'hang tight, {dur} min of dry starts in {min} min', 'wet now, but {min} min to a {dur} min window'],
     s_almost_over:    ['almost over — {dur} min dry window in {min} min', 'nearly done, {dur} min break opens in {min} min', 'hold on, {dur} min of dry in {min} min'],
     s_clearing:       ['rain ending — should stay dry in {min} min', 'clearing up, done in {min} min', 'wrapping up — dry in {min} min, for real this time'],
-    s_almost_now:     ['almost over, dry any minute now', 'rain is letting up, dry any second', 'nearly dry, grab your shoes'],
+    s_almost_now:     ['almost done — poke your head out and check', "rain's about done, take a look outside", 'nearly clear, check outside then head out'],
     s_stuck:          ['rain straight through the next 3 hours', 'no break in sight for 3 hours, cozy day', 'wet all the way, maybe a film instead'],
     s_stuck_storm:    ['thunder outside — you\'re exactly where you should be', 'lightning show tonight, best seat is right here', 'nature\'s going full drama — stay safe inside'],
 

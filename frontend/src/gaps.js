@@ -115,6 +115,7 @@ function precipByCode(code) {
 const URGENT_MIN = 15   // dry now but rain this soon → "window closing, hurry"
 const RAIN_UNCERTAINTY = 10  // ±10 min range shown for radar nowcast timing
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
+const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
 
 // nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
 // live between the 5-min data refreshes. getStatus() wraps this with the
@@ -172,19 +173,23 @@ export function getStatus(
     return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
   }
 
-  // ---- Raining now: narrate the break ahead (headline keeps the countdown) ----
+  // ---- Raining now: narrate the break ahead ----
   if (firstGap) {
     const clearInMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
+    // Under 5 min the exact minute is noise — drop the number and go soft
+    // ("almost — check outside") rather than pretend to that precision.
+    const soon = clearInMin < SOON_MIN
+    const headline = soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
     const sub = night
       ? t('s_night_raining')
-      : clearInMin <= 0
+      : soon
         ? t('s_almost_now')
         : firstGap.opensEnded
           ? t('s_clearing',    { min: clearInMin })
           : clearInMin <= ALMOST_MIN
             ? t('s_almost_over', { min: clearInMin, dur: firstGap.durationMinutes })
             : t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
-    return { type: 'wait', headline: t('WAIT_MIN', { min: clearInMin }), sub, weather: weatherNote }
+    return { type: 'wait', headline, sub, weather: weatherNote }
   }
 
   const isThunder = (weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99
