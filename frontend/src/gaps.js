@@ -121,6 +121,7 @@ const URGENT_MIN = 15   // dry now but rain this soon → "window closing, hurry
 const RAIN_UNCERTAINTY = 10  // ±10 min range shown for radar nowcast timing
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
 const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
+const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
 
 // nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
 // live between the 5-min data refreshes. getStatus() wraps this with the
@@ -169,11 +170,17 @@ export function getStatus(
         const rainInMin = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
         const low  = Math.max(1, rainInMin - RAIN_UNCERTAINTY)
         const high = rainInMin + RAIN_UNCERTAINTY
-        sub = rainInMin <= 0
-          ? t('s_rain_any')
-          : rainInMin <= URGENT_MIN
-            ? t('s_window_closing', { min: rainInMin })
-            : t('s_rain_soon', { low, high })
+        // Low model confidence (radar shows rain the model isn't sure about, e.g.
+        // an over-read / virga) → soften to "rain possible later" instead of a firm
+        // countdown. null probability = no data → keep the firm wording.
+        const lowConf = trend.rainProb != null && trend.rainProb < RAIN_PROB_MIN
+        sub = lowConf
+          ? t('s_rain_maybe')
+          : rainInMin <= 0
+            ? t('s_rain_any')
+            : rainInMin <= URGENT_MIN
+              ? t('s_window_closing', { min: rainInMin })
+              : t('s_rain_soon', { low, high })
       }
     } else {
       sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')

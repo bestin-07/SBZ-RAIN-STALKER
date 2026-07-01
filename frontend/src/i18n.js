@@ -14,6 +14,7 @@ const translations = {
     s_rain_soon:      ['jetzt trocken, regen in {low}–{high} min', 'leg los, regen kommt in {low}–{high} min', 'noch trocken, in {low}–{high} min regnet es'],
     s_window_closing: ['fenster schließt, regen in {min} min, mach schnell', 'beeil dich, in {min} min regnet es', 'letzte chance, {min} min bis es schüttet'],
     s_rain_any:       ['jetzt trocken, aber regen kann jeden moment beginnen', 'jetzt oder nie, der regen ist quasi da', 'jeden moment, der regen steht vor der tür'],
+    s_rain_maybe:     ['wolkig, regen später möglich — behalt den himmel im blick', 'vielleicht später regen, im moment noch trocken', 'unsicheres wetter, regen möglich — schau ab und zu raus'],
     s_dry_generic:    ['gerade kein regen an deinem standort', 'bei dir ist gerade alles trocken', 'über dir ist es gerade trocken'],
     s_break_opens:    ['es regnet, in {min} min öffnet ein {dur} min fenster', 'halt durch, in {min} min kommen {dur} min trocken', 'noch nass, in {min} min ein {dur} min fenster'],
     s_almost_over:    ['gleich vorbei — {dur} min trocken in {min} min', 'fast geschafft, {dur} min fenster öffnet in {min} min', 'halt durch, in {min} min kommen {dur} min trocken'],
@@ -120,7 +121,7 @@ const translations = {
 
     privacy_title: 'Datenschutz',
     privacy_1: 'Dein GPS-Standort verlässt deinen Browser nur als Koordinaten direkt an Open-Meteo (Schweiz FADP-konform). Wir erhalten und speichern deinen Standort nicht.',
-    privacy_2: 'Im Browser werden ausschließlich Design und Spracheinstellungen gespeichert. Keine Tracking-Cookies kein Benutzerkonto.',
+    privacy_2: 'In deinem Browser werden nur Einstellungen (Design, Sprache) und dein zuletzt genutzter Standort zwischengespeichert, damit die App sofort lädt — beides bleibt auf deinem Gerät und wird nie an uns gesendet. Keine Tracking-Cookies, kein Benutzerkonto.',
     privacy_3: 'Für Push-Benachrichtigungen speichern wir ein anonymes Browser-Token ohne Standortbezug. Abmelden jederzeit möglich.',
     privacy_basis: 'Rechtsgrundlage: berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO) für die Wetterabfrage; Einwilligung für Push.',
     privacy_link:  'Datenschutzerklärung lesen →',
@@ -129,7 +130,7 @@ const translations = {
     privacy_page_honest:   'Einzige Ausnahme: Wenn du Benachrichtigungen aktivierst, speichern wir einen einzigen zufälligen Browser-Token — von deinem Browser generiert, wir wissen nicht wer dahintersteckt. Kein Name, keine E-Mail, kein Standort.',
     privacy_page_auto:     'Benachrichtigungen deaktivieren → Token sofort gelöscht. Keine Aktivität für 3 Monate → automatisch gelöscht.',
     privacy_page_tech:     'Technisches',
-    privacy_page_tech_body:'GPS-Koordinaten gehen direkt von deinem Browser an Open-Meteo (Schweiz) — wir sehen sie nie. Push-Tokens laufen über Google FCM / Mozilla / Apple APNs (US-Dienste, die unter EU-Standardvertragsklauseln arbeiten). Keine Cookies, kein Tracking, kein Analytics. Rechtsgrundlage: berechtigtes Interesse (DSGVO Art. 6 Abs. 1 lit. f) für Wetter, Einwilligung (lit. a) für Push.',
+    privacy_page_tech_body:'GPS-Koordinaten gehen direkt von deinem Browser an Open-Meteo (Schweiz) — wir sehen sie nie. Dein zuletzt genutzter Standort wird nur lokal im Browser (localStorage) für schnelles Laden zwischengespeichert und verlässt dein Gerät nie. Push-Tokens laufen über Google FCM / Mozilla / Apple APNs (US-Dienste, die unter EU-Standardvertragsklauseln arbeiten). Keine Cookies, kein Tracking, kein Analytics. Rechtsgrundlage: berechtigtes Interesse (DSGVO Art. 6 Abs. 1 lit. f) für Wetter, Einwilligung (lit. a) für Push.',
     privacy_terms_title:   'Nutzungsbedingungen',
     privacy_terms_body:    'Gemma Raus zeigt Wetterdaten von Drittanbietern (GeoSphere Austria, Open-Meteo, RainViewer) und übernimmt keine Gewähr für deren Richtigkeit oder Verfügbarkeit. Die App dient zur allgemeinen Information — keine sicherheitskritischen Entscheidungen darauf stützen. Nutzung auf eigene Verantwortung. Anwendbares Recht: Österreich.',
 
@@ -177,6 +178,7 @@ const translations = {
     s_rain_soon:      ['dry now, rain in {low}–{high} min', 'go for it, rain rolls in {low}–{high} min', 'still dry, {low}–{high} min until the rain'],
     s_window_closing: ['window closing, rain in {min} min, make it quick', 'hurry, rain hits in {min} min', 'last chance, {min} min before it pours'],
     s_rain_any:       ['dry now, but rain could start any minute', 'go now or not at all, rain is basically here', 'any second now, the rain is at the door'],
+    s_rain_maybe:     ['cloudy, rain possible later — keep an eye out', 'rain might pass through later, dry for now', 'unsettled skies, rain possible — glance out now and then'],
     s_dry_generic:    ['no rain at your spot right now', 'all clear where you are', 'dry over your head right now'],
     s_break_opens:    ['raining now, a {dur} min break opens in {min} min', 'hang tight, {dur} min of dry starts in {min} min', 'wet now, but {min} min to a {dur} min window'],
     s_almost_over:    ['almost over — {dur} min dry window in {min} min', 'nearly done, {dur} min break opens in {min} min', 'hold on, {dur} min of dry in {min} min'],
@@ -283,7 +285,7 @@ const translations = {
 
     privacy_title: 'Privacy',
     privacy_1: 'Your GPS coordinates leave your browser only as a direct request to Open-Meteo (Switzerland FADP-compliant). We never receive or store your location.',
-    privacy_2: 'Only theme and language preferences are saved locally in your browser. No tracking cookies no account.',
+    privacy_2: 'Your browser locally caches only your settings (theme, language) and your last location so the app loads instantly — both stay on your device and are never sent to us. No tracking cookies, no account.',
     privacy_3: 'For push notifications we store an anonymous browser token with no location attached. Unsubscribe at any time.',
     privacy_basis: 'Legal basis: legitimate interest (Art. 6(1)(f) GDPR) for weather lookup; consent for push notifications.',
     privacy_link:  'Read privacy policy →',
@@ -292,7 +294,7 @@ const translations = {
     privacy_page_honest:   'One exception: if you turn on notifications, we store one random browser token — generated by your browser, we have no idea whose it is. No name, no email, no location.',
     privacy_page_auto:     'Turn off notifications → token deleted immediately. No activity for 3 months → deleted automatically.',
     privacy_page_tech:     'Technical',
-    privacy_page_tech_body:'GPS coordinates go directly from your browser to Open-Meteo (Switzerland) — we never see them. Push tokens route through Google FCM / Mozilla / Apple APNs (US-based services operating under EU Standard Contractual Clauses). No cookies, no tracking, no analytics. Legal basis: legitimate interest (GDPR Art. 6(1)(f)) for weather, consent (Art. 6(1)(a)) for push.',
+    privacy_page_tech_body:'GPS coordinates go directly from your browser to Open-Meteo (Switzerland) — we never see them. Your last location is cached only in your browser (localStorage) for instant load and never leaves your device. Push tokens route through Google FCM / Mozilla / Apple APNs (US-based services operating under EU Standard Contractual Clauses). No cookies, no tracking, no analytics. Legal basis: legitimate interest (GDPR Art. 6(1)(f)) for weather, consent (Art. 6(1)(a)) for push.',
     privacy_terms_title:   'Terms of Use',
     privacy_terms_body:    'Gemma Raus displays third-party weather data (GeoSphere Austria, Open-Meteo, RainViewer) and makes no guarantee of accuracy or availability. The app is for general information only — do not rely on it for safety-critical decisions. Use at your own risk. Governing law: Austria.',
 

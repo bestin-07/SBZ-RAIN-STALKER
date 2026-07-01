@@ -448,7 +448,21 @@ export default function App() {
         }
         setCurrentPrecip(displayPrecip)
         setGaps(detectedGaps)
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD })
+        // Model rain probability for the hour the onset falls in — lets getStatus
+        // soften a radar countdown the model isn't confident about (radar over-read
+        // / virga) vs a firm "rain in X min" when the probability backs it up.
+        const hTimes = data.hourly?.time ?? []
+        const hProb  = data.hourly?.precipitation_probability ?? []
+        let rainProb = null
+        if (nextRainAt && hTimes.length) {
+          let bi = 0, bd = Infinity
+          for (let i = 0; i < hTimes.length; i++) {
+            const d = Math.abs(hTimes[i] - nextRainAt)
+            if (d < bd) { bd = d; bi = i }
+          }
+          rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
+        }
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data.current?.temperature_2m ?? null,

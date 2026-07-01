@@ -9,11 +9,12 @@ ARG VITE_DONATE_URL=""
 ARG VITE_BACKEND_URL=""
 ENV VITE_DONATE_URL=$VITE_DONATE_URL
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
-RUN npm run build
-# Stamp build timestamp into SW cache name so each deploy gets a unique
-# service worker → browser installs fresh SW → old caches purged → users
-# always receive new JS without needing a manual hard-refresh.
+# One deploy timestamp shared by the JS build id and the SW cache name so both
+# change together each deploy: the browser installs the fresh SW, purges old
+# caches, and the app reloads onto the new content-hashed JS (see main.jsx
+# controllerchange handler) — no manual hard-refresh needed.
 RUN DEPLOY_TS=$(date +%Y%m%d%H%M) && \
+    BUILD_ID=$DEPLOY_TS npm run build && \
     sed -i "s/gemma-raus-v2/gemma-raus-${DEPLOY_TS}/" dist/sw.js
 
 FROM python:3.11-slim

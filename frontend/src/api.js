@@ -35,6 +35,10 @@ export async function fetchForecast(lat, lon) {
     current: 'temperature_2m,wind_speed_10m,weather_code,precipitation,cape,uv_index',
     minutely_15: 'precipitation',
     forecast_minutely_15: 48,
+    // Hourly rain probability — a smooth model-confidence signal used to soften
+    // the radar countdown when the nowcast shows rain the model isn't sure about.
+    hourly: 'precipitation_probability',
+    forecast_hours: 6,
     timeformat: 'unixtime',
     timezone: 'UTC',
   })
