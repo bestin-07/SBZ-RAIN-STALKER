@@ -49,6 +49,8 @@ const translations = {
     lbl_radar:   'Radar',
     lbl_nowcast: 'Vorschau',
     tap_hint:    'tippe einen ort für den status dort',
+    your_location: 'dein standort',
+    tap_others:  'tippe andere punkte für ihre lage',
     pop_fail:    'konnte nicht laden — nochmal tippen',
 
     checking:    'PRÜFEN',
@@ -227,6 +229,8 @@ const translations = {
     lbl_radar:   'radar',
     lbl_nowcast: 'nowcast',
     tap_hint:    'tap a spot for its status',
+    your_location: 'your location',
+    tap_others:  'tap other dots to glance their spot',
     pop_fail:    'couldn’t load — tap to retry',
 
     checking:    'CHECKING',

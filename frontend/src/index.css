@@ -101,6 +101,7 @@ html.light {
 .gr-pop-head { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 1.05rem; line-height: 1.1; }
 .gr-pop-sub  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--c-muted); margin-top: 0.3rem; line-height: 1.35; max-width: 200px; }
 .gr-pop-load { font-family: 'JetBrains Mono', monospace; color: var(--c-muted); }
+.gr-pop-hint { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--c-muted); opacity: 0.8; margin-top: 0.45rem; padding-top: 0.4rem; border-top: 1px solid var(--c-border); }
 
 .leaflet-control-attribution {
   background: rgba(8, 9, 11, 0.75) !important;

@@ -87,7 +87,7 @@ function areaIcon(name, precip, code, status, dryLabel = 'dry') {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, areaStatus, theme, t, onRelocate, computeStatusAt }) {
+export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, onRelocate, computeStatusAt }) {
   const containerRef   = useRef(null)
   const mapRef         = useRef(null)
   const markerRef      = useRef(null)
@@ -101,24 +101,17 @@ export default function RadarMap({ location, areaPrecip, areaStatus, theme, t, o
   const computeRef     = useRef(computeStatusAt)
   const statusCacheRef = useRef(new Map())   // key "lat,lon" → { status, ts }
   const [radarFrame, setRadarFrame] = useState(null)  // { time, forecast } of the shown frame
-  const [showHint, setShowHint] = useState(() => {
-    try { return localStorage.getItem('map_tap_hint') !== '1' } catch { return true }
-  })
   useEffect(() => { computeRef.current = computeStatusAt }, [computeStatusAt])
-
-  const dismissHint = useCallback(() => {
-    setShowHint(false)
-    try { localStorage.setItem('map_tap_hint', '1') } catch {}
-  }, [])
 
   // Tap a point → popup with that spot's status. Opens a loading popup first, then
   // fills it once computeStatusAt resolves; session-cached (5-min TTL) so re-taps
   // are instant. Leaflet's popup closes on its × or on an outside tap by default.
+  // opts.hint adds a muted nudge line (used on the auto-opened "your location" popup).
   const openStatusPopup = useCallback((lat, lon, name, pre, opts = {}) => {
     const map = mapRef.current
     if (!map) return
-    if (!opts.silent) dismissHint()
-    const failMsg = t ? t('pop_fail') : 'couldn’t load — tap to retry'
+    const failMsg  = t ? t('pop_fail') : 'couldn’t load — tap to retry'
+    const hintLine = opts.hint ? `<div class="gr-pop-hint">${escHtml(opts.hint)}</div>` : ''
     const render = (status) => {
       const head = (s) => `color:var(--c-${s.type}, var(--c-primary))`
       if (status === undefined) return `<div class="gr-pop"><div class="gr-pop-name">${escHtml(name)}</div><div class="gr-pop-load">…</div></div>`
@@ -127,6 +120,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, theme, t, o
         <div class="gr-pop-name">${escHtml(name)}</div>
         <div class="gr-pop-head" style="${head(status)}">${escHtml(status.headline)}</div>
         <div class="gr-pop-sub">${escHtml(status.sub || '')}</div>
+        ${hintLine}
       </div>`
     }
     const popup = L.popup({ maxWidth: 240, className: 'gr-status-popup', autoPanPadding: [24, 24] })
@@ -147,7 +141,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, theme, t, o
     }).catch(() => {
       if (popup.isOpen()) { popup.setContent(render(null)); popup.update() }
     })
-  }, [dismissHint, t])
+  }, [t])
 
   useEffect(() => {
     if (mapRef.current) return
@@ -335,17 +329,20 @@ export default function RadarMap({ location, areaPrecip, areaStatus, theme, t, o
     return () => { try { m.remove() } catch {} }
   }, [areaStatus, openStatusPopup])
 
-  // On load, auto-open the Salzburg-centre popup once (silent — keeps the hint), so
-  // users always land on a worked example and realise the dots are tappable. Uses
-  // the precomputed centre status (instant); only Salzburg is precomputed now.
+  // On load, auto-open a popup at the USER's location with their status + a nudge to
+  // tap the other dots — so they land on a worked example and learn it's tappable.
+  // Uses the real headline status (matches the banner). If they're on the default
+  // Salzburg centre (GPS denied), it naturally shows Salzburg's glance.
   const autoOpenedRef = useRef(false)
   useEffect(() => {
-    if (autoOpenedRef.current || !mapRef.current) return
-    const sbg = (areaStatus || []).find(s => s.name === 'Salzburg')
-    if (!sbg) return
+    if (autoOpenedRef.current || !mapRef.current || !location) return
+    if (!userStatus || userStatus.type === 'loading') return
     autoOpenedRef.current = true
-    openStatusPopup(SALZBURG_CENTER[0], SALZBURG_CENTER[1], 'Salzburg', sbg.status, { silent: true })
-  }, [areaStatus, openStatusPopup])
+    const isDefault = Math.abs(location.lat - SALZBURG_CENTER[0]) < 0.001 &&
+                      Math.abs(location.lon - SALZBURG_CENTER[1]) < 0.001
+    const name = isDefault ? 'Salzburg' : (t ? t('your_location') : 'your location')
+    openStatusPopup(location.lat, location.lon, name, userStatus, { hint: t ? t('tap_others') : '' })
+  }, [location, userStatus, openStatusPopup, t])
 
   // Smoothly fly back to the user's location (e.g. after they've panned away).
   const recenter = () => {
@@ -367,17 +364,6 @@ export default function RadarMap({ location, areaPrecip, areaStatus, theme, t, o
           />
           {radarFrame.forecast ? (t ? t('lbl_nowcast') : 'nowcast') : (t ? t('lbl_radar') : 'radar')} {fmtClock(radarFrame.time)}
         </div>
-      )}
-      {showHint && (
-        <button
-          onClick={dismissHint}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2
-                     rounded-full bg-surface/90 backdrop-blur border border-border
-                     px-3 py-1.5 font-mono text-xs text-muted shadow-lg active:scale-95 transition"
-        >
-          👆 {t ? t('tap_hint') : 'tap a spot for its status'}
-          <span className="text-muted/70">✕</span>
-        </button>
       )}
       {location && (
         <button
