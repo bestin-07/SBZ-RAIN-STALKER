@@ -677,7 +677,7 @@ export default function App() {
   useEffect(() => {
     if (!location) return
     refreshAreaStatuses()
-    const id = setInterval(refreshAreaStatuses, 10 * 60 * 1000)
+    const id = setInterval(refreshAreaStatuses, 6 * 60 * 1000)  // tighter so a dot lags your live status less
     return () => clearInterval(id)
   }, [location, refreshAreaStatuses])
 

@@ -656,6 +656,7 @@ PUSH_SESSION_MAX    = 3   # max pushes within that window (all types combined)
 
 # Per-type cooldowns (seconds) — prevent re-firing the same notification
 PUSH_COOLDOWNS = {
+    "raining":       90 * 60,   # 1.5 h — announce rain/drizzle onset once, don't repeat
     "rain_incoming": 60 * 60,   # 1 h — don't nag about approaching rain
     "gap":           45 * 60,   # 45 min
     "rain_clearing": 90 * 60,   # 1.5 h — rain ending is less urgent to repeat
@@ -784,6 +785,18 @@ def _build_payload(event: dict) -> dict:
                 "body_de":  "Sollte trocken bleiben — check deinen Standort",
                 "title_en": f"Rain clearing over Salzburg in ~{x} min",
                 "body_en":  "Should stay dry — check your spot"}
+    if t == "raining":
+        if event.get("light"):
+            return {"type": "rain",
+                    "title_de": "Leichter Niesel über Salzburg",
+                    "body_de":  "Könnte dich treffen — check deinen Standort",
+                    "title_en": "Light drizzle over Salzburg",
+                    "body_en":  "May affect your spot — check the app"}
+        return {"type": "rain",
+                "title_de": "Regen über Salzburg",
+                "body_de":  "Könnte dich treffen — check deinen Standort",
+                "title_en": "Rain over Salzburg",
+                "body_en":  "May affect your spot — check the app"}
     return {}
 
 
@@ -793,10 +806,12 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         return
 
     events = []
+    now_precips = []
     for point in POINTS:
         try:
             times, precips, _ = await _fetch_timeline_sourced(client, point)
             now_precip        = await fetch_now_precip(client, point)
+            now_precips.append(now_precip)
             threshold         = get_threshold(point["name"], 30)
             ev = _analyze_forecast(
                 list(times), list(precips),
@@ -807,6 +822,16 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         except Exception as e:
             print(f"[push] {point['name']}: {e}")
 
+    # "Raining now over Salzburg" — the onset step of the story, between "rain
+    # incoming" and "gap/clearing". Verified by GROUND readings: a majority of the
+    # grid must be wet right now. Intensity from the median wet reading → light
+    # drizzle (<0.5 mm) vs rain. A single already-verified synthetic event.
+    wet = [p for p in now_precips if p is not None and p >= DRY_THRESHOLD]
+    if len(wet) >= MIN_PUSH_AGREEMENT:
+        wet_sorted = sorted(wet)
+        median_wet = wet_sorted[len(wet_sorted) // 2]
+        events.append({"type": "raining", "light": median_wet < 0.5})
+
     total = len(POINTS)
     by_type = {}
     for e in events:
@@ -815,10 +840,15 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
     counts = {k: len(v) for k, v in by_type.items()}
     print(f"[push] votes: {counts} / {total} (need {MIN_PUSH_AGREEMENT})")
 
-    # Priority: rain_incoming > rain_clearing > gap
-    for push_type in ("rain_incoming", "rain_clearing", "gap"):
+    # Story order: raining now > rain incoming > clearing > gap. Cooldowns + the
+    # 3-per-4h session budget keep it a paced story, not alert spam.
+    for push_type in ("raining", "rain_incoming", "rain_clearing", "gap"):
         candidates = by_type.get(push_type, [])
-        if len(candidates) < MIN_PUSH_AGREEMENT:
+        if not candidates:
+            continue
+        # "raining" is a single event already verified by the wet-count above; the
+        # forecast types need MIN_PUSH_AGREEMENT points to independently agree.
+        if push_type != "raining" and len(candidates) < MIN_PUSH_AGREEMENT:
             continue
         cooldown_key = f"last_{push_type}_push_ts"
         if not _cooldown_ok(cooldown_key, PUSH_COOLDOWNS[push_type], now_ts):
@@ -827,10 +857,13 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         if not _session_budget_ok(now_ts):
             print(f"[push] budget used up mid-loop")
             break
-        # Pick the most imminent event across agreeing points
-        sort_key = "rain_in_min" if push_type == "rain_incoming" else \
-                   "clears_in_min" if push_type == "rain_clearing" else "gap_in_min"
-        best    = min(candidates, key=lambda e: e.get(sort_key, 0))
+        if push_type == "raining":
+            best = candidates[0]
+        else:
+            # Pick the most imminent event across agreeing points
+            sort_key = "rain_in_min" if push_type == "rain_incoming" else \
+                       "clears_in_min" if push_type == "rain_clearing" else "gap_in_min"
+            best = min(candidates, key=lambda e: e.get(sort_key, 0))
         payload = _build_payload(best)
         await push_to_all(payload)
         _log_push(now_ts, push_type, payload.get("body_en", ""))
