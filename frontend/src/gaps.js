@@ -223,11 +223,13 @@ export function getStatus(
 
   // ---- Light drizzle (0.2–0.5 mm): "you could still go" ----
   // Driven by the GROUND reading, so a stale/over-reading nowcast can't force STUCK
-  // while you're standing in a drizzle. Headline PASST SCHON / GO ANYWAY; sub uses
-  // DRIZZLE wording + the forward look. Night falls through to the rain branch.
-  if (!night && currentPrecip < LIGHT_MAX) {
+  // while you're in a drizzle. At NIGHT it stays a calm drizzle (cozy sub) instead of
+  // falling through to a WAIT countdown; daytime keeps the forward easing/clearing text.
+  if (currentPrecip < LIGHT_MAX) {
     let sub
-    if (firstGap) {
+    if (night) {
+      sub = t('s_night_raining')
+    } else if (firstGap) {
       const easeMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
       sub = easeMin < RAIN_SHOW_MIN
         ? t('s_light_soon')

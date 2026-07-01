@@ -21,15 +21,17 @@ const ANCHOR_STATION_ID = '11150'
 const _respCache = new Map()
 const RESP_TTL = 4 * 60 * 1000
 
-// For fns that return null on failure: serve fresh cache, else fetch, else stale.
-async function cachedOrNull(key, fetcher) {
+// For fns that return null on failure: serve fresh cache, else fetch, else stale
+// (but not beyond maxStaleMs — a very old nowcast still has ~2h of "future" slots
+// from its old forecast and produces garbage gaps like "wait 100 min").
+async function cachedOrNull(key, fetcher, maxStaleMs = Infinity) {
   const now = Date.now()
   const hit = _respCache.get(key)
   if (hit && now - hit.ts < RESP_TTL) return hit.data
   let data = null
   try { data = await fetcher() } catch { data = null }
   if (data != null) { _respCache.set(key, { data, ts: now }); return data }
-  return hit ? hit.data : null   // serve stale rather than lose data
+  return (hit && now - hit.ts <= maxStaleMs) ? hit.data : null
 }
 
 export const AREAS = [
@@ -217,6 +219,8 @@ export async function fetchNearbyStationPrecip(lat, lon) {
 // no WAF block). Returns { times:[unix seconds], precips:[mm] } or null.
 // (param name is lowercase `rr`; unit kg/m² = mm.)
 export async function fetchNowcastTimeline(lat, lon) {
+  // Cap stale serving at 20 min — the nowcast is a time-aligned timeline; older than
+  // that its slots no longer line up with "now" and detectGaps yields nonsense.
   return cachedOrNull(`nc:${(+lat).toFixed(3)},${(+lon).toFixed(3)}`, async () => {
     const r = await fetch(
       `${GEOSPHERE_NOWCAST}?parameters=rr&lat_lon=${lat},${lon}`,
@@ -230,7 +234,7 @@ export async function fetchNowcastTimeline(lat, lon) {
     const times = ts.map(s => Math.floor(Date.parse(s) / 1000))
     const precips = rr.map(v => (typeof v === 'number' && !isNaN(v)) ? v : 0)
     return { times, precips }
-  })
+  }, 20 * 60 * 1000)
 }
 
 export async function fetchAccuracy() {
