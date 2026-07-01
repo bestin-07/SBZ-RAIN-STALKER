@@ -158,6 +158,68 @@ export async function fetchAccuracy() {
   }
 }
 
+const RAINVIEWER_WEATHER_MAPS = 'https://api.rainviewer.com/public/weather-maps.json'
+const ALLOWED_RV_TILE_HOST = 'https://tilecache.rainviewer.com'
+
+// Sample the latest RainViewer radar tile at the user's exact lat/lon.
+// Returns 0.3 (above dry threshold) if radar sees rain, 0 if clear, null on
+// any error (CORS not available, tile fetch failed, etc.). This is the fastest
+// "is it raining right now?" signal — it uses the same radar frames displayed
+// on the map but reads the pixel at the user's GPS position directly.
+export function fetchRainViewerPrecip(lat, lon) {
+  return fetch(RAINVIEWER_WEATHER_MAPS, { signal: AbortSignal.timeout(5000) })
+    .then(r => r.ok ? r.json() : null)
+    .then(mapData => {
+      if (!mapData) return null
+      const past = mapData.radar?.past ?? []
+      if (!past.length) return null
+
+      const frame = past[past.length - 1]
+      const rawHost = mapData.host
+      const host = typeof rawHost === 'string' && /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}$/.test(rawHost)
+        ? rawHost : ALLOWED_RV_TILE_HOST
+
+      // Web-Mercator tile + pixel coordinates at z=7 (~1.2 km/px, matching
+      // RainViewer's native radar resolution — maxNativeZoom 7 in RadarMap.jsx).
+      const z = 7, n = 1 << z
+      const tileX = Math.floor((lon + 180) / 360 * n)
+      const latRad = lat * Math.PI / 180
+      const mercY = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2
+      const tileY = Math.floor(mercY * n)
+      const px = Math.floor(((lon + 180) / 360 * n - tileX) * 256)
+      const py = Math.floor((mercY * n - tileY) * 256)
+
+      const tileUrl = `${host}${frame.path}/256/${z}/${tileX}/${tileY}/2/1_1.png`
+
+      // Timeout wrapper so a slow tile server doesn't block the whole loadData cycle
+      const imgPromise = new Promise(resolve => {
+        const img = new Image()
+        // crossOrigin='anonymous' requests CORS headers. If RainViewer responds
+        // with Access-Control-Allow-Origin, we can read pixel data. If not,
+        // onerror fires (browser treats missing CORS as a load failure) → null.
+        img.crossOrigin = 'anonymous'
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          canvas.width = 256; canvas.height = 256
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0)
+          try {
+            const pixel = ctx.getImageData(px, py, 1, 1).data
+            // RainViewer Universal Blue scheme: transparent = no rain.
+            // alpha > 30 = meaningful radar echo above noise floor.
+            resolve(pixel[3] > 30 ? 0.3 : 0)
+          } catch {
+            resolve(null)  // tainted canvas — CORS headers not present
+          }
+        }
+        img.onerror = () => resolve(null)
+        img.src = tileUrl
+      })
+      return Promise.race([imgPromise, new Promise(r => setTimeout(() => r(null), 5000))])
+    })
+    .catch(() => null)
+}
+
 export async function fetchAreaPrecip() {
   // One batched Open-Meteo request for all towns (comma-separated coords) instead
   // of one request each — far gentler on the rate limit and avoids dropping towns

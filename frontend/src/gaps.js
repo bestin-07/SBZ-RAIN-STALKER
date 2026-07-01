@@ -1,4 +1,4 @@
-const DRY_THRESHOLD = 0.1
+export const DRY_THRESHOLD = 0.1
 const MIN_GAP_SLOTS = 2
 const LOOK_AHEAD = 3 * 3600
 
@@ -142,7 +142,10 @@ export function getStatus(
   const firstGap = gaps[0]
   // A gap that's already started means the forecast says dry now even if a
   // station's RR still lags — trust the model and treat it as "go".
-  const gapNow = firstGap && firstGap.startsAt <= nowSec
+  // Exception: if RainViewer radar directly observes active rain at the user's
+  // pixel, the nowcast is blind to this cell; suppress the override so we
+  // don't flash GO while radar confirms rain overhead.
+  const gapNow = firstGap && firstGap.startsAt <= nowSec && !trend?.rvRainActive
 
   // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {

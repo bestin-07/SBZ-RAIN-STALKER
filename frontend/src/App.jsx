@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline } from './api'
-import { detectGaps, getStatus } from './gaps'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip } from './api'
+import { detectGaps, getStatus, DRY_THRESHOLD } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -47,7 +47,14 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export default function App() {
-  const [location, setLocation] = useState(null)
+  // Restore last known GPS from localStorage so the app loads immediately on
+  // subsequent visits without waiting for the GPS permission prompt.
+  const [location, setLocation] = useState(() => {
+    try {
+      const s = localStorage.getItem('last_location')
+      return s ? JSON.parse(s) : null
+    } catch { return null }
+  })
   const [locationError, setLocationError] = useState(null)
   const [locating, setLocating] = useState(false)
   const [forecast, setForecast] = useState(null)
@@ -245,7 +252,9 @@ export default function App() {
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
       pos => {
-        setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude })
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude }
+        try { localStorage.setItem('last_location', JSON.stringify(loc)) } catch {}
+        setLocation(loc)
         setLocationAccuracy(Math.round(pos.coords.accuracy))
         setLocationError(null)
         setLocating(false)
@@ -268,7 +277,9 @@ export default function App() {
     setUpgradingLocation(true)
     navigator.geolocation.getCurrentPosition(
       pos => {
-        setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude })
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude }
+        try { localStorage.setItem('last_location', JSON.stringify(loc)) } catch {}
+        setLocation(loc)
         setLocationAccuracy(Math.round(pos.coords.accuracy))
         setUpgradingLocation(false)
       },
@@ -283,26 +294,32 @@ export default function App() {
     setLocationError(null)
   }, [])
 
-  // Detect a pre-blocked permission up front so we can show help immediately
-  // instead of making the user wait for a click that won't prompt (Firefox/Chrome).
+  // Detect pre-blocked permission (show help immediately) or already-granted
+  // permission (auto-refresh GPS silently — safe because no prompt is shown
+  // when state='granted'). This lets the app load with cached location first,
+  // then quietly update to the latest GPS reading in the background.
   useEffect(() => {
     if (!navigator.permissions?.query) return
     navigator.permissions.query({ name: 'geolocation' })
-      .then(p => { if (p.state === 'denied') setLocationError('denied') })
+      .then(p => {
+        if (p.state === 'denied') setLocationError('denied')
+        else if (p.state === 'granted') requestLocation()
+      })
       .catch(() => {})
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = useCallback(async () => {
     if (!location) return
     if (kmFromSalzburg(location) > FAR_KM) return  // too far — FarAway screen shown instead
     setLoading(true)
     try {
-      const [forecastResult, accuracyResult, areaResult, stationResult, nowcastResult] = await Promise.allSettled([
+      const [forecastResult, accuracyResult, areaResult, stationResult, nowcastResult, rvResult] = await Promise.allSettled([
         fetchForecast(location.lat, location.lon),
         fetchAccuracy(),
         fetchAreaPrecip(),
         fetchNearbyStationPrecip(location.lat, location.lon),
         fetchNowcastTimeline(location.lat, location.lon),
+        fetchRainViewerPrecip(location.lat, location.lon),
       ])
 
       if (forecastResult.status === 'fulfilled') {
@@ -326,7 +343,12 @@ export default function App() {
         const omForNow = stationData !== null && stationPrecip === 0
           ? (measured > 0.1 ? measured : 0)
           : measured
-        const nowPrecip = Math.max(omForNow, stationPrecip)
+        // RainViewer radar tile sample at the user's exact GPS pixel. Faster than
+        // TAWES for new convective cells (radar sees rain ~5 min after onset vs
+        // TAWES ~10 min). Returns null if CORS tile reading isn't available.
+        const rvPrecip = rvResult?.status === 'fulfilled' && rvResult.value !== null
+          ? rvResult.value : 0
+        const nowPrecip = Math.max(omForNow, stationPrecip, rvPrecip)
 
         // Gap timeline: prefer the GeoSphere 1 km / 15-min radar nowcast (catches
         // convective rain the ICON-EU model lags on); fall back to Open-Meteo.
@@ -353,7 +375,7 @@ export default function App() {
         setForecast({ times: ribbonTimeline.times, precips: ribbonTimeline.precips, isNowcast: !!nowcast })
         setCurrentPrecip(effectivePrecip)
         setGaps(detectedGaps)
-        setTrend({ nextRainAt, dryEndsOpen })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data.current?.temperature_2m ?? null,
