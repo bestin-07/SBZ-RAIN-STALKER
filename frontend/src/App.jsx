@@ -361,16 +361,18 @@ export default function App() {
   // Mirrors loadData's blend but WITHOUT the user-only continuity (no story /
   // hysteresis / RainViewer) — a clean one-shot for "what would it say here".
   const computeStatusAt = useCallback(async (lat, lon) => {
-    const [fRes, sRes, nRes] = await Promise.allSettled([
+    const [fRes, sRes, nRes, rvRes] = await Promise.allSettled([
       fetchForecast(lat, lon),
       fetchNearbyStationPrecip(lat, lon),
       fetchNowcastTimeline(lat, lon),
+      fetchRainViewerPrecip(lat, lon),   // same radar sample the user's location gets
     ])
     // Resilient like loadData: proceed if ANY source resolved (Open-Meteo can 429),
     // else the popup would read "couldn't load" even though GeoSphere is fine.
     const data        = fRes.status === 'fulfilled' ? fRes.value : null
     const stationData = sRes.status === 'fulfilled' ? sRes.value : null
     const nowcast     = nRes.status === 'fulfilled' ? nRes.value : null
+    const rvPrecip    = rvRes.status === 'fulfilled' && rvRes.value !== null ? rvRes.value : 0
     if (!data && !nowcast && stationData === null) return null
     const omTimes   = data?.minutely_15?.time ?? []
     const omPrecips = data?.minutely_15?.precipitation ?? []
@@ -391,9 +393,12 @@ export default function App() {
       gapPrecips = gapTimeline.precips.map((p, i) => (i === idx ? 0 : p))
     }
     const { currentPrecip: cp, gaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
-    // Same as loadData: trust the ground when stations report, else radar max.
+    // Same as loadData: trust the ground when stations report, else radar max
+    // (nowcast + RainViewer sample). Including RV here makes the town dots catch a
+    // drizzle the sparse gauges miss — so a dot agrees with the user's own location
+    // instead of reading GEMMA RAUS while the live view says GO ANYWAY.
     const effectivePrecip = cp === null ? null
-      : stationData !== null ? groundPrecip : Math.max(cp, groundPrecip)
+      : stationData !== null ? groundPrecip : Math.max(cp, groundPrecip, rvPrecip)
     let maxSoon = null
     if (nowcast) {
       const lim = nowSec + 45 * 60
@@ -414,7 +419,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: false, rainProb, recentRain: false, maxSoon })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb, recentRain: false, maxSoon })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -503,9 +508,10 @@ export default function App() {
         const omForNow = stationData !== null && stationPrecip === 0
           ? (measured > 0.1 ? measured : 0)
           : measured
-        // RainViewer radar tile sample at the user's exact GPS pixel. Faster than
-        // TAWES for new convective cells (radar sees rain ~5 min after onset vs
-        // TAWES ~10 min). Returns null if CORS tile reading isn't available.
+        // RainViewer radar tile sample at your exact GPS pixel — catches a drizzle the
+        // 2 sparse city gauges miss (radar sees your spot; the gauges are 1–4 km away).
+        // This is why YOUR location is more accurate than the town dots, which don't
+        // sample RainViewer. Returns null if the CORS tile read isn't available.
         const rvPrecip = rvResult?.status === 'fulfilled' && rvResult.value !== null
           ? rvResult.value : 0
         const nowPrecip = Math.max(omForNow, stationPrecip, rvPrecip)

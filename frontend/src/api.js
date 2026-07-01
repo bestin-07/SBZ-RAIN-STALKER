@@ -251,14 +251,28 @@ export async function fetchAccuracy() {
 const RAINVIEWER_WEATHER_MAPS = 'https://api.rainviewer.com/public/weather-maps.json'
 const ALLOWED_RV_TILE_HOST = 'https://tilecache.rainviewer.com'
 
+// weather-maps.json is identical for every point, so cache the fetch briefly.
+// Without this, sampling all ~15 town dots would hit the endpoint 15× per refresh
+// (the radar tile itself is already shared: every Salzburg point maps to the SAME
+// z7 tile, so the browser HTTP-caches it after the first download).
+let _rvMapsCache = { ts: 0, promise: null }
+function getRainViewerMaps() {
+  const now = Date.now()
+  if (_rvMapsCache.promise && now - _rvMapsCache.ts < 60_000) return _rvMapsCache.promise
+  const p = fetch(RAINVIEWER_WEATHER_MAPS, { signal: AbortSignal.timeout(5000) })
+    .then(r => r.ok ? r.json() : null)
+    .catch(() => null)
+  _rvMapsCache = { ts: now, promise: p }
+  return p
+}
+
 // Sample the latest RainViewer radar tile at the user's exact lat/lon.
 // Returns 0.3 (above dry threshold) if radar sees rain, 0 if clear, null on
 // any error (CORS not available, tile fetch failed, etc.). This is the fastest
 // "is it raining right now?" signal — it uses the same radar frames displayed
 // on the map but reads the pixel at the user's GPS position directly.
 export function fetchRainViewerPrecip(lat, lon) {
-  return fetch(RAINVIEWER_WEATHER_MAPS, { signal: AbortSignal.timeout(5000) })
-    .then(r => r.ok ? r.json() : null)
+  return getRainViewerMaps()
     .then(mapData => {
       if (!mapData) return null
       const past = mapData.radar?.past ?? []

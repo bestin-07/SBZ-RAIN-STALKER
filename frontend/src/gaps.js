@@ -228,7 +228,7 @@ export function getStatus(
   if (currentPrecip < LIGHT_MAX) {
     let sub
     if (night) {
-      sub = t('s_night_raining')
+      sub = t('s_night_drizzle')   // drizzle wording — never "raining" under GO ANYWAY
     } else if (firstGap) {
       const easeMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
       sub = easeMin < RAIN_SHOW_MIN
