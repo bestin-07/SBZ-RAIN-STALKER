@@ -63,10 +63,20 @@ export default function App() {
   // subsequent visits without waiting for the GPS permission prompt.
   const [location, setLocation] = useState(() => {
     try {
-      const s = localStorage.getItem('last_location')
-      return s ? JSON.parse(s) : null
+      const p = JSON.parse(localStorage.getItem('last_location') || 'null')
+      return (p && typeof p.lat === 'number' && typeof p.lon === 'number') ? { lat: p.lat, lon: p.lon } : null
     } catch { return null }
   })
+  // When the stored location was last confirmed (ms) — drives the "location may be
+  // outdated" nudge so a user who moved (e.g. cycled across town) is prompted to
+  // re-fetch via the map crosshair. Null for legacy stored locations (no timestamp).
+  const [locationTime, setLocationTime] = useState(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem('last_location') || 'null')
+      return (p && typeof p.ts === 'number') ? p.ts : null
+    } catch { return null }
+  })
+  const [staleDismissed, setStaleDismissed] = useState(false)
   const [locationError, setLocationError] = useState(null)
   const [locating, setLocating] = useState(false)
   const [forecast, setForecast] = useState(null)
@@ -117,6 +127,11 @@ export default function App() {
   const t = useI18n(lang)
   const status = getStatus(currentPrecip, gaps, currentWeather, t, tickNow, trend)
   const farAway = location ? kmFromSalzburg(location) > FAR_KM : false
+  // Nudge to re-fetch location once the current fix is over an hour old (tickNow
+  // advances every minute, so this flips on live). Dismissible; reappears only
+  // after a fresh fix goes stale again.
+  const showStaleBanner = !!location && !farAway && !staleDismissed &&
+    locationTime != null && (tickNow * 1000 - locationTime) > 60 * 60 * 1000
 
   // Derived warning signals — no extra API calls, computed from existing data
   const regionalThunder = areaPrecip.some(a => a.code != null && a.code >= 80)
@@ -263,6 +278,15 @@ export default function App() {
     try { localStorage.setItem('lang', lang) } catch {}
   }, [lang])
 
+  // Persist a fresh fix + its timestamp, and clear the stale nudge. Called on
+  // every successful GPS read (even a jittery one) so "location confirmed at" is
+  // accurate — the 500 m debounce below only governs whether we re-fetch data.
+  const rememberLocation = useCallback((loc) => {
+    try { localStorage.setItem('last_location', JSON.stringify({ lat: loc.lat, lon: loc.lon, ts: Date.now() })) } catch {}
+    setLocationTime(Date.now())
+    setStaleDismissed(false)
+  }, [])
+
   const requestLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setLocationError('unsupported')
@@ -272,16 +296,13 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       pos => {
         const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude }
+        rememberLocation(loc)
         setLocationAccuracy(Math.round(pos.coords.accuracy))
         setLocationError(null)
         setLocating(false)
         // Debounce jitter: keep the current fix if the new one is <500 m away,
         // so a background re-read doesn't churn the whole data pipeline.
-        setLocation(prev => {
-          if (prev && metersBetween(prev, loc) < MIN_MOVE_M) return prev
-          try { localStorage.setItem('last_location', JSON.stringify(loc)) } catch {}
-          return loc
-        })
+        setLocation(prev => (prev && metersBetween(prev, loc) < MIN_MOVE_M) ? prev : loc)
       },
       err => {
         setLocating(false)
@@ -293,7 +314,7 @@ export default function App() {
       // that cold-starts in 30-60 s, causing near-certain 10 s timeouts.
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
     )
-  }, [])
+  }, [rememberLocation])
 
   // User-initiated GPS upgrade — only called from the accuracy banner,
   // so the browser allows the prompt and GPS has 30 s to warm up.
@@ -302,7 +323,7 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       pos => {
         const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude }
-        try { localStorage.setItem('last_location', JSON.stringify(loc)) } catch {}
+        rememberLocation(loc)
         setLocation(loc)
         setLocationAccuracy(Math.round(pos.coords.accuracy))
         setUpgradingLocation(false)
@@ -310,7 +331,7 @@ export default function App() {
       () => { setUpgradingLocation(false) },
       { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     )
-  }, [])
+  }, [rememberLocation])
 
   // Explicit "update my location" — bound to the map's crosshair button so a user
   // who has moved (e.g. cycled across town) can force a fresh fix. Bypasses the
@@ -322,7 +343,7 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       pos => {
         const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude }
-        try { localStorage.setItem('last_location', JSON.stringify(loc)) } catch {}
+        rememberLocation(loc)
         setLocation(loc)
         setLocationAccuracy(Math.round(pos.coords.accuracy))
         setUpgradingLocation(false)
@@ -330,11 +351,13 @@ export default function App() {
       () => { setUpgradingLocation(false) },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     )
-  }, [])
+  }, [rememberLocation])
 
   // Fallback so the app is usable even if GPS never resolves (Salzburg centre).
   const useDefaultLocation = useCallback(() => {
     setLocation({ lat: 47.8009, lon: 13.0448 })
+    setLocationTime(Date.now())   // chosen centre — don't nag it as "outdated"
+    setStaleDismissed(false)
     setLocationError(null)
   }, [])
 
@@ -624,6 +647,16 @@ export default function App() {
           {isOutsideSalzburg(location) && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
+            </div>
+          )}
+          {showStaleBanner && (
+            <div className="px-4 py-2 bg-surface border-b border-border shrink-0 flex items-center gap-3">
+              <span className="font-mono text-xs text-muted flex-1">📍 {t('loc_stale')}</span>
+              <button
+                onClick={() => setStaleDismissed(true)}
+                className="font-mono text-xs text-muted hover:text-primary transition-colors shrink-0"
+                aria-label="dismiss"
+              >✕</button>
             </div>
           )}
           {locationAccuracy > 100 && !accuracyDismissed && (

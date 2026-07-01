@@ -28,13 +28,17 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
           </p>
 
           <div className="space-y-4 mb-5">
-            <StatusRow color="#16A34A" badge="GEMMA RAUS"      desc={t('guide_green')} />
-            <StatusRow color="#CA8A04" badge={t('guide_ex_wait')}  desc={t('guide_yellow')} />
-            <StatusRow color="#DC2626" badge={t('guide_ex_stuck')} desc={t('guide_red')} />
+            <StatusRow color="var(--c-go)"    badge="GEMMA RAUS"        desc={t('guide_green')} />
+            <StatusRow color="var(--c-wait)"  badge={t('guide_ex_wait')}  desc={t('guide_yellow')} />
+            <StatusRow color="var(--c-stuck)" badge={t('guide_ex_stuck')} desc={t('guide_red')} />
           </div>
 
           <p className="font-mono text-xs text-muted leading-relaxed mb-5">
             {t('guide_weather')}
+          </p>
+
+          <p className="font-mono text-xs text-muted leading-relaxed mb-5">
+            {t('guide_locate')}
           </p>
 
           <div className="border border-border px-4 py-3 mb-8">
