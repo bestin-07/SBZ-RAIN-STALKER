@@ -395,7 +395,26 @@ export default function App() {
           ? { times: nowcast.times, precips: nowcast.precips }
           : { times: [nowSec, ...omTimes], precips: [nowPrecip, ...omPrecips] }
 
-        const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapTimeline.precips)
+        // When the ground says dry, correct only the nowcast's *current* slot to
+        // dry before gap detection. The radar nowcast can over-read a light echo
+        // over your head that never reaches the ground (virga); left as-is, that
+        // current-slot blip makes detectGaps think it's "raining now" — so it can't
+        // report the real next rain (headline says "clear") or my earlier fix cried
+        // "rain any minute". Zeroing just the current slot keeps the nowcast's
+        // genuine *future* rain intact, so we report the true onset (e.g. "rain in
+        // ~1h" when it's building later) rather than reacting to the blip.
+        let gapPrecips = gapTimeline.precips
+        if (groundDry) {
+          const ts = gapTimeline.times
+          let idx = 0, best = Infinity
+          for (let i = 0; i < ts.length; i++) {
+            const d = Math.abs(ts[i] - nowSec)
+            if (d < best) { best = d; idx = i }
+          }
+          gapPrecips = gapTimeline.precips.map((p, i) => (i === idx ? 0 : p))
+        }
+
+        const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
         // If the ground says dry, trust it — never let the radar nowcast alone force
         // a raining/STUCK state. Otherwise catch rain the stations miss via the max
         // of the nowcast now-slot + measured + radar-at-pixel (the Nonntal case).
@@ -404,15 +423,6 @@ export default function App() {
           : groundDry
             ? groundPrecip
             : Math.max(cp, nowPrecip)
-        // When the ground override forces "dry now" but the radar nowcast shows
-        // rain in the current slot, still surface an incoming-rain trend so the
-        // headline reads "rain could start any minute" instead of "clear over your
-        // head" — which would contradict the ribbon showing rain right now. Rain
-        // that's dry-now-then-wet-later is already handled by detectGaps' own
-        // nextRainAt, so this only kicks in for the radar-wet-now / ground-dry case.
-        const radarWetNow = groundDry && cp !== null && cp >= 0.1
-        const effNextRainAt  = radarWetNow ? nowSec : nextRainAt
-        const effDryEndsOpen = radarWetNow ? false  : dryEndsOpen
         // Ribbon: anchor a real "now" bar from TAWES so the chart reflects the live
         // reading, even though gap detection uses the raw nowcast above.
         const ribbonTimeline = nowcast
@@ -438,7 +448,7 @@ export default function App() {
         }
         setCurrentPrecip(displayPrecip)
         setGaps(detectedGaps)
-        setTrend({ nextRainAt: effNextRainAt, dryEndsOpen: effDryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data.current?.temperature_2m ?? null,
