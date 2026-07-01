@@ -335,22 +335,17 @@ export default function RadarMap({ location, areaPrecip, areaStatus, theme, t, o
     return () => { try { m.remove() } catch {} }
   }, [areaStatus, openStatusPopup])
 
-  // First visit: auto-open the popup for the point nearest the user, so they
-  // discover the dots are tappable. Once only (until they've dismissed the hint).
+  // On load, auto-open the Salzburg-centre popup once (silent — keeps the hint), so
+  // users always land on a worked example and realise the dots are tappable. Uses
+  // the precomputed centre status (instant); only Salzburg is precomputed now.
   const autoOpenedRef = useRef(false)
   useEffect(() => {
-    if (autoOpenedRef.current || !showHint) return
-    if (!location || !mapRef.current || !(areaStatus?.length)) return
-    let best = null, bd = Infinity
-    for (const a of areaStatus) {
-      const d = (a.lat - location.lat) ** 2 + (a.lon - location.lon) ** 2
-      if (d < bd) { bd = d; best = a }
-    }
-    if (best) {
-      autoOpenedRef.current = true
-      openStatusPopup(best.lat, best.lon, best.name, best.status, { silent: true })
-    }
-  }, [showHint, location, areaStatus, openStatusPopup])
+    if (autoOpenedRef.current || !mapRef.current) return
+    const sbg = (areaStatus || []).find(s => s.name === 'Salzburg')
+    if (!sbg) return
+    autoOpenedRef.current = true
+    openStatusPopup(SALZBURG_CENTER[0], SALZBURG_CENTER[1], 'Salzburg', sbg.status, { silent: true })
+  }, [areaStatus, openStatusPopup])
 
   // Smoothly fly back to the user's location (e.g. after they've panned away).
   const recenter = () => {

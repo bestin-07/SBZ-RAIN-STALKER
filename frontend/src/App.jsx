@@ -415,13 +415,15 @@ export default function App() {
   // dots by GO/PASST SCHON/WAIT/STUCK and seeds the tap popups (so dot colour and
   // popup always agree). Re-runs on location + language change (below) and every
   // 10 min. Uses computeStatusAt, so the strings are localized to the current lang.
+  // Lazy: only precompute the Salzburg-centre status (drives the default popup +
+  // that dot's colour). Precomputing all 12 towns每 refresh burst-hammered the free
+  // APIs → "couldn't load" on taps. Town dots use their cheap precip colour, and a
+  // town's full status is computed on demand when it's tapped (cached 5 min).
   const refreshAreaStatuses = useCallback(() => {
-    const pts = [...AREAS, { name: 'Salzburg', lat: SBZ_CENTER.lat, lon: SBZ_CENTER.lon }]
-    Promise.all(pts.map(p =>
-      computeStatusAt(p.lat, p.lon)
-        .then(status => ({ ...p, status }))
-        .catch(() => ({ ...p, status: null }))
-    )).then(setAreaStatus).catch(() => {})
+    const center = { name: 'Salzburg', lat: SBZ_CENTER.lat, lon: SBZ_CENTER.lon }
+    computeStatusAt(center.lat, center.lon)
+      .then(status => setAreaStatus([{ ...center, status }]))
+      .catch(() => {})
   }, [computeStatusAt])
 
   // Fallback so the app is usable even if GPS never resolves (Salzburg centre).
@@ -571,17 +573,20 @@ export default function App() {
         try { story = JSON.parse(localStorage.getItem('story') || 'null') } catch {}
         const nearStory = story && typeof story.lat === 'number' &&
           metersBetween({ lat: story.lat, lon: story.lon }, location) < STORY_RADIUS_M
-        let lastWetAt = nearStory && typeof story.lastWetAt === 'number' ? story.lastWetAt : 0
+        let lastWetAt     = nearStory && typeof story.lastWetAt === 'number' ? story.lastWetAt : 0
+        let lastWetPrecip = nearStory && typeof story.lastWetPrecip === 'number' ? story.lastWetPrecip : DRY_THRESHOLD
 
         const rawWet = effectivePrecip !== null && effectivePrecip >= DRY_THRESHOLD
-        if (rawWet) lastWetAt = nowMs
+        if (rawWet) { lastWetAt = nowMs; lastWetPrecip = effectivePrecip }
 
         // Time-based hysteresis: once "raining" was shown, keep showing it until it
-        // has been dry for HOLD_MS. Unlike the old in-memory streak this survives a
-        // reload, so a quick refresh mid-shower won't flash GO.
+        // has been dry for HOLD_MS (survives reload). Hold the ACTUAL recent intensity,
+        // not a flat 0.1 — a flat 0.1 landed exactly in the light state and made the
+        // hold read "GO ANYWAY" out of nowhere; holding the real value keeps heavy as
+        // STUCK and a true drizzle as light, consistently.
         let displayPrecip = effectivePrecip
         if (effectivePrecip !== null && !rawWet && lastWetAt && (nowMs - lastWetAt) < HOLD_MS) {
-          displayPrecip = DRY_THRESHOLD
+          displayPrecip = lastWetPrecip
         }
         // Longer window: was it raining recently? getStatus uses this to say "short
         // break — rain back in X" / "rain's eased" instead of a fresh "approaching".
@@ -589,7 +594,7 @@ export default function App() {
 
         try {
           localStorage.setItem('story', JSON.stringify({
-            lat: location.lat, lon: location.lon, ts: nowMs, lastWetAt,
+            lat: location.lat, lon: location.lon, ts: nowMs, lastWetAt, lastWetPrecip,
           }))
         } catch {}
 

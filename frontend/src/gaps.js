@@ -129,6 +129,7 @@ function precipByCode(code) {
 const RAIN_SHOW_MIN = 10  // below this, say "shortly/any minute" — a numeric ETA is false precision
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
 const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
+const LIGHT_MIN = 0.2  // below this = go (dry-enough) — a 0.1mm tip must not flip GO↔GO-ANYWAY
 const LIGHT_MAX = 0.5  // raining but below this = light/drizzle → "you could still go out"
 const HEAVY_SOON = 4.0 // nowcast peak ≥ this (mm/15min) in next 45 min = real downpour → not "go anyway"
 const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
@@ -214,16 +215,29 @@ export function getStatus(
     return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
   }
 
-  // ---- Light rain that isn't about to turn heavy: "you could still head out" ----
-  // The ground says it's only drizzling (< LIGHT_MAX) and the nowcast shows no real
-  // downpour in the next 45 min. A gentler nudge than WAIT/STUCK. Suppressed at
-  // night (nobody's sprinting out) — falls through to the rain branch below.
   const downpourSoon = trend.maxSoon != null && trend.maxSoon >= HEAVY_SOON
+
+  // Trace drizzle (< 0.2 mm) with no downpour imminent → still GO. A 0.1 mm tip (or
+  // the hysteresis hold) must NOT flip GEMMA RAUS ↔ GO ANYWAY; only a genuine
+  // ≥0.2 mm drizzle earns the light state. This kills the cross-device / refresh flicker.
+  if (currentPrecip < LIGHT_MIN && !downpourSoon) {
+    const sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
+  }
+
+  // ---- Light drizzle (0.2–0.5 mm), no downpour in 45 min: "you could still go" ----
+  // Headline PASST SCHON / GO ANYWAY. Sub uses DRIZZLE wording (never "rain") + the
+  // forward look: easing soon / easing in ~X / set in for a while. Night falls through.
   if (!night && currentPrecip < LIGHT_MAX && !downpourSoon) {
-    // Headline stays "PASST SCHON / GO ANYWAY", but the sub reuses the existing
-    // forward wording so the user still knows whether this drizzle is clearing,
-    // opening a dry gap, or just hanging around — no new strings, still one glance.
-    const sub = firstGap ? breakSub(firstGap, nowSec, t) : t('s_light')
+    let sub
+    if (firstGap) {
+      const easeMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
+      sub = easeMin < RAIN_SHOW_MIN
+        ? t('s_light_soon')
+        : t('s_light_clearing', { min: Math.round(easeMin / 5) * 5 })
+    } else {
+      sub = t('s_light')
+    }
     return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote }
   }
 
