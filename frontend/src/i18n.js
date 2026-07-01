@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 const translations = {
   de: {
     GO_NOW:       'GEMMA RAUS',
@@ -377,19 +379,25 @@ function hashKey(str) {
 }
 
 export function useI18n(lang) {
-  const strings = translations[lang] ?? translations.de
-  const seed = phraseSeed()
-  const day = Math.floor(Date.now() / 86400000) // rotates daily; stable within a day
-  return function t(key, vars = {}) {
-    let str = strings[key] ?? key
-    // Array values are variant pools: pick one stably per (user seed, day, key)
-    // so it varies by user, rotates daily, and never flickers between renders.
-    if (Array.isArray(str)) {
-      str = str.length ? str[(seed + day + hashKey(key)) % str.length] : key
+  // MEMOISE per language. Returning a fresh `t` every render made it an unstable
+  // dependency of computeStatusAt / openStatusPopup / their effects, causing an
+  // effect→fetch→setState→render→effect loop (thrashed the map + hammered the APIs,
+  // and the location crosshair tipped it into a visible freeze). Stable `t` fixes it.
+  return useMemo(() => {
+    const strings = translations[lang] ?? translations.de
+    const seed = phraseSeed()
+    const day = Math.floor(Date.now() / 86400000) // rotates daily across sessions
+    return function t(key, vars = {}) {
+      let str = strings[key] ?? key
+      // Array values are variant pools: pick one stably per (user seed, day, key)
+      // so it varies by user, rotates daily, and never flickers between renders.
+      if (Array.isArray(str)) {
+        str = str.length ? str[(seed + day + hashKey(key)) % str.length] : key
+      }
+      for (const [k, v] of Object.entries(vars)) {
+        str = str.replace(`{${k}}`, String(v))
+      }
+      return str
     }
-    for (const [k, v] of Object.entries(vars)) {
-      str = str.replace(`{${k}}`, String(v))
-    }
-    return str
-  }
+  }, [lang])
 }
