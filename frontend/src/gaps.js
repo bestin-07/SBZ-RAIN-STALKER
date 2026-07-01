@@ -126,8 +126,7 @@ function precipByCode(code) {
          (code >= 80 && code <= 99)
 }
 
-const URGENT_MIN = 15   // dry now but rain this soon → "window closing, hurry"
-const RAIN_UNCERTAINTY = 10  // ±10 min range shown for radar nowcast timing
+const RAIN_SHOW_MIN = 10  // below this, say "shortly/any minute" — a numeric ETA is false precision
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
 const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
 const LIGHT_MAX = 0.5  // raining but below this = light/drizzle → "you could still go out"
@@ -180,27 +179,21 @@ export function getStatus(
       if (night) {
         sub = t('s_night_rain_coming')
       } else {
-        // Evening or day: same urgency — rain timing is still actionable at 9pm
+        // Radar onset timing jitters between refreshes, so an exact minute (or a
+        // wide ±10 range like "1–18 min") reads as random/false-precise. Under
+        // 10 min say "shortly / any minute"; at/above 10 min round to the nearest
+        // 5 and say "about X min". recentRain frames it as the same event resuming
+        // ("short break — rain back …") instead of a fresh alarm.
         const rainInMin = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
-        const low  = Math.max(1, rainInMin - RAIN_UNCERTAINTY)
-        const high = rainInMin + RAIN_UNCERTAINTY
-        // Low model confidence (radar shows rain the model isn't sure about, e.g.
-        // an over-read / virga) → soften to "rain possible later" instead of a firm
-        // countdown. null probability = no data → keep the firm wording.
+        const about = Math.round(rainInMin / 5) * 5
         const lowConf = trend.rainProb != null && trend.rainProb < RAIN_PROB_MIN
-        // If it was raining moments ago, frame incoming rain as the same event
-        // continuing ("short break — rain back in X") rather than a fresh alarm
-        // ("rain approaching, hurry"), which reads as a contradiction on a quick
-        // re-open. See the localStorage story in App.jsx.
-        sub = lowConf
-          ? t('s_rain_maybe')
-          : trend.recentRain
-            ? t('s_rain_back', { low, high })
-            : rainInMin <= 0
-              ? t('s_rain_any')
-              : rainInMin <= URGENT_MIN
-                ? t('s_window_closing', { min: rainInMin })
-                : t('s_rain_soon', { low, high })
+        if (lowConf) {
+          sub = t('s_rain_maybe')
+        } else if (rainInMin < RAIN_SHOW_MIN) {
+          sub = t(trend.recentRain ? 's_rain_back_soon' : 's_rain_any')
+        } else {
+          sub = t(trend.recentRain ? 's_rain_back' : 's_rain_soon', { min: about })
+        }
       }
     } else {
       sub = (trend.recentRain && !night && !evening)
