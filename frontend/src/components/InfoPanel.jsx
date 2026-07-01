@@ -29,6 +29,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
 
           <div className="space-y-4 mb-5">
             <StatusRow color="var(--c-go)"    badge="GEMMA RAUS"        desc={t('guide_green')} />
+            <StatusRow color="var(--c-light)" badge={t('LIGHT_RAIN')}    desc={t('guide_light')} />
             <StatusRow color="var(--c-wait)"  badge={t('guide_ex_wait')}  desc={t('guide_yellow')} />
             <StatusRow color="var(--c-stuck)" badge={t('guide_ex_stuck')} desc={t('guide_red')} />
           </div>

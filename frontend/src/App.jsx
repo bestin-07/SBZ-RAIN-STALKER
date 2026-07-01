@@ -462,14 +462,27 @@ export default function App() {
         }
 
         const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
-        // If the ground says dry, trust it — never let the radar nowcast alone force
-        // a raining/STUCK state. Otherwise catch rain the stations miss via the max
-        // of the nowcast now-slot + measured + radar-at-pixel (the Nonntal case).
+        // When stations are reporting, trust the GROUND — both presence AND
+        // magnitude. The radar nowcast over-reads light rain (e.g. shows 1.5mm when
+        // stations read 0.4), which would wrongly escalate a drizzle to STUCK. Only
+        // when there's no station reading do we fall back to the radar/RV max, to
+        // catch onset the stations miss (the Nonntal case).
         const effectivePrecip = cp === null
           ? null
-          : groundDry
+          : stationData !== null
             ? groundPrecip
             : Math.max(cp, nowPrecip)
+        // Peak nowcast intensity over the next 45 min — lets getStatus offer the
+        // "light rain, go anyway" nuance only when no real downpour is imminent.
+        let maxSoon = null
+        if (nowcast) {
+          const lim = nowSec + 45 * 60
+          const soon = nowcast.times
+            .map((tt, i) => ({ tt, p: nowcast.precips[i] ?? 0 }))
+            .filter(sl => sl.tt >= nowSec && sl.tt <= lim)
+            .map(sl => sl.p)
+          if (soon.length) maxSoon = Math.max(...soon)
+        }
         // Ribbon: anchor a real "now" bar from TAWES so the chart reflects the live
         // reading, even though gap detection uses the raw nowcast above.
         const ribbonTimeline = nowcast
@@ -526,7 +539,7 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb, recentRain })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb, recentRain, maxSoon })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data.current?.temperature_2m ?? null,

@@ -130,6 +130,8 @@ const URGENT_MIN = 15   // dry now but rain this soon → "window closing, hurry
 const RAIN_UNCERTAINTY = 10  // ±10 min range shown for radar nowcast timing
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
 const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
+const LIGHT_MAX = 0.5  // raining but below this = light/drizzle → "you could still go out"
+const HEAVY_SOON = 4.0 // nowcast peak ≥ this (mm/15min) in next 45 min = real downpour → not "go anyway"
 const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
 const RAIN_SOON_NOTE = 90 // rain within this many min → drop the "go out & enjoy" weather notes
 
@@ -206,6 +208,15 @@ export function getStatus(
         : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     }
     return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
+  }
+
+  // ---- Light rain that isn't about to turn heavy: "you could still head out" ----
+  // The ground says it's only drizzling (< LIGHT_MAX) and the nowcast shows no real
+  // downpour in the next 45 min. A gentler nudge than WAIT/STUCK. Suppressed at
+  // night (nobody's sprinting out) — falls through to the rain branch below.
+  const downpourSoon = trend.maxSoon != null && trend.maxSoon >= HEAVY_SOON
+  if (!night && currentPrecip < LIGHT_MAX && !downpourSoon) {
+    return { type: 'light', headline: t('LIGHT_RAIN'), sub: t('s_light'), weather: weatherNote }
   }
 
   // ---- Raining now: narrate the break ahead ----

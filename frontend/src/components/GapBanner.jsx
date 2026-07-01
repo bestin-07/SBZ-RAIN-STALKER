@@ -1,5 +1,6 @@
 const COLORS = {
   go:      '#D4A017',
+  light:   '#6CD1EB',
   wait:    '#1BAEE2',
   stuck:   '#0077AA',
   loading: '#6B7280',
