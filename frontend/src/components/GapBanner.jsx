@@ -8,13 +8,15 @@ const COLORS = {
 export default function GapBanner({ status }) {
   if (!status) return null
 
-  const color = COLORS[status.type] ?? COLORS.loading
+  // Theme-aware colour via CSS var (light mode darkens these for contrast);
+  // the hex from COLORS stays as a fallback if the var is ever missing.
+  const fallback = COLORS[status.type] ?? COLORS.loading
 
   return (
     <div className="px-4 py-6 shrink-0">
       <div
         className="font-display font-bold text-5xl leading-none tracking-tight"
-        style={{ color }}
+        style={{ color: `var(--c-${status.type}, ${fallback})` }}
       >
         {status.headline}
       </div>
@@ -22,7 +24,7 @@ export default function GapBanner({ status }) {
         {status.sub}
       </div>
       {status.weather && (
-        <div className="font-mono text-xs text-muted mt-1 leading-snug opacity-75">
+        <div className="font-mono text-xs text-muted mt-1 leading-snug">
           {status.weather}
         </div>
       )}

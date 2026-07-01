@@ -84,7 +84,7 @@ export default function RainRibbon({ forecast, theme, t }) {
           style={{ display: 'block', imageRendering: 'crisp-edges' }}
         />
       </div>
-      <div className="flex items-center gap-4 px-4 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
         <Legend color="#D4A017" label={t('dry')} />
         <Legend color="#6CD1EB" label={t('light_rain')} />
         <Legend color="#1BAEE2" label={t('mod_rain')} />
@@ -103,7 +103,7 @@ function Legend({ color, label }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="w-2.5 h-2.5 shrink-0" style={{ background: color }} />
-      <span className="font-mono text-xs text-muted">{label}</span>
+      <span className="font-mono text-xs text-muted whitespace-nowrap">{label}</span>
     </div>
   )
 }

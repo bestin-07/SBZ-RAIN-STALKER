@@ -8,6 +8,16 @@
   --c-border:  #1E2128;
   --c-primary: #F1F3F5;
   --c-muted:   #6B7280;
+  /* Status headline + warning accents. Dark theme keeps the vivid palette that
+     reads well on near-black; light theme overrides with darkened variants
+     below (the vivid ones wash out on the cream background). */
+  --c-go:      #D4A017;
+  --c-wait:    #1BAEE2;
+  --c-stuck:   #0077AA;
+  --c-loading: #6B7280;
+  --c-uv:      #F97316;
+  --c-warn:    #FB923C;
+  --c-alert:   #FBBF24;
 }
 
 html.light {
@@ -15,7 +25,18 @@ html.light {
   --c-surface: #E8E6E1;
   --c-border:  #C8C6C0;
   --c-primary: #0A0A08;
-  --c-muted:   #6B6860;
+  /* darker than before: #6B6860 only cleared ~4.3:1 on surface (fails AA for
+     small text). #55524B clears ~6:1 on both bg and surface. */
+  --c-muted:   #55524B;
+  /* Darkened accents — all clear WCAG AA (≥4.5:1) on the cream bg/surface,
+     where the dark-theme gold/cyan/amber dropped to ~2:1 and were unreadable. */
+  --c-go:      #7A5E00;
+  --c-wait:    #0A6E9C;
+  --c-stuck:   #024D6E;
+  --c-loading: #55524B;
+  --c-uv:      #9A3D00;
+  --c-warn:    #A24E00;
+  --c-alert:   #8A5A00;
 }
 
 @layer base {

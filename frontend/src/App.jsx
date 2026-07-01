@@ -575,28 +575,28 @@ export default function App() {
           )}
           {uvIndex !== null && (
             <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: '#F97316' }}>
+              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-uv)' }}>
                 🌞 {uvIndex >= 8 ? t('uv_very_high') : t('uv_high')} (UV {Math.round(uvIndex)})
               </span>
             </div>
           )}
           {windWarning && (
             <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: '#FB923C' }}>
+              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-warn)' }}>
                 💨 {windStrong ? t('wind_strong') : t('wind_warning')} ({Math.round(currentWeather.wind)} km/h)
               </span>
             </div>
           )}
           {regionalThunder && (
             <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: '#FBBF24' }}>
+              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-alert)' }}>
                 ⚡ {regionalFullStorm ? t('thunder_regional') : t('showers_regional')}
               </span>
             </div>
           )}
           {stormCape && (
             <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: '#FBBF24' }}>
+              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-alert)' }}>
                 ⚡ {t('storm_cape_warning')}
               </span>
             </div>
@@ -604,7 +604,7 @@ export default function App() {
           <GapBanner status={status} />
           {showCloudyNote && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
-              <span className="font-mono text-xs leading-relaxed" style={{ color: '#6B7280' }}>
+              <span className="font-mono text-xs leading-relaxed text-muted">
                 ☁️ {t('cloudy_note')}
               </span>
             </div>
