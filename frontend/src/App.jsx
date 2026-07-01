@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, AREAS } from './api'
 import { detectGaps, getStatus, DRY_THRESHOLD } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
@@ -92,6 +92,7 @@ export default function App() {
   const [trend, setTrend] = useState({ nextRainAt: null, dryEndsOpen: false })
   const [tickNow, setTickNow] = useState(() => Math.floor(Date.now() / 1000))
   const [areaPrecip, setAreaPrecip] = useState([])
+  const [areaStatus, setAreaStatus] = useState([])  // per-town computed status → dot colour + popup
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [theme, setTheme] = useState(() => saved('theme', 'light'))
@@ -410,6 +411,19 @@ export default function App() {
       { nextRainAt, dryEndsOpen, rvRainActive: false, rainProb, recentRain: false, maxSoon })
   }, [t])
 
+  // Compute status for every surrounding town + Salzburg centre → colours the map
+  // dots by GO/PASST SCHON/WAIT/STUCK and seeds the tap popups (so dot colour and
+  // popup always agree). Re-runs on location + language change (below) and every
+  // 10 min. Uses computeStatusAt, so the strings are localized to the current lang.
+  const refreshAreaStatuses = useCallback(() => {
+    const pts = [...AREAS, { name: 'Salzburg', lat: SBZ_CENTER.lat, lon: SBZ_CENTER.lon }]
+    Promise.all(pts.map(p =>
+      computeStatusAt(p.lat, p.lon)
+        .then(status => ({ ...p, status }))
+        .catch(() => ({ ...p, status: null }))
+    )).then(setAreaStatus).catch(() => {})
+  }, [computeStatusAt])
+
   // Fallback so the app is usable even if GPS never resolves (Salzburg centre).
   const useDefaultLocation = useCallback(() => {
     setLocation({ lat: 47.8009, lon: 13.0448 })
@@ -633,6 +647,15 @@ export default function App() {
     return () => clearInterval(id)
   }, [location, loadData])
 
+  // Per-town statuses: on location change, on language change (refreshAreaStatuses
+  // depends on the localized computeStatusAt), and every 10 min.
+  useEffect(() => {
+    if (!location) return
+    refreshAreaStatuses()
+    const id = setInterval(refreshAreaStatuses, 10 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [location, refreshAreaStatuses])
+
   // Back button closes the InfoPanel — unless PrivacyPanel is stacked on top,
   // in which case PrivacyPanel's own popstate handler handles the back press.
   // privacyOpenRef is a ref (not state) so the check is synchronous and never stale.
@@ -802,7 +825,7 @@ export default function App() {
             </div>
           )}
           <RainRibbon forecast={forecast} theme={theme} t={t} />
-          <RadarMap location={location} areaPrecip={areaPrecip} theme={theme} t={t} onRelocate={relocate} computeStatusAt={computeStatusAt} />
+          <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} theme={theme} t={t} onRelocate={relocate} computeStatusAt={computeStatusAt} />
         </>
       )}
 

@@ -39,22 +39,29 @@ function precipColor(p) {
   return               '#E05C00'  // storm/thunderstorm — matches radar warm core
 }
 
-function areaIcon(name, precip, code, dryLabel = 'dry') {
-  const known = precip !== null && precip !== undefined
-  // Use weather_code as fallback when precip lags (Open-Meteo model can report 0mm
-  // while weather_code=61/80 already shows active rain — common in convective events)
-  const codeRaining = code != null && code >= 51 && !(code >= 71 && code <= 79) // skip snow codes
-  const isRaining = (known && precip > 0.1) || codeRaining
-  // When only the weather_code signals rain (precip still 0 due to model lag), use
-  // a light-rain blue so the dot colour matches the enlarged size.
-  const color = (codeRaining && (!known || precip <= 0.1)) ? '#6CD1EB' : precipColor(precip)
+function areaIcon(name, precip, code, status, dryLabel = 'dry') {
+  let color, isRaining, valueLine
+  if (status && status.type) {
+    // Colour by the COMPUTED status (matches the tap popup + the app's verdict),
+    // via the same theme-aware --c-* tokens as the headline/legend. No mm value —
+    // that came from a different source (Open-Meteo current) and could contradict.
+    isRaining = status.type !== 'go' && status.type !== 'loading'
+    color = `var(--c-${status.type}, #4B5563)`
+    valueLine = ''
+  } else {
+    // Fallback before the status resolves: raw precip colour (Open-Meteo current).
+    const known = precip !== null && precip !== undefined
+    const codeRaining = code != null && code >= 51 && !(code >= 71 && code <= 79)
+    isRaining = (known && precip > 0.1) || codeRaining
+    color = (codeRaining && (!known || precip <= 0.1)) ? '#6CD1EB' : precipColor(precip)
+    valueLine = known
+      ? `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:${isRaining ? '600' : '400'};color:${isRaining ? color : '#6B7280'};white-space:nowrap;">${isRaining ? (precip > 0.1 ? precip.toFixed(1) + 'mm' : '·') : dryLabel}</div>`
+      : ''
+  }
   const dot = isRaining ? 9 : 7
 
-  // Every town stays readable (name always shown); raining areas pop with a
-  // larger blue dot, glow and mm reading. Dry areas keep a visible dot + name
-  // but no value, so the map shows the full network without clutter.
-  // Tappable: the whole icon is clickable (no pointer-events:none), `gr-dot` adds
-  // cursor:pointer + a hover lift so users realise it opens a status popup.
+  // Tappable: whole icon clickable; `gr-dot` adds cursor:pointer + a hover lift.
+  // Glow uses `0 0 8px 1px <color>` (works with a CSS var, unlike the old alpha-hex).
   return L.divIcon({
     html: `<div style="text-align:center;">
       <div class="gr-dot-core" style="
@@ -62,7 +69,7 @@ function areaIcon(name, precip, code, dryLabel = 'dry') {
         background:${color};
         border-radius:50%;
         margin:0 auto;
-        ${isRaining ? `box-shadow:0 0 0 4px ${color}40;` : 'box-shadow:0 0 0 2px rgba(0,0,0,0.45);opacity:0.85;'}
+        ${isRaining ? `box-shadow:0 0 8px 1px ${color};` : 'box-shadow:0 0 0 2px rgba(0,0,0,0.45);opacity:0.9;'}
       "></div>
       <div style="
         font-family:'JetBrains Mono',monospace;
@@ -71,15 +78,8 @@ function areaIcon(name, precip, code, dryLabel = 'dry') {
         white-space:nowrap;
         margin-top:3px;
         line-height:1.1;
-        opacity:${isRaining ? '1' : '0.8'};
       ">${escHtml(name)}</div>
-      ${known ? `<div style="
-        font-family:'JetBrains Mono',monospace;
-        font-size:9px;
-        font-weight:${isRaining ? '600' : '400'};
-        color:${isRaining ? color : '#6B7280'};
-        white-space:nowrap;
-      ">${isRaining ? (precip > 0.1 ? precip.toFixed(1) + 'mm' : '·') : dryLabel}</div>` : ''}
+      ${valueLine}
     </div>`,
     iconSize: [60, 36],
     iconAnchor: [30, dot / 2],
@@ -87,7 +87,7 @@ function areaIcon(name, precip, code, dryLabel = 'dry') {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, theme, t, onRelocate, computeStatusAt }) {
+export default function RadarMap({ location, areaPrecip, areaStatus, theme, t, onRelocate, computeStatusAt }) {
   const containerRef   = useRef(null)
   const mapRef         = useRef(null)
   const markerRef      = useRef(null)
@@ -114,24 +114,28 @@ export default function RadarMap({ location, areaPrecip, theme, t, onRelocate, c
   // Tap a point → popup with that spot's status. Opens a loading popup first, then
   // fills it once computeStatusAt resolves; session-cached (5-min TTL) so re-taps
   // are instant. Leaflet's popup closes on its × or on an outside tap by default.
-  const openStatusPopup = useCallback((lat, lon, name) => {
+  const openStatusPopup = useCallback((lat, lon, name, pre, opts = {}) => {
     const map = mapRef.current
     if (!map) return
-    dismissHint()
+    if (!opts.silent) dismissHint()
+    const failMsg = t ? t('pop_fail') : 'couldn’t load — tap to retry'
     const render = (status) => {
       const head = (s) => `color:var(--c-${s.type}, var(--c-primary))`
       if (status === undefined) return `<div class="gr-pop"><div class="gr-pop-name">${escHtml(name)}</div><div class="gr-pop-load">…</div></div>`
-      if (!status)              return `<div class="gr-pop"><div class="gr-pop-name">${escHtml(name)}</div><div class="gr-pop-sub">couldn’t load — tap to retry</div></div>`
+      if (!status)              return `<div class="gr-pop"><div class="gr-pop-name">${escHtml(name)}</div><div class="gr-pop-sub">${escHtml(failMsg)}</div></div>`
       return `<div class="gr-pop">
         <div class="gr-pop-name">${escHtml(name)}</div>
         <div class="gr-pop-head" style="${head(status)}">${escHtml(status.headline)}</div>
         <div class="gr-pop-sub">${escHtml(status.sub || '')}</div>
       </div>`
     }
-    const key = `${lat.toFixed(3)},${lon.toFixed(3)}`
-    const cached = statusCacheRef.current.get(key)
     const popup = L.popup({ maxWidth: 240, className: 'gr-status-popup', autoPanPadding: [24, 24] })
       .setLatLng([lat, lon])
+    // Preloaded status (from the area-status pass) → instant + guaranteed to match
+    // the dot colour. null means "computed but failed" → fall through to recompute.
+    if (pre) { popup.setContent(render(pre)).openOn(map); return }
+    const key = `${lat.toFixed(3)},${lon.toFixed(3)}`
+    const cached = statusCacheRef.current.get(key)
     if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
       popup.setContent(render(cached.status)).openOn(map)
       return
@@ -143,7 +147,7 @@ export default function RadarMap({ location, areaPrecip, theme, t, onRelocate, c
     }).catch(() => {
       if (popup.isOpen()) { popup.setContent(render(null)); popup.update() }
     })
-  }, [dismissHint])
+  }, [dismissHint, t])
 
   useEffect(() => {
     if (mapRef.current) return
@@ -293,39 +297,60 @@ export default function RadarMap({ location, areaPrecip, theme, t, onRelocate, c
     mapRef.current.setView([location.lat, location.lon], ZOOM)
   }, [location])
 
-  // Area precipitation dots
+  // Area dots — coloured by computed status when available (falls back to precip).
   useEffect(() => {
     if (!mapRef.current || !areaPrecip?.length) return
     areaMarkersRef.current.forEach(m => m.remove())
     const dryLabel = t ? t('dry') : 'dry'
-    areaMarkersRef.current = areaPrecip.map(area =>
-      L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip, area.code, dryLabel), zIndexOffset: 200 })
-        .on('click', () => openStatusPopup(area.lat, area.lon, area.name))
+    const statusOf = (name) => (areaStatus || []).find(s => s.name === name)?.status
+    areaMarkersRef.current = areaPrecip.map(area => {
+      const st = statusOf(area.name)
+      return L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip, area.code, st, dryLabel), zIndexOffset: 200 })
+        .on('click', () => openStatusPopup(area.lat, area.lon, area.name, st))
         .addTo(mapRef.current)
-    )
+    })
     return () => {
       areaMarkersRef.current.forEach(m => m.remove())
       areaMarkersRef.current = []
     }
-  }, [areaPrecip, t, openStatusPopup])
+  }, [areaPrecip, areaStatus, t, openStatusPopup])
 
   // Salzburg-centre marker — an extra tappable point (city core sits between the
-  // surrounding-town dots). Hollow ring so it reads as a distinct "spot".
+  // surrounding-town dots). Hollow ring, tinted by its status when known.
   useEffect(() => {
     if (!mapRef.current) return
+    const st = (areaStatus || []).find(s => s.name === 'Salzburg')?.status
+    const ring = st && st.type ? `var(--c-${st.type}, var(--c-primary))` : 'var(--c-primary)'
     const icon = L.divIcon({
       html: `<div style="text-align:center;">
-        <div class="gr-dot-core" style="width:11px;height:11px;border:2px solid var(--c-primary);
+        <div class="gr-dot-core" style="width:11px;height:11px;border:2px solid ${ring};
              border-radius:50%;margin:0 auto;background:transparent;box-shadow:0 0 0 3px rgba(0,0,0,0.35);"></div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#9CA3AF;margin-top:3px;white-space:nowrap;">Salzburg</div>
       </div>`,
       iconSize: [60, 30], iconAnchor: [30, 5], className: 'gr-dot',
     })
     const m = L.marker(SALZBURG_CENTER, { icon, zIndexOffset: 300 })
-      .on('click', () => openStatusPopup(SALZBURG_CENTER[0], SALZBURG_CENTER[1], 'Salzburg'))
+      .on('click', () => openStatusPopup(SALZBURG_CENTER[0], SALZBURG_CENTER[1], 'Salzburg', st))
       .addTo(mapRef.current)
     return () => { try { m.remove() } catch {} }
-  }, [openStatusPopup])
+  }, [areaStatus, openStatusPopup])
+
+  // First visit: auto-open the popup for the point nearest the user, so they
+  // discover the dots are tappable. Once only (until they've dismissed the hint).
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (autoOpenedRef.current || !showHint) return
+    if (!location || !mapRef.current || !(areaStatus?.length)) return
+    let best = null, bd = Infinity
+    for (const a of areaStatus) {
+      const d = (a.lat - location.lat) ** 2 + (a.lon - location.lon) ** 2
+      if (d < bd) { bd = d; best = a }
+    }
+    if (best) {
+      autoOpenedRef.current = true
+      openStatusPopup(best.lat, best.lon, best.name, best.status, { silent: true })
+    }
+  }, [showHint, location, areaStatus, openStatusPopup])
 
   // Smoothly fly back to the user's location (e.g. after they've panned away).
   const recenter = () => {

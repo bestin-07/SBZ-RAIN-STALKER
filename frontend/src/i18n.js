@@ -47,6 +47,7 @@ const translations = {
     lbl_radar:   'Radar',
     lbl_nowcast: 'Vorschau',
     tap_hint:    'tippe einen ort für den status dort',
+    pop_fail:    'konnte nicht laden — nochmal tippen',
 
     checking:    'PRÜFEN',
     reading_sky: 'Regenradar wird analysiert...',
@@ -222,6 +223,7 @@ const translations = {
     lbl_radar:   'radar',
     lbl_nowcast: 'nowcast',
     tap_hint:    'tap a spot for its status',
+    pop_fail:    'couldn’t load — tap to retry',
 
     checking:    'CHECKING',
     reading_sky: 'reading the sky over your location',
