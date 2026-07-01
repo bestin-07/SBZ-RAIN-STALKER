@@ -46,6 +46,7 @@ const translations = {
     next_12h:   '3h · Radar',
     lbl_radar:   'Radar',
     lbl_nowcast: 'Vorschau',
+    tap_hint:    'tippe einen ort für den status dort',
 
     checking:    'PRÜFEN',
     reading_sky: 'Regenradar wird analysiert...',
@@ -220,6 +221,7 @@ const translations = {
     next_12h:   '3h · radar',
     lbl_radar:   'radar',
     lbl_nowcast: 'nowcast',
+    tap_hint:    'tap a spot for its status',
 
     checking:    'CHECKING',
     reading_sky: 'reading the sky over your location',

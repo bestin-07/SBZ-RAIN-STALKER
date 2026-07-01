@@ -81,6 +81,27 @@ html.light {
   font-family: inherit;
 }
 
+/* Tappable map dots — cursor + a subtle hover lift so they read as interactive */
+.gr-dot { cursor: pointer; }
+.gr-dot .gr-dot-core { transition: transform .12s ease, box-shadow .12s ease; }
+.gr-dot:hover .gr-dot-core { transform: scale(1.35); }
+
+/* Themed status popup (matches app surface, not Leaflet's default white) */
+.gr-status-popup .leaflet-popup-content-wrapper {
+  background: var(--c-surface);
+  color: var(--c-primary);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.gr-status-popup .leaflet-popup-tip { background: var(--c-surface); border: 1px solid var(--c-border); }
+.gr-status-popup .leaflet-popup-content { margin: 0.7rem 0.9rem; }
+.gr-status-popup a.leaflet-popup-close-button { color: var(--c-muted); }
+.gr-pop-name { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-muted); margin-bottom: 0.3rem; }
+.gr-pop-head { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 1.05rem; line-height: 1.1; }
+.gr-pop-sub  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--c-muted); margin-top: 0.3rem; line-height: 1.35; max-width: 200px; }
+.gr-pop-load { font-family: 'JetBrains Mono', monospace; color: var(--c-muted); }
+
 .leaflet-control-attribution {
   background: rgba(8, 9, 11, 0.75) !important;
   color: #6B7280 !important;

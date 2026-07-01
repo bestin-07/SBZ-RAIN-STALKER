@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -8,6 +8,7 @@ function fmtClock(unix) {
 }
 
 const SALZBURG = [47.802, 13.045]
+const SALZBURG_CENTER = [47.8009, 13.0448]  // city centre — an extra tappable point
 const ZOOM = 11  // shows surrounding area dots (Hallein, Bad Reichenhall, Bergheim etc)
 const BOUNDS = L.latLngBounds([47.50, 12.65], [48.10, 13.65])
 const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
@@ -52,9 +53,11 @@ function areaIcon(name, precip, code, dryLabel = 'dry') {
   // Every town stays readable (name always shown); raining areas pop with a
   // larger blue dot, glow and mm reading. Dry areas keep a visible dot + name
   // but no value, so the map shows the full network without clutter.
+  // Tappable: the whole icon is clickable (no pointer-events:none), `gr-dot` adds
+  // cursor:pointer + a hover lift so users realise it opens a status popup.
   return L.divIcon({
-    html: `<div style="text-align:center;pointer-events:none;">
-      <div style="
+    html: `<div style="text-align:center;">
+      <div class="gr-dot-core" style="
         width:${dot}px;height:${dot}px;
         background:${color};
         border-radius:50%;
@@ -80,11 +83,11 @@ function areaIcon(name, precip, code, dryLabel = 'dry') {
     </div>`,
     iconSize: [60, 36],
     iconAnchor: [30, dot / 2],
-    className: '',
+    className: 'gr-dot',
   })
 }
 
-export default function RadarMap({ location, areaPrecip, theme, t, onRelocate }) {
+export default function RadarMap({ location, areaPrecip, theme, t, onRelocate, computeStatusAt }) {
   const containerRef   = useRef(null)
   const mapRef         = useRef(null)
   const markerRef      = useRef(null)
@@ -95,7 +98,52 @@ export default function RadarMap({ location, areaPrecip, theme, t, onRelocate })
   const animTimerRef   = useRef(null)
   const animRefreshRef = useRef(null)
   const framesMetaRef  = useRef([])
+  const computeRef     = useRef(computeStatusAt)
+  const statusCacheRef = useRef(new Map())   // key "lat,lon" → { status, ts }
   const [radarFrame, setRadarFrame] = useState(null)  // { time, forecast } of the shown frame
+  const [showHint, setShowHint] = useState(() => {
+    try { return localStorage.getItem('map_tap_hint') !== '1' } catch { return true }
+  })
+  useEffect(() => { computeRef.current = computeStatusAt }, [computeStatusAt])
+
+  const dismissHint = useCallback(() => {
+    setShowHint(false)
+    try { localStorage.setItem('map_tap_hint', '1') } catch {}
+  }, [])
+
+  // Tap a point → popup with that spot's status. Opens a loading popup first, then
+  // fills it once computeStatusAt resolves; session-cached (5-min TTL) so re-taps
+  // are instant. Leaflet's popup closes on its × or on an outside tap by default.
+  const openStatusPopup = useCallback((lat, lon, name) => {
+    const map = mapRef.current
+    if (!map) return
+    dismissHint()
+    const render = (status) => {
+      const head = (s) => `color:var(--c-${s.type}, var(--c-primary))`
+      if (status === undefined) return `<div class="gr-pop"><div class="gr-pop-name">${escHtml(name)}</div><div class="gr-pop-load">…</div></div>`
+      if (!status)              return `<div class="gr-pop"><div class="gr-pop-name">${escHtml(name)}</div><div class="gr-pop-sub">couldn’t load — tap to retry</div></div>`
+      return `<div class="gr-pop">
+        <div class="gr-pop-name">${escHtml(name)}</div>
+        <div class="gr-pop-head" style="${head(status)}">${escHtml(status.headline)}</div>
+        <div class="gr-pop-sub">${escHtml(status.sub || '')}</div>
+      </div>`
+    }
+    const key = `${lat.toFixed(3)},${lon.toFixed(3)}`
+    const cached = statusCacheRef.current.get(key)
+    const popup = L.popup({ maxWidth: 240, className: 'gr-status-popup', autoPanPadding: [24, 24] })
+      .setLatLng([lat, lon])
+    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+      popup.setContent(render(cached.status)).openOn(map)
+      return
+    }
+    popup.setContent(render(undefined)).openOn(map)
+    Promise.resolve(computeRef.current?.(lat, lon)).then(status => {
+      statusCacheRef.current.set(key, { status, ts: Date.now() })
+      if (popup.isOpen()) { popup.setContent(render(status)); popup.update() }
+    }).catch(() => {
+      if (popup.isOpen()) { popup.setContent(render(null)); popup.update() }
+    })
+  }, [dismissHint])
 
   useEffect(() => {
     if (mapRef.current) return
@@ -252,13 +300,32 @@ export default function RadarMap({ location, areaPrecip, theme, t, onRelocate })
     const dryLabel = t ? t('dry') : 'dry'
     areaMarkersRef.current = areaPrecip.map(area =>
       L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip, area.code, dryLabel), zIndexOffset: 200 })
+        .on('click', () => openStatusPopup(area.lat, area.lon, area.name))
         .addTo(mapRef.current)
     )
     return () => {
       areaMarkersRef.current.forEach(m => m.remove())
       areaMarkersRef.current = []
     }
-  }, [areaPrecip, t])
+  }, [areaPrecip, t, openStatusPopup])
+
+  // Salzburg-centre marker — an extra tappable point (city core sits between the
+  // surrounding-town dots). Hollow ring so it reads as a distinct "spot".
+  useEffect(() => {
+    if (!mapRef.current) return
+    const icon = L.divIcon({
+      html: `<div style="text-align:center;">
+        <div class="gr-dot-core" style="width:11px;height:11px;border:2px solid var(--c-primary);
+             border-radius:50%;margin:0 auto;background:transparent;box-shadow:0 0 0 3px rgba(0,0,0,0.35);"></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#9CA3AF;margin-top:3px;white-space:nowrap;">Salzburg</div>
+      </div>`,
+      iconSize: [60, 30], iconAnchor: [30, 5], className: 'gr-dot',
+    })
+    const m = L.marker(SALZBURG_CENTER, { icon, zIndexOffset: 300 })
+      .on('click', () => openStatusPopup(SALZBURG_CENTER[0], SALZBURG_CENTER[1], 'Salzburg'))
+      .addTo(mapRef.current)
+    return () => { try { m.remove() } catch {} }
+  }, [openStatusPopup])
 
   // Smoothly fly back to the user's location (e.g. after they've panned away).
   const recenter = () => {
@@ -280,6 +347,17 @@ export default function RadarMap({ location, areaPrecip, theme, t, onRelocate })
           />
           {radarFrame.forecast ? (t ? t('lbl_nowcast') : 'nowcast') : (t ? t('lbl_radar') : 'radar')} {fmtClock(radarFrame.time)}
         </div>
+      )}
+      {showHint && (
+        <button
+          onClick={dismissHint}
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2
+                     rounded-full bg-surface/90 backdrop-blur border border-border
+                     px-3 py-1.5 font-mono text-xs text-muted shadow-lg active:scale-95 transition"
+        >
+          👆 {t ? t('tap_hint') : 'tap a spot for its status'}
+          <span className="text-muted/70">✕</span>
+        </button>
       )}
       {location && (
         <button
