@@ -421,14 +421,23 @@ export default function App() {
   // dots by GO/PASST SCHON/WAIT/STUCK and seeds the tap popups (so dot colour and
   // popup always agree). Re-runs on location + language change (below) and every
   // 10 min. Uses computeStatusAt, so the strings are localized to the current lang.
-  // Lazy: only precompute the Salzburg-centre status (drives the default popup +
-  // that dot's colour). Precomputing all 12 towns每 refresh burst-hammered the free
-  // APIs → "couldn't load" on taps. Town dots use their cheap precip colour, and a
-  // town's full status is computed on demand when it's tapped (cached 5 min).
+  // Compute every point's status → colours the dots to MATCH the tap popup / verdict
+  // (grey precip-fallback made a dry town look grey next to a GEMMA RAUS popup). Runs
+  // on location + language change and every 10 min — safe now the render loop is
+  // fixed. Limited concurrency (5 at a time) so we don't burst GeoSphere.
   const refreshAreaStatuses = useCallback(() => {
-    const center = { name: 'Salzburg', lat: SBZ_CENTER.lat, lon: SBZ_CENTER.lon }
-    computeStatusAt(center.lat, center.lon)
-      .then(status => setAreaStatus([{ ...center, status }]))
+    const pts = [...AREAS, { name: 'Salzburg', lat: SBZ_CENTER.lat, lon: SBZ_CENTER.lon }]
+    const out = new Array(pts.length)
+    let idx = 0
+    const worker = async () => {
+      while (idx < pts.length) {
+        const i = idx++, p = pts[i]
+        try { out[i] = { ...p, status: await computeStatusAt(p.lat, p.lon) } }
+        catch { out[i] = { ...p, status: null } }
+      }
+    }
+    Promise.all(Array.from({ length: Math.min(5, pts.length) }, worker))
+      .then(() => setAreaStatus(out))
       .catch(() => {})
   }, [computeStatusAt])
 

@@ -33,6 +33,11 @@ async function cachedOrNull(key, fetcher) {
 }
 
 export const AREAS = [
+  // inner-city districts — fill the centre between the surrounding-town ring
+  { name: "Lehen",          lat: 47.8100, lon: 13.0200 },  // NW-central
+  { name: "Gnigl",          lat: 47.8140, lon: 13.0730 },  // NE
+  { name: "Nonntal",        lat: 47.7883, lon: 13.0553 },  // S-central
+  // surrounding towns
   { name: "Hallein",         lat: 47.6835, lon: 13.0965 },
   { name: "Grödig",         lat: 47.7283, lon: 13.0432 },
   { name: "Anif",           lat: 47.7432, lon: 13.0632 },

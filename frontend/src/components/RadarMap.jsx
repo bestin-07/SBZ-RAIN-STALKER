@@ -49,12 +49,12 @@ function areaIcon(name, precip, code, status, dryLabel = 'dry') {
     color = `var(--c-${status.type}, #4B5563)`
     valueLine = ''
   } else {
-    // Fallback (town not yet computed): colour by ACTUAL precip only. Do NOT colour
-    // blue from weather_code — code 61 lingers for hours after rain with 0 mm, which
-    // painted dry towns blue while their popup said GEMMA RAUS. Precip=0 → gold (dry).
+    // Fallback (status not resolved yet): colour by ACTUAL precip. No blue from
+    // weather_code (code 61 lingers with 0 mm). No precip data → assume dry/gold
+    // rather than grey (rain is rare; grey next to a GEMMA RAUS popup looked wrong).
     const known = precip !== null && precip !== undefined
     isRaining = known && precip > 0.1
-    color = precipColor(precip)   // 0 → gold, >0.1 → blue scale, null → grey
+    color = known ? precipColor(precip) : '#D4A017'
     valueLine = known
       ? `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:${isRaining ? '600' : '400'};color:${isRaining ? color : '#6B7280'};white-space:nowrap;">${isRaining ? precip.toFixed(1) + 'mm' : dryLabel}</div>`
       : ''
