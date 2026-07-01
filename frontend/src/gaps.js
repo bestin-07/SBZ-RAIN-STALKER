@@ -85,7 +85,10 @@ function getWeatherNote(weather, t, { night = false, evening = false, raining = 
     return t('weather_snow', v)
   }
   if (code >= 95 && code <= 99) return t('weather_thunder', v)
-  if (wind > 50)                return t('weather_storm', v)
+  // "storm — stay inside" only when we're not saying GO. On a dry, windy day the
+  // wind banner already warns; the note falls through to the playful "hold your
+  // hat" (weather_windy) so it doesn't contradict the GO headline.
+  if (wind > 50 && raining)     return t('weather_storm', v)
   if (code === 45 || code === 48) return t('weather_fog', v)
 
   // Comfort / "go outside" notes make no sense while it's actively raining — they
