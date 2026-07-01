@@ -71,7 +71,7 @@ export function detectGaps(times, precips) {
   return { currentPrecip, gaps, nextRainAt, dryEndsOpen }
 }
 
-function getWeatherNote(weather, t, { night = false, evening = false, raining = false } = {}) {
+function getWeatherNote(weather, t, { night = false, evening = false, raining = false, rainSoon = false } = {}) {
   if (!weather || weather.temp === null || weather.temp === undefined) return null
   const temp = Math.round(weather.temp)
   const wind = Math.round(weather.wind ?? 0)
@@ -93,20 +93,26 @@ function getWeatherNote(weather, t, { night = false, evening = false, raining = 
   // STUCK "wet all the way"). Hazard notes above still surface during rain.
   if (raining) return null
 
-  // "Go outside" notes — suppressed when they'd clash with wind-down/sleep sub-lines
-  if (temp > 33) {
+  // Sunny "go out & enjoy" notes contradict an incoming-rain countdown, so skip
+  // them when rain is on the way soon. Prep notes (jacket / wind) still apply —
+  // useful whether or not rain is coming.
+  if (!rainSoon && temp > 33) {
     if (night) return null  // scorching at midnight needs no action
     return t('weather_scorching', v)
   }
-  if (temp > 29) {
+  if (!rainSoon && temp > 29) {
     if (night) return null  // hot night, no "go!" advice
     return t('weather_hot', v)
   }
   if (wind > 30) return t('weather_windy', v)
   if (temp < 5)  return t('weather_freezing', v)
   if (temp < 12) return t('weather_cold', v)
-  // "Perfect weather" is an invitation to go out — irrelevant in the evening/night
-  if (!night && !evening && temp >= 22 && temp <= 29 && wind < 20) return t('weather_perfect', v)
+  // "Perfect weather" is an invitation to go out — only when it's genuinely clear
+  // (not overcast, code<=2) AND no rain is imminent, otherwise it contradicts the
+  // countdown ("made for going out" while "rain in 10 min") or the cloudy banner.
+  if (!rainSoon && !night && !evening && temp >= 22 && temp <= 29 && wind < 20 && code <= 2) {
+    return t('weather_perfect', v)
+  }
   return null
 }
 
@@ -122,6 +128,7 @@ const RAIN_UNCERTAINTY = 10  // ±10 min range shown for radar nowcast timing
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
 const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
 const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
+const RAIN_SOON_NOTE = 90 // rain within this many min → drop the "go out & enjoy" weather notes
 
 // nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
 // live between the 5-min data refreshes. getStatus() wraps this with the
@@ -154,8 +161,10 @@ export function getStatus(
   const gapNow = firstGap && firstGap.startsAt <= nowSec && !trend?.rvRainActive
 
   // Weather note needs to know if we're heading out (dry/go) or stuck in the rain,
-  // so the "go outside" comfort lines don't contradict a WAIT/STUCK headline.
-  const weatherNote = getWeatherNote(weather, t, { night, evening, raining: !(isDry || gapNow) })
+  // so the "go outside" comfort lines don't contradict a WAIT/STUCK headline; and
+  // whether rain is imminent, so "made for going out" doesn't run under a countdown.
+  const rainSoon = trend.nextRainAt != null && (trend.nextRainAt - nowSec) <= RAIN_SOON_NOTE * 60
+  const weatherNote = getWeatherNote(weather, t, { night, evening, raining: !(isDry || gapNow), rainSoon })
 
   // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {

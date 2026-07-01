@@ -123,7 +123,10 @@ export default function App() {
   const regionalFullStorm = areaPrecip.some(a => a.code != null && a.code >= 95)
   const windWarning     = currentWeather?.wind != null && currentWeather.wind >= 50
   const windStrong      = currentWeather?.wind != null && currentWeather.wind >= 70
-  const showCloudyNote  = currentWeather?.code === 3 && status?.type === 'go'
+  // "cloudy but dry — worth heading out" only when there's actually a dry window:
+  // suppress it if rain is imminent, so it doesn't contradict a "rain in X min" sub.
+  const rainImminent    = trend.nextRainAt != null && (trend.nextRainAt - tickNow) <= 90 * 60
+  const showCloudyNote  = currentWeather?.code === 3 && status?.type === 'go' && !rainImminent
 
   // Tick every minute so the "rain in X" / "dry in X" countdown moves live
   // between the 5-minute data refreshes (re-synced on each refresh).
