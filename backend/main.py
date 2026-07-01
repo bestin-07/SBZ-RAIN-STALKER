@@ -1124,13 +1124,17 @@ async def unsubscribe(request: Request):
 
 
 @app.get("/api/ambient")
-@limiter.limit("120/minute")
+@limiter.limit("30/minute")
 def get_ambient(request: Request):
     """Latest ambient weather for the grid (temp/wind/code/cape/uv + hourly precip
     probability per point). Public, no GPS involved — clients pick the nearest point
     themselves. Empty points[] until the first cycle populates it (client falls back
-    to a direct Open-Meteo call)."""
-    return _ambient
+    to a direct Open-Meteo call).
+
+    Anti-abuse: 30/min per IP (the app only needs it ~once/90 s) + a 60 s cacheable
+    response so browsers/proxies serve repeats without hitting us. The payload is
+    already-computed cached data, so a hit is cheap; the rate limit caps scraping."""
+    return JSONResponse(_ambient, headers={"Cache-Control": "public, max-age=60"})
 
 
 @app.get("/api/accuracy")

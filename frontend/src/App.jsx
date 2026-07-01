@@ -142,9 +142,12 @@ export default function App() {
   const windWarning     = currentWeather?.wind != null && currentWeather.wind >= 50
   const windStrong      = currentWeather?.wind != null && currentWeather.wind >= 70
   // "cloudy but dry — worth heading out" only when there's actually a dry window:
-  // suppress it if rain is imminent, so it doesn't contradict a "rain in X min" sub.
+  // suppress if rain is imminent (would contradict a countdown) and only in daylight
+  // (6:00–20:00) — "worth heading out" reads odd at 22:47, and it's not about the sun.
   const rainImminent    = trend.nextRainAt != null && (trend.nextRainAt - tickNow) <= 90 * 60
-  const showCloudyNote  = currentWeather?.code === 3 && status?.type === 'go' && !rainImminent
+  const hourNow         = new Date(tickNow * 1000).getHours()
+  const showCloudyNote  = currentWeather?.code === 3 && status?.type === 'go' && !rainImminent &&
+                          hourNow >= 6 && hourNow < 20
 
   // Tick every minute so the "rain in X" / "dry in X" countdown moves live
   // between the 5-minute data refreshes (re-synced on each refresh).
