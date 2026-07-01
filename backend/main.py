@@ -437,7 +437,14 @@ async def _fetch_timeline_sourced(client: httpx.AsyncClient, point: dict):
 # Calibration helpers
 # ---------------------------------------------------------------------------
 
-CALIB_CANDIDATES   = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+# Never offer a candidate below the 0.10 runtime floor (get_threshold clamps to
+# it) — otherwise calibration "tunes" to 0.05 which is silently a no-op.
+CALIB_CANDIDATES   = [0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+# Optimise F-beta with beta < 1 (precision-weighted). Rain is rare here (~4% base
+# rate), so plain F1 pushes thresholds down and floods false alarms. For a "should
+# I go out" app a false alarm (false STUCK / false push) is worse than a miss, so
+# we weight precision ~2x recall.
+CALIB_BETA         = 0.5
 MIN_CALIB_SAMPLES  = 50
 MIN_RAIN_EVENTS    = 10  # minimum actual rain events needed before calibration is meaningful
 ALERT_FLOOR        = 85.0   # 7-day accuracy % below which emergency raise fires
@@ -463,8 +470,9 @@ def set_threshold(point_name: str, horizon: int, value: float):
         )
 
 
-def _score(rows, candidate: float):
-    """Return (F1, false_alarm_count) for a candidate threshold against verified rows."""
+def _score(rows, candidate: float, beta: float = CALIB_BETA):
+    """Return (F-beta score, false_alarm_count) for a candidate threshold.
+    beta<1 weights precision over recall (fewer false alarms)."""
     tp = fp = fn = 0
     for pred, actual in rows:
         pw = pred   >= candidate
@@ -474,8 +482,10 @@ def _score(rows, candidate: float):
         elif not pw and aw: fn += 1
     prec = tp / (tp + fp) if (tp + fp) else 1.0
     rec  = tp / (tp + fn) if (tp + fn) else 1.0
-    f1   = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
-    return f1, fp
+    b2    = beta * beta
+    denom = b2 * prec + rec
+    score = (1 + b2) * prec * rec / denom if denom else 0.0
+    return score, fp
 
 
 def weekly_calibrate():
@@ -507,7 +517,7 @@ def weekly_calibrate():
                 if f1 > best_f1:
                     best_f1, best_th, best_fa = f1, c, fa
             if best_f1 == 0.0:
-                print(f"[calib] {point['name']} {horizon}min — no F1 improvement"
+                print(f"[calib] {point['name']} {horizon}min — no F{CALIB_BETA} improvement"
                       f" (base rate too low), keeping {old_th}")
                 continue
             set_threshold(point["name"], horizon, best_th)
@@ -522,7 +532,7 @@ def weekly_calibrate():
                 )
             if best_th != old_th:
                 print(f"[calib] {point['name']} {horizon}min {old_th}→{best_th}"
-                      f" (F1={best_f1:.3f}, FA {old_fa}→{best_fa})")
+                      f" (F{CALIB_BETA}={best_f1:.3f}, FA {old_fa}→{best_fa})")
     with get_db() as (_, cur):
         cur.execute(
             "INSERT INTO settings (key, value) VALUES ('last_calibration_at', %s)"
@@ -623,9 +633,12 @@ def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, thre
     is_dry_now  = nowcast_dry and now_precip_live < threshold
 
     if is_dry_now:
+        # Use the point's calibrated threshold (not the fixed floor) so a point that
+        # chronically over-predicts light rain stops firing false "rain incoming"
+        # pushes once calibration raises its threshold.
         window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 30 * 60]
         for rain_t, p in window:
-            if p >= DRY_THRESHOLD:
+            if p >= threshold:
                 return {"type": "rain_incoming",
                         "rain_in_min": max(0, round((rain_t - now_ts) / 60))}
     else:
@@ -1226,19 +1239,18 @@ def admin_dashboard(request: Request):
             "far":          round(fa / denom_far * 100, 1) if denom_far > 0 else None,
         }
 
-    # Current calibrated thresholds
+    # Current calibrated thresholds — report the EFFECTIVE (floored) value that the
+    # runtime actually uses via get_threshold, so the dashboard can't show a "tuned"
+    # number that is silently clamped away. "tuned" = effectively above the floor.
     thresholds = []
     for p in POINTS:
         for h in [30, 60, 90]:
-            key = f"calib_threshold_{h}_{p['name']}"
-            with get_db() as (_, cur):
-                cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
-                row = cur.fetchone()
+            eff = get_threshold(p["name"], h)
             thresholds.append({
                 "point":     p["name"],
                 "horizon":   h,
-                "threshold": float(row[0]) if row else DRY_THRESHOLD,
-                "tuned":     bool(row),
+                "threshold": eff,
+                "tuned":     eff > DRY_THRESHOLD,
             })
 
     # Calibration meta
