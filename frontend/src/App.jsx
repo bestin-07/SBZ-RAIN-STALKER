@@ -15,9 +15,10 @@ import PrivacyPanel from './components/PrivacyPanel'
 const REFRESH_MS = 5 * 60 * 1000
 // Narrative continuity: a small story kept in localStorage so a refresh/re-open
 // a few minutes later stays coherent instead of contradicting itself.
-const STORY_RADIUS_M = 1000        // continuity only trusted within 1 km of the stored spot
-const HOLD_MS        = 5 * 60 * 1000   // keep showing "raining" up to 5 min after it goes dry
-const RECENT_RAIN_MS = 15 * 60 * 1000  // "was raining recently" → say "rain back / eased", not "approaching"
+const STORY_RADIUS_M   = 1000        // continuity only trusted within 1 km of the stored spot
+const HOLD_MS          = 5 * 60 * 1000   // keep showing "raining" up to 5 min after it goes dry
+const HOLD_MIN_PRECIP  = 0.5         // only HOLD real rain (≥0.5) — a drizzle that stops must not linger as PASST SCHON
+const RECENT_RAIN_MS   = 15 * 60 * 1000  // "was raining recently" → say "rain back / eased", not "approaching"
 
 const SBZ_BOUNDS = { minLat: 47.35, maxLat: 48.20, minLon: 12.50, maxLon: 13.80 }
 const SBZ_CENTER = { lat: 47.8009, lon: 13.0448 }
@@ -579,13 +580,14 @@ export default function App() {
         const rawWet = effectivePrecip !== null && effectivePrecip >= DRY_THRESHOLD
         if (rawWet) { lastWetAt = nowMs; lastWetPrecip = effectivePrecip }
 
-        // Time-based hysteresis: once "raining" was shown, keep showing it until it
-        // has been dry for HOLD_MS (survives reload). Hold the ACTUAL recent intensity,
-        // not a flat 0.1 — a flat 0.1 landed exactly in the light state and made the
-        // hold read "GO ANYWAY" out of nowhere; holding the real value keeps heavy as
-        // STUCK and a true drizzle as light, consistently.
+        // Time-based hysteresis: after real rain, keep showing it briefly (anti-flicker
+        // mid-shower; survives reload). ONLY for genuine rain (≥HOLD_MIN_PRECIP) — a
+        // drizzle that stops must clear to GO immediately, not linger as PASST SCHON
+        // (that made your spot show "light drizzle" while neighbours were dry). The
+        // story stays a light reference: recentRain still softens the wording below.
         let displayPrecip = effectivePrecip
-        if (effectivePrecip !== null && !rawWet && lastWetAt && (nowMs - lastWetAt) < HOLD_MS) {
+        if (effectivePrecip !== null && !rawWet && lastWetAt &&
+            (nowMs - lastWetAt) < HOLD_MS && lastWetPrecip >= HOLD_MIN_PRECIP) {
           displayPrecip = lastWetPrecip
         }
         // Longer window: was it raining recently? getStatus uses this to say "short
@@ -830,7 +832,7 @@ export default function App() {
             </div>
           )}
           <RainRibbon forecast={forecast} theme={theme} t={t} />
-          <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} onRelocate={relocate} computeStatusAt={computeStatusAt} />
+          <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} computeStatusAt={computeStatusAt} />
         </>
       )}
 

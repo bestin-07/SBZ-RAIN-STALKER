@@ -87,7 +87,7 @@ function areaIcon(name, precip, code, status, dryLabel = 'dry') {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, onRelocate, computeStatusAt }) {
+export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, computeStatusAt }) {
   const containerRef   = useRef(null)
   const mapRef         = useRef(null)
   const markerRef      = useRef(null)
@@ -100,6 +100,8 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const framesMetaRef  = useRef([])
   const computeRef     = useRef(computeStatusAt)
   const statusCacheRef = useRef(new Map())   // key "lat,lon" → { status, ts }
+  const currentPopupRef = useRef(null)       // the open popup (for re-render on lang switch)
+  const openArgsRef     = useRef(null)       // args of the open popup
   const [radarFrame, setRadarFrame] = useState(null)  // { time, forecast } of the shown frame
   useEffect(() => { computeRef.current = computeStatusAt }, [computeStatusAt])
 
@@ -125,6 +127,8 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     }
     const popup = L.popup({ maxWidth: 240, className: 'gr-status-popup', autoPanPadding: [24, 24] })
       .setLatLng([lat, lon])
+    currentPopupRef.current = popup
+    openArgsRef.current = { lat, lon, name, isUser: !!opts.isUser, hint: opts.hint }
     // Preloaded status (from the area-status pass) → instant + guaranteed to match
     // the dot colour. null means "computed but failed" → fall through to recompute.
     if (pre) { popup.setContent(render(pre)).openOn(map); return }
@@ -341,8 +345,26 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     const isDefault = Math.abs(location.lat - SALZBURG_CENTER[0]) < 0.001 &&
                       Math.abs(location.lon - SALZBURG_CENTER[1]) < 0.001
     const name = isDefault ? 'Salzburg' : (t ? t('your_location') : 'your location')
-    openStatusPopup(location.lat, location.lon, name, userStatus, { hint: t ? t('tap_others') : '' })
+    openStatusPopup(location.lat, location.lon, name, userStatus, { hint: t ? t('tap_others') : '', isUser: true })
   }, [location, userStatus, openStatusPopup, t])
+
+  // Re-render the open popup when the language switches (Leaflet popup content is
+  // set imperatively once, so it wouldn't otherwise translate live). Keyed on lang
+  // only — t is a fresh function each render, so we can't depend on it here.
+  useEffect(() => {
+    const p = currentPopupRef.current, a = openArgsRef.current
+    if (!p || !a || !p.isOpen()) return
+    statusCacheRef.current.clear()  // cached statuses hold old-language strings
+    if (a.isUser) {
+      if (!location || !userStatus) return
+      const isDefault = Math.abs(location.lat - SALZBURG_CENTER[0]) < 0.001 &&
+                        Math.abs(location.lon - SALZBURG_CENTER[1]) < 0.001
+      openStatusPopup(location.lat, location.lon, isDefault ? 'Salzburg' : t('your_location'),
+        userStatus, { hint: t('tap_others'), isUser: true })
+    } else {
+      openStatusPopup(a.lat, a.lon, a.name, undefined, { hint: a.hint })
+    }
+  }, [lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Smoothly fly back to the user's location (e.g. after they've panned away).
   const recenter = () => {
