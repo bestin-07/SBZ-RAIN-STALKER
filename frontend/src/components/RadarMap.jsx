@@ -1,6 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+
+function fmtClock(unix) {
+  const d = new Date(unix * 1000)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 const SALZBURG = [47.802, 13.045]
 const ZOOM = 11  // shows surrounding area dots (Hallein, Bad Reichenhall, Bergheim etc)
@@ -79,7 +84,7 @@ function areaIcon(name, precip, code, dryLabel = 'dry') {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, theme, t }) {
+export default function RadarMap({ location, areaPrecip, theme, t, onRelocate }) {
   const containerRef   = useRef(null)
   const mapRef         = useRef(null)
   const markerRef      = useRef(null)
@@ -89,6 +94,8 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
   const animIdxRef     = useRef(0)
   const animTimerRef   = useRef(null)
   const animRefreshRef = useRef(null)
+  const framesMetaRef  = useRef([])
+  const [radarFrame, setRadarFrame] = useState(null)  // { time, forecast } of the shown frame
 
   useEffect(() => {
     if (mapRef.current) return
@@ -145,6 +152,8 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
         const nowcast = (data.radar?.nowcast  ?? []).slice(0, 2)
         const frames  = [...past, ...nowcast]
         if (!frames.length) return
+        // Frame timestamps + past/forecast flag, for the little running-time banner.
+        framesMetaRef.current = frames.map((f, i) => ({ time: f.time, forecast: i >= past.length }))
 
         if (animTimerRef.current) { clearInterval(animTimerRef.current); animTimerRef.current = null }
         rvLayersRef.current.forEach(l => { try { mapRef.current?.removeLayer(l) } catch {} })
@@ -171,6 +180,7 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
         })
         animIdxRef.current = frames.length - 1
         syncRvOpacity()
+        setRadarFrame(framesMetaRef.current[animIdxRef.current] ?? null)
 
         animTimerRef.current = setInterval(() => {
           const layers = rvLayersRef.current
@@ -180,6 +190,7 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
           try { layers[prev].setOpacity(0) } catch {}
           if (rvVisible()) { try { layers[next].setOpacity(0.5) } catch {} }
           animIdxRef.current = next
+          setRadarFrame(framesMetaRef.current[next] ?? null)
         }, 700)
       } catch {
         // RainViewer unavailable — base map + area dots remain
@@ -259,9 +270,20 @@ export default function RadarMap({ location, areaPrecip, theme, t }) {
   return (
     <div className="relative flex-1 min-h-0">
       <div ref={containerRef} className="absolute inset-0" style={{ zIndex: 0 }} />
+      {radarFrame && (
+        <div className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5
+                        rounded-full bg-surface/90 backdrop-blur border border-border
+                        px-2.5 py-1 font-mono text-xs text-muted">
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: radarFrame.forecast ? '#1BAEE2' : 'var(--c-primary)' }}
+          />
+          {radarFrame.forecast ? (t ? t('lbl_nowcast') : 'nowcast') : (t ? t('lbl_radar') : 'radar')} {fmtClock(radarFrame.time)}
+        </div>
+      )}
       {location && (
         <button
-          onClick={recenter}
+          onClick={() => { recenter(); onRelocate?.() }}
           aria-label={t ? t('recenter') : 'Center on my location'}
           className="absolute bottom-4 right-4 z-30 w-11 h-11 flex items-center justify-center
                      rounded-full bg-surface/90 backdrop-blur border border-border text-primary

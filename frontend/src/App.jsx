@@ -312,6 +312,26 @@ export default function App() {
     )
   }, [])
 
+  // Explicit "update my location" — bound to the map's crosshair button so a user
+  // who has moved (e.g. cycled across town) can force a fresh fix. Bypasses the
+  // 500 m jitter debounce (this is an intentional tap) and always applies the new
+  // coords, which re-centres the map and reloads data for the new spot.
+  const relocate = useCallback(() => {
+    if (!navigator.geolocation) return
+    setUpgradingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude }
+        try { localStorage.setItem('last_location', JSON.stringify(loc)) } catch {}
+        setLocation(loc)
+        setLocationAccuracy(Math.round(pos.coords.accuracy))
+        setUpgradingLocation(false)
+      },
+      () => { setUpgradingLocation(false) },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    )
+  }, [])
+
   // Fallback so the app is usable even if GPS never resolves (Salzburg centre).
   const useDefaultLocation = useCallback(() => {
     setLocation({ lat: 47.8009, lon: 13.0448 })
@@ -662,7 +682,7 @@ export default function App() {
             </div>
           )}
           <RainRibbon forecast={forecast} theme={theme} t={t} />
-          <RadarMap location={location} areaPrecip={areaPrecip} theme={theme} t={t} />
+          <RadarMap location={location} areaPrecip={areaPrecip} theme={theme} t={t} onRelocate={relocate} />
         </>
       )}
 

@@ -35,14 +35,22 @@ export default function RainRibbon({ forecast, theme, t }) {
     if (!slots.length) return
 
     const canvas = canvasRef.current
-    canvas.width  = slots.length * SLOT_W
-    canvas.height = SLOT_H
+    // Render at device-pixel-ratio so the time labels are crisp (not upscaled/
+    // blurry) on retina/mobile screens, then draw in CSS-pixel coordinates.
+    const dpr  = window.devicePixelRatio || 1
+    const cssW = slots.length * SLOT_W
+    canvas.width  = Math.round(cssW * dpr)
+    canvas.height = Math.round(SLOT_H * dpr)
+    canvas.style.width  = cssW + 'px'
+    canvas.style.height = SLOT_H + 'px'
 
     const ctx = canvas.getContext('2d')
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, cssW, SLOT_H)
 
     const slotBg   = theme === 'light' ? '#E8E6E1' : '#111318'
-    const labelCol = theme === 'light' ? '#6B6860' : '#6B7280'
+    // Brighter/darker than before for a readable label at the larger size.
+    const labelCol = theme === 'light' ? '#57544D' : '#9CA3AF'
     const nowCol   = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
 
     slots.forEach((slot, i) => {
@@ -61,9 +69,9 @@ export default function RainRibbon({ forecast, theme, t }) {
       const m = d.getMinutes()
       if (m === 0 || m === 30) {
         ctx.fillStyle = labelCol
-        ctx.font = '8px JetBrains Mono, monospace'
+        ctx.font = 'bold 10px "JetBrains Mono", monospace'
         const label = `${String(d.getHours()).padStart(2, '0')}:${m === 0 ? '00' : '30'}`
-        ctx.fillText(label, x + 2, SLOT_H - 5)
+        ctx.fillText(label, x + 3, SLOT_H - 6)
       }
     })
 
@@ -80,8 +88,7 @@ export default function RainRibbon({ forecast, theme, t }) {
       <div className="overflow-x-auto scrollbar-none">
         <canvas
           ref={canvasRef}
-          height={SLOT_H}
-          style={{ display: 'block', imageRendering: 'crisp-edges' }}
+          style={{ display: 'block' }}
         />
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
