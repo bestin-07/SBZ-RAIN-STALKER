@@ -13,6 +13,25 @@ const BACKEND        = import.meta.env.VITE_BACKEND_URL ?? ''
 // if the user's nearest stations happen to be dry.
 const ANCHOR_STATION_ID = '11150'
 
+// ---- Response cache (cuts API calls + survives failures) ----------------------
+// Keyed by request. Within TTL we return the cached response without a network
+// call; on a failed fetch (e.g. GeoSphere rate limit) we serve the last good
+// response instead of losing data. TTL < the 5-min refresh so live data still
+// updates, but bursts (taps, re-opens, nearby points) reuse the cache.
+const _respCache = new Map()
+const RESP_TTL = 4 * 60 * 1000
+
+// For fns that return null on failure: serve fresh cache, else fetch, else stale.
+async function cachedOrNull(key, fetcher) {
+  const now = Date.now()
+  const hit = _respCache.get(key)
+  if (hit && now - hit.ts < RESP_TTL) return hit.data
+  let data = null
+  try { data = await fetcher() } catch { data = null }
+  if (data != null) { _respCache.set(key, { data, ts: now }); return data }
+  return hit ? hit.data : null   // serve stale rather than lose data
+}
+
 export const AREAS = [
   { name: "Hallein",         lat: 47.6835, lon: 13.0965 },
   { name: "Grödig",         lat: 47.7283, lon: 13.0432 },
@@ -42,9 +61,22 @@ export async function fetchForecast(lat, lon) {
     timeformat: 'unixtime',
     timezone: 'UTC',
   })
-  const r = await fetch(`${OPEN_METEO}?${params}`)
-  if (!r.ok) throw new Error(`Open-Meteo error ${r.status}`)
-  return r.json()
+  // Cached with serve-stale-on-failure. fetchForecast is expected to throw on a
+  // hard failure (callers use allSettled), so only throw when there's no stale copy.
+  const key = `fc:${(+lat).toFixed(3)},${(+lon).toFixed(3)}`
+  const now = Date.now()
+  const hit = _respCache.get(key)
+  if (hit && now - hit.ts < RESP_TTL) return hit.data
+  try {
+    const r = await fetch(`${OPEN_METEO}?${params}`)
+    if (!r.ok) throw new Error(`Open-Meteo error ${r.status}`)
+    const data = await r.json()
+    _respCache.set(key, { data, ts: now })
+    return data
+  } catch (e) {
+    if (hit) return hit.data   // serve stale rather than lose data
+    throw e
+  }
 }
 
 // ---- GeoSphere Austria TAWES — dynamic nearest-station discovery ----
@@ -104,7 +136,7 @@ async function tawesNearestIds(lat, lon, n = 6) {
 // precip = max RR across nearest stations (mm / 10 min).
 // temp   = average TL across stations that report it (°C), null if none.
 export async function fetchNearbyStationPrecip(lat, lon) {
-  try {
+  return cachedOrNull(`tawes:${(+lat).toFixed(3)},${(+lon).toFixed(3)}`, async () => {
     const ids = await tawesNearestIds(lat, lon, 6)
     const r = await fetch(
       `${GEOSPHERE_TAWES}?parameters=RR,TL&station_ids=${ids.join(',')}`,
@@ -118,13 +150,12 @@ export async function fetchNearbyStationPrecip(lat, lon) {
     const tlVals = features
       .map(f => f?.properties?.parameters?.TL?.data?.[0])
       .filter(v => typeof v === 'number' && !isNaN(v))
+    if (!rrVals.length && !tlVals.length) return null   // nothing usable → let cache serve stale
     return {
       precip: rrVals.length ? Math.max(...rrVals) : null,
       temp:   tlVals.length ? +(tlVals.reduce((a, b) => a + b, 0) / tlVals.length).toFixed(1) : null,
     }
-  } catch {
-    return null
-  }
+  })
 }
 
 // ---- GeoSphere nowcast — 1 km / 15-min radar-extrapolation timeline ----
@@ -133,7 +164,7 @@ export async function fetchNearbyStationPrecip(lat, lon) {
 // no WAF block). Returns { times:[unix seconds], precips:[mm] } or null.
 // (param name is lowercase `rr`; unit kg/m² = mm.)
 export async function fetchNowcastTimeline(lat, lon) {
-  try {
+  return cachedOrNull(`nc:${(+lat).toFixed(3)},${(+lon).toFixed(3)}`, async () => {
     const r = await fetch(
       `${GEOSPHERE_NOWCAST}?parameters=rr&lat_lon=${lat},${lon}`,
       { signal: AbortSignal.timeout(6000) }
@@ -146,9 +177,7 @@ export async function fetchNowcastTimeline(lat, lon) {
     const times = ts.map(s => Math.floor(Date.parse(s) / 1000))
     const precips = rr.map(v => (typeof v === 'number' && !isNaN(v)) ? v : 0)
     return { times, precips }
-  } catch {
-    return null
-  }
+  })
 }
 
 export async function fetchAccuracy() {
