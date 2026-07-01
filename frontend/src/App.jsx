@@ -370,6 +370,15 @@ export default function App() {
         const rvPrecip = rvResult?.status === 'fulfilled' && rvResult.value !== null
           ? rvResult.value : 0
         const nowPrecip = Math.max(omForNow, stationPrecip, rvPrecip)
+        // Ground truth = physical stations + model current (no radar). When these
+        // are available and read dry they are authoritative for "is it raining on
+        // me right now": the radar nowcast can over-read echo that never reaches the
+        // ground (virga / aloft returns), which otherwise showed light rain for 3 h
+        // straight and produced a false STUCK on a dry 23°C morning (Itzling,
+        // 2026-07). This is the mirror image of the Nonntal blind-spot: there radar
+        // missed real rain, here it invented rain the stations never saw.
+        const groundPrecip = Math.max(omForNow, stationPrecip)
+        const groundDry = stationData !== null && groundPrecip < 0.1
 
         // Gap timeline: prefer the GeoSphere 1 km / 15-min radar nowcast (catches
         // convective rain the ICON-EU model lags on); fall back to Open-Meteo.
@@ -387,7 +396,14 @@ export default function App() {
           : { times: [nowSec, ...omTimes], precips: [nowPrecip, ...omPrecips] }
 
         const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapTimeline.precips)
-        const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
+        // If the ground says dry, trust it — never let the radar nowcast alone force
+        // a raining/STUCK state. Otherwise catch rain the stations miss via the max
+        // of the nowcast now-slot + measured + radar-at-pixel (the Nonntal case).
+        const effectivePrecip = cp === null
+          ? null
+          : groundDry
+            ? groundPrecip
+            : Math.max(cp, nowPrecip)
         // Ribbon: anchor a real "now" bar from TAWES so the chart reflects the live
         // reading, even though gap detection uses the raw nowcast above.
         const ribbonTimeline = nowcast
