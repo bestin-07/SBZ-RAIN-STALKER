@@ -204,10 +204,19 @@ export function fetchRainViewerPrecip(lat, lon) {
           const ctx = canvas.getContext('2d')
           ctx.drawImage(img, 0, 0)
           try {
-            const pixel = ctx.getImageData(px, py, 1, 1).data
+            // Sample a 5×5 pixel block (~700 m box at z7) centred on the user's
+            // pixel and take the max echo — catches a small cell sitting a pixel
+            // or two off the exact GPS point. Zero extra network cost (same tile).
+            const x0 = Math.max(0, px - 2), y0 = Math.max(0, py - 2)
+            const w = Math.min(256 - x0, 5), h = Math.min(256 - y0, 5)
+            const block = ctx.getImageData(x0, y0, w, h).data
             // RainViewer Universal Blue scheme: transparent = no rain.
             // alpha > 30 = meaningful radar echo above noise floor.
-            resolve(pixel[3] > 30 ? 0.3 : 0)
+            let maxAlpha = 0
+            for (let i = 3; i < block.length; i += 4) {
+              if (block[i] > maxAlpha) maxAlpha = block[i]
+            }
+            resolve(maxAlpha > 30 ? 0.3 : 0)
           } catch {
             resolve(null)  // tainted canvas — CORS headers not present
           }

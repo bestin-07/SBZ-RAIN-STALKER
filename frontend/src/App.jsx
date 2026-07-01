@@ -35,6 +35,18 @@ function kmFromSalzburg(loc) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+// Metres between two {lat,lon}. Used to ignore GPS jitter (a re-read a few
+// hundred metres away from the same spot) that would otherwise trigger a full
+// re-fetch and shift the nearest stations / nowcast cell for no real change.
+const MIN_MOVE_M = 500
+function metersBetween(a, b) {
+  const R = 6371000, r = Math.PI / 180
+  const dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r
+  const s = Math.sin(dLat / 2) ** 2
+    + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
+}
+
 // VAPID public key (base64url) → Uint8Array. The most compatible form for
 // pushManager.subscribe — a raw string is rejected by some browsers.
 function urlBase64ToUint8Array(base64String) {
@@ -81,6 +93,10 @@ export default function App() {
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
   useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
+  // Asymmetric rain hysteresis: track whether we're currently showing "raining"
+  // and how many consecutive dry reads we've seen, so a lone dry blip mid-shower
+  // doesn't flash GO. See loadData for the flip rules.
+  const precipHoldRef = useRef({ wet: false, dryStreak: 0 })
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
   const [iosHintDismissed, setIosHintDismissed] = useState(() => saved('ios_hint_dismissed', '') === '1')
@@ -253,11 +269,16 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       pos => {
         const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude }
-        try { localStorage.setItem('last_location', JSON.stringify(loc)) } catch {}
-        setLocation(loc)
         setLocationAccuracy(Math.round(pos.coords.accuracy))
         setLocationError(null)
         setLocating(false)
+        // Debounce jitter: keep the current fix if the new one is <500 m away,
+        // so a background re-read doesn't churn the whole data pipeline.
+        setLocation(prev => {
+          if (prev && metersBetween(prev, loc) < MIN_MOVE_M) return prev
+          try { localStorage.setItem('last_location', JSON.stringify(loc)) } catch {}
+          return loc
+        })
       },
       err => {
         setLocating(false)
@@ -373,7 +394,24 @@ export default function App() {
           ? { times: [nowSec, ...nowcast.times], precips: [nowPrecip, ...nowcast.precips] }
           : { times: omTimes, precips: omPrecips }
         setForecast({ times: ribbonTimeline.times, precips: ribbonTimeline.precips, isNowcast: !!nowcast })
-        setCurrentPrecip(effectivePrecip)
+
+        // Asymmetric hysteresis to stop single-read flicker between refreshes:
+        // flip to "raining" instantly (onset is urgent, no lag), but require 2
+        // consecutive dry reads (~10 min) before clearing — a lone dry reading
+        // mid-shower shouldn't flash GO. A radar/sensor spike is trusted at once.
+        let displayPrecip = effectivePrecip
+        if (effectivePrecip !== null) {
+          const hold = precipHoldRef.current
+          if (effectivePrecip >= DRY_THRESHOLD) {
+            hold.wet = true
+            hold.dryStreak = 0
+          } else if (hold.wet) {
+            hold.dryStreak += 1
+            if (hold.dryStreak < 2) displayPrecip = DRY_THRESHOLD  // hold one more cycle
+            else hold.wet = false
+          }
+        }
+        setCurrentPrecip(displayPrecip)
         setGaps(detectedGaps)
         setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD })
         setTickNow(Math.floor(Date.now() / 1000))
