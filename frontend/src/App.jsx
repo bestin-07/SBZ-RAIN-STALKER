@@ -13,6 +13,11 @@ import NotifyModal from './components/NotifyModal'
 import PrivacyPanel from './components/PrivacyPanel'
 
 const REFRESH_MS = 5 * 60 * 1000
+// Narrative continuity: a small story kept in localStorage so a refresh/re-open
+// a few minutes later stays coherent instead of contradicting itself.
+const STORY_RADIUS_M = 1000        // continuity only trusted within 1 km of the stored spot
+const HOLD_MS        = 5 * 60 * 1000   // keep showing "raining" up to 5 min after it goes dry
+const RECENT_RAIN_MS = 15 * 60 * 1000  // "was raining recently" → say "rain back / eased", not "approaching"
 
 const SBZ_BOUNDS = { minLat: 47.35, maxLat: 48.20, minLon: 12.50, maxLon: 13.80 }
 const SBZ_CENTER = { lat: 47.8009, lon: 13.0448 }
@@ -103,10 +108,6 @@ export default function App() {
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
   useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
-  // Asymmetric rain hysteresis: track whether we're currently showing "raining"
-  // and how many consecutive dry reads we've seen, so a lone dry blip mid-shower
-  // doesn't flash GO. See loadData for the flip rules.
-  const precipHoldRef = useRef({ wet: false, dryStreak: 0 })
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
   const [iosHintDismissed, setIosHintDismissed] = useState(() => saved('ios_hint_dismissed', '') === '1')
@@ -476,22 +477,39 @@ export default function App() {
           : { times: omTimes, precips: omPrecips }
         setForecast({ times: ribbonTimeline.times, precips: ribbonTimeline.precips, isNowcast: !!nowcast })
 
-        // Asymmetric hysteresis to stop single-read flicker between refreshes:
-        // flip to "raining" instantly (onset is urgent, no lag), but require 2
-        // consecutive dry reads (~10 min) before clearing — a lone dry reading
-        // mid-shower shouldn't flash GO. A radar/sensor spike is trusted at once.
+        // ---- Narrative continuity across refreshes (persisted per location) ----
+        // Remember, in localStorage, when it was last actually raining at ~this spot.
+        // The status is otherwise recomputed from scratch every refresh with no
+        // memory, so "raining, clearing" could flip to "rain approaching" minutes
+        // later and read as nonsense. The story is only trusted within 1 km of where
+        // it was written; a far-away or long-stale story is ignored (fresh start).
+        const nowMs = Date.now()
+        let story = null
+        try { story = JSON.parse(localStorage.getItem('story') || 'null') } catch {}
+        const nearStory = story && typeof story.lat === 'number' &&
+          metersBetween({ lat: story.lat, lon: story.lon }, location) < STORY_RADIUS_M
+        let lastWetAt = nearStory && typeof story.lastWetAt === 'number' ? story.lastWetAt : 0
+
+        const rawWet = effectivePrecip !== null && effectivePrecip >= DRY_THRESHOLD
+        if (rawWet) lastWetAt = nowMs
+
+        // Time-based hysteresis: once "raining" was shown, keep showing it until it
+        // has been dry for HOLD_MS. Unlike the old in-memory streak this survives a
+        // reload, so a quick refresh mid-shower won't flash GO.
         let displayPrecip = effectivePrecip
-        if (effectivePrecip !== null) {
-          const hold = precipHoldRef.current
-          if (effectivePrecip >= DRY_THRESHOLD) {
-            hold.wet = true
-            hold.dryStreak = 0
-          } else if (hold.wet) {
-            hold.dryStreak += 1
-            if (hold.dryStreak < 2) displayPrecip = DRY_THRESHOLD  // hold one more cycle
-            else hold.wet = false
-          }
+        if (effectivePrecip !== null && !rawWet && lastWetAt && (nowMs - lastWetAt) < HOLD_MS) {
+          displayPrecip = DRY_THRESHOLD
         }
+        // Longer window: was it raining recently? getStatus uses this to say "short
+        // break — rain back in X" / "rain's eased" instead of a fresh "approaching".
+        const recentRain = lastWetAt > 0 && (nowMs - lastWetAt) < RECENT_RAIN_MS
+
+        try {
+          localStorage.setItem('story', JSON.stringify({
+            lat: location.lat, lon: location.lon, ts: nowMs, lastWetAt,
+          }))
+        } catch {}
+
         setCurrentPrecip(displayPrecip)
         setGaps(detectedGaps)
         // Model rain probability for the hour the onset falls in — lets getStatus
@@ -508,7 +526,7 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb, recentRain })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data.current?.temperature_2m ?? null,

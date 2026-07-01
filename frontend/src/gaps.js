@@ -186,16 +186,24 @@ export function getStatus(
         // an over-read / virga) → soften to "rain possible later" instead of a firm
         // countdown. null probability = no data → keep the firm wording.
         const lowConf = trend.rainProb != null && trend.rainProb < RAIN_PROB_MIN
+        // If it was raining moments ago, frame incoming rain as the same event
+        // continuing ("short break — rain back in X") rather than a fresh alarm
+        // ("rain approaching, hurry"), which reads as a contradiction on a quick
+        // re-open. See the localStorage story in App.jsx.
         sub = lowConf
           ? t('s_rain_maybe')
-          : rainInMin <= 0
-            ? t('s_rain_any')
-            : rainInMin <= URGENT_MIN
-              ? t('s_window_closing', { min: rainInMin })
-              : t('s_rain_soon', { low, high })
+          : trend.recentRain
+            ? t('s_rain_back', { low, high })
+            : rainInMin <= 0
+              ? t('s_rain_any')
+              : rainInMin <= URGENT_MIN
+                ? t('s_window_closing', { min: rainInMin })
+                : t('s_rain_soon', { low, high })
       }
     } else {
-      sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
+      sub = (trend.recentRain && !night && !evening)
+        ? t('s_rain_eased')
+        : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     }
     return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
   }
