@@ -71,7 +71,7 @@ export function detectGaps(times, precips) {
   return { currentPrecip, gaps, nextRainAt, dryEndsOpen }
 }
 
-function getWeatherNote(weather, t, { night = false, evening = false } = {}) {
+function getWeatherNote(weather, t, { night = false, evening = false, raining = false } = {}) {
   if (!weather || weather.temp === null || weather.temp === undefined) return null
   const temp = Math.round(weather.temp)
   const wind = Math.round(weather.wind ?? 0)
@@ -87,6 +87,11 @@ function getWeatherNote(weather, t, { night = false, evening = false } = {}) {
   if (code >= 95 && code <= 99) return t('weather_thunder', v)
   if (wind > 50)                return t('weather_storm', v)
   if (code === 45 || code === 48) return t('weather_fog', v)
+
+  // Comfort / "go outside" notes make no sense while it's actively raining — they
+  // contradicted the status (e.g. "perfect, no excuse to stay in" showing under a
+  // STUCK "wet all the way"). Hazard notes above still surface during rain.
+  if (raining) return null
 
   // "Go outside" notes — suppressed when they'd clash with wind-down/sleep sub-lines
   if (temp > 33) {
@@ -133,7 +138,6 @@ export function getStatus(
   const hour    = new Date(nowSec * 1000).getHours()
   const night   = hour < 5
   const evening = hour >= 18   // 18:00–23:59 — wind-down tone, no "go sprint outside"
-  const weatherNote = getWeatherNote(weather, t, { night, evening })
 
   // Trust currentPrecip (max of TAWES sensors + nowcast + Open-Meteo precipitation).
   // weather_code is NOT used here — it lags significantly after rain stops (code=61
@@ -147,6 +151,10 @@ export function getStatus(
   // pixel, the nowcast is blind to this cell; suppress the override so we
   // don't flash GO while radar confirms rain overhead.
   const gapNow = firstGap && firstGap.startsAt <= nowSec && !trend?.rvRainActive
+
+  // Weather note needs to know if we're heading out (dry/go) or stuck in the rain,
+  // so the "go outside" comfort lines don't contradict a WAIT/STUCK headline.
+  const weatherNote = getWeatherNote(weather, t, { night, evening, raining: !(isDry || gapNow) })
 
   // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {
