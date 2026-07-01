@@ -489,7 +489,13 @@ export default function App() {
       const data        = forecastResult.status === 'fulfilled' ? forecastResult.value : null
       const nowcast     = nowcastResult.status === 'fulfilled' ? nowcastResult.value : null
       const stationData = stationResult?.status === 'fulfilled' ? stationResult.value : null
-      if (data || nowcast || stationData !== null) {
+      // RainViewer is a CDN (unmetered) and survives when all three metered sources
+      // (Open-Meteo daily limit + GeoSphere rate limit) are exhausted at once — which
+      // otherwise leaves the app stuck forever on "checking". It already flows into
+      // effectivePrecip via nowPrecip below, so admitting it here degrades gracefully
+      // to a radar-only read (clear / light drizzle) instead of an infinite spinner.
+      const rvOk = rvResult?.status === 'fulfilled' && rvResult.value !== null
+      if (data || nowcast || stationData !== null || rvOk) {
         // 12 h Open-Meteo series — drives the RainRibbon overview chart.
         const omTimes   = data?.minutely_15?.time ?? []
         const omPrecips = data?.minutely_15?.precipitation ?? []
