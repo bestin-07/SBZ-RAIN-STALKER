@@ -263,28 +263,24 @@ export function fetchRainViewerPrecip(lat, lon) {
 }
 
 export async function fetchAreaPrecip() {
-  // One batched Open-Meteo request for all towns (comma-separated coords) instead
-  // of one request each — far gentler on the rate limit and avoids dropping towns
-  // when individual calls get throttled. Always returns every AREA (precip null on
-  // failure) so the map dots render consistently.
-  try {
+  // One batched Open-Meteo request for all towns (comma-separated coords), cached +
+  // serve-stale so it doesn't add to Open-Meteo's rate-limit pressure on every 5-min
+  // refresh. Always returns every AREA (precip null on failure) so dots render.
+  const cached = await cachedOrNull('area', async () => {
     const lats = AREAS.map(a => a.lat).join(',')
     const lons = AREAS.map(a => a.lon).join(',')
     const r = await fetch(
       `${OPEN_METEO}?latitude=${lats}&longitude=${lons}&current=precipitation,weather_code&timezone=UTC`,
       { signal: AbortSignal.timeout(8000) }
     )
-    if (!r.ok) return AREAS.map(a => ({ ...a, precip: null, code: null }))
+    if (!r.ok) return null
     const data = await r.json()
-    // Multi-location requests return an array (one object per coordinate, in order);
-    // a single coordinate would return a bare object.
-    const arr = Array.isArray(data) ? data : [data]
+    const arr = Array.isArray(data) ? data : [data]  // multi-loc → array; single → object
     return AREAS.map((a, i) => ({
       ...a,
       precip: arr[i]?.current?.precipitation ?? null,
       code:   arr[i]?.current?.weather_code  ?? null,
     }))
-  } catch {
-    return AREAS.map(a => ({ ...a, precip: null, code: null }))
-  }
+  })
+  return cached ?? AREAS.map(a => ({ ...a, precip: null, code: null }))
 }

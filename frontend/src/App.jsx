@@ -463,17 +463,22 @@ export default function App() {
         fetchRainViewerPrecip(location.lat, location.lon),
       ])
 
-      if (forecastResult.status === 'fulfilled') {
-        const data = forecastResult.value
+      // Sources gathered up front. Open-Meteo (forecast) can 429 / go down; when it
+      // does we must NOT get stuck on "checking" while the GeoSphere nowcast + TAWES
+      // are fine — so we proceed if ANY primary source resolved and null-guard the OM
+      // fields (weather notes, probability, OM-current just degrade gracefully).
+      const data        = forecastResult.status === 'fulfilled' ? forecastResult.value : null
+      const nowcast     = nowcastResult.status === 'fulfilled' ? nowcastResult.value : null
+      const stationData = stationResult?.status === 'fulfilled' ? stationResult.value : null
+      if (data || nowcast || stationData !== null) {
         // 12 h Open-Meteo series — drives the RainRibbon overview chart.
-        const omTimes   = data.minutely_15?.time ?? []
-        const omPrecips = data.minutely_15?.precipitation ?? []
+        const omTimes   = data?.minutely_15?.time ?? []
+        const omPrecips = data?.minutely_15?.precipitation ?? []
 
         // Current "now" measurements — any signal seeing rain wins:
         // - Open-Meteo current.precip   — model-measured last hour (can lag)
         // - GeoSphere TAWES nearest 6+airport — actual station obs, 10-min updates
-        const measured      = data.current?.precipitation ?? 0
-        const stationData   = stationResult?.status === 'fulfilled' ? stationResult.value : null
+        const measured      = data?.current?.precipitation ?? 0
         const stationPrecip = stationData?.precip ?? 0
         const stationTemp   = stationData?.temp ?? null
         // When TAWES sensors are available and confirm 0mm, require Open-Meteo to
@@ -509,7 +514,6 @@ export default function App() {
         // TAWES still protects against false-GO via effectivePrecip: if sensors show
         // active rain but the nowcast gap has already started, gapNow in getStatus
         // routes to GO (trust the model) — the intended "clearing" behaviour.
-        const nowcast = nowcastResult.status === 'fulfilled' ? nowcastResult.value : null
         const nowSec = Math.floor(Date.now() / 1000)
         const gapTimeline = nowcast
           ? { times: nowcast.times, precips: nowcast.precips }
@@ -605,8 +609,8 @@ export default function App() {
         // Model rain probability for the hour the onset falls in — lets getStatus
         // soften a radar countdown the model isn't confident about (radar over-read
         // / virga) vs a firm "rain in X min" when the probability backs it up.
-        const hTimes = data.hourly?.time ?? []
-        const hProb  = data.hourly?.precipitation_probability ?? []
+        const hTimes = data?.hourly?.time ?? []
+        const hProb  = data?.hourly?.precipitation_probability ?? []
         let rainProb = null
         if (nextRainAt && hTimes.length) {
           let bi = 0, bd = Infinity
@@ -619,19 +623,19 @@ export default function App() {
         setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb, recentRain, maxSoon })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
-          temp: stationTemp ?? data.current?.temperature_2m ?? null,
-          wind: data.current?.wind_speed_10m ?? null,
-          code: data.current?.weather_code ?? null,
+          temp: stationTemp ?? data?.current?.temperature_2m ?? null,
+          wind: data?.current?.wind_speed_10m ?? null,
+          code: data?.current?.weather_code ?? null,
         })
         // Severe storm potential — Alpine/Salzburg specific threshold.
         // CAPE > 1500 J/kg during afternoon hours (12-21h local) signals
         // extreme convective instability. Gap timings become unreliable
         // as cells can fire and intensify within 15-20 min.
         const localHour = new Date().getHours()
-        const cape = data.current?.cape ?? null
+        const cape = data?.current?.cape ?? null
         const severeStorm = cape !== null && cape >= 1500 && localHour >= 12 && localHour < 21
         setStormCape(severeStorm ? cape : null)
-        const uv = data.current?.uv_index ?? null
+        const uv = data?.current?.uv_index ?? null
         setUvIndex(uv !== null && uv >= 6 && localHour >= 7 && localHour < 20 ? uv : null)
         setLastUpdated(Date.now())
       }
