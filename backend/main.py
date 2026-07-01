@@ -609,6 +609,7 @@ async def fetch_ambient(client: httpx.AsyncClient):
         params={
             "latitude": lats, "longitude": lons,
             "current": "temperature_2m,wind_speed_10m,weather_code,precipitation,cape,uv_index",
+            "minutely_15": "precipitation", "forecast_minutely_15": 48,
             "hourly": "precipitation_probability",
             "forecast_hours": 6, "timeformat": "unixtime", "timezone": "UTC",
         },
@@ -624,12 +625,15 @@ async def fetch_ambient(client: httpx.AsyncClient):
         d = arr[i] if i < len(arr) else {}
         cur = (d or {}).get("current", {}) or {}
         hr  = (d or {}).get("hourly", {}) or {}
+        m15 = (d or {}).get("minutely_15", {}) or {}
         out.append({
             "name": p["name"], "lat": p["lat"], "lon": p["lon"],
             "temp": cur.get("temperature_2m"), "wind": cur.get("wind_speed_10m"),
             "code": cur.get("weather_code"),  "precip": cur.get("precipitation"),
             "cape": cur.get("cape"),          "uv": cur.get("uv_index"),
             "ptime": hr.get("time", []),      "pprob": hr.get("precipitation_probability", []),
+            # 15-min precip series — the ribbon's fallback when the GeoSphere nowcast is down
+            "mtime": m15.get("time", []),     "mprecip": m15.get("precipitation", []),
         })
     return out
 

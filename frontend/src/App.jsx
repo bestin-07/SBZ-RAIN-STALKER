@@ -16,7 +16,6 @@ const REFRESH_MS = 5 * 60 * 1000
 // Narrative continuity: a small story kept in localStorage so a refresh/re-open
 // a few minutes later stays coherent instead of contradicting itself.
 const STORY_RADIUS_M   = 1000        // continuity only trusted within 1 km of the stored spot
-const HEAVY_ESCALATE   = 3.0         // nowcast at your cell ≥ this (mm/15min) = real downpour → trust radar over light distant gauges
 const RECENT_RAIN_MS   = 15 * 60 * 1000  // "was raining recently" → softer WORDING only (no state forcing)
 
 const SBZ_BOUNDS = { minLat: 47.35, maxLat: 48.20, minLon: 12.50, maxLon: 13.80 }
@@ -392,12 +391,9 @@ export default function App() {
       gapPrecips = gapTimeline.precips.map((p, i) => (i === idx ? 0 : p))
     }
     const { currentPrecip: cp, gaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
-    // Same as loadData: trust ground, but escalate on a real radar downpour so a
-    // town dot doesn't read dry/drizzle while a heavy cell sits over it.
+    // Same as loadData: trust the ground when stations report, else radar max.
     const effectivePrecip = cp === null ? null
-      : stationData !== null
-        ? (cp >= HEAVY_ESCALATE ? Math.max(groundPrecip, cp) : groundPrecip)
-        : Math.max(cp, groundPrecip)
+      : stationData !== null ? groundPrecip : Math.max(cp, groundPrecip)
     let maxSoon = null
     if (nowcast) {
       const lim = nowSec + 45 * 60
@@ -557,15 +553,14 @@ export default function App() {
         }
 
         const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
-        // When stations report, trust the GROUND magnitude (radar over-reads light
-        // virga). EXCEPTION: if the nowcast at your exact cell shows a real downpour
-        // (≥ HEAVY_ESCALATE), escalate — a heavy radar core is real rain the 2 distant
-        // gauges just missed (a cell between them), and we mustn't say "drizzle" while
-        // you're soaked. No station reading → radar/RV max (catch onset the gauges miss).
+        // When stations report, trust the GROUND magnitude — a stale/over-reading
+        // radar nowcast must not force STUCK while you're in a light drizzle. Only
+        // with NO station reading do we fall back to the radar/RV max (catch onset
+        // the gauges miss). The nowcast still drives the forward gaps/countdown.
         const effectivePrecip = cp === null
           ? null
           : stationData !== null
-            ? (cp >= HEAVY_ESCALATE ? Math.max(groundPrecip, cp) : groundPrecip)
+            ? groundPrecip
             : Math.max(cp, nowPrecip)
         // Peak nowcast intensity over the next 45 min — lets getStatus offer the
         // "light rain, go anyway" nuance only when no real downpour is imminent.

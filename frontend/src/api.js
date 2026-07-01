@@ -88,7 +88,8 @@ function ambientToData(pt) {
       uv_index:       pt.uv ?? null,
     },
     hourly: { time: pt.ptime ?? [], precipitation_probability: pt.pprob ?? [] },
-    // no minutely_15 — the GeoSphere nowcast is the timeline (only-now fallback if it fails)
+    // 15-min series so the ribbon still draws when the GeoSphere nowcast is down.
+    minutely_15: { time: pt.mtime ?? [], precipitation: pt.mprecip ?? [] },
   }
 }
 

@@ -131,7 +131,6 @@ const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get r
 const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
 const LIGHT_MIN = 0.2  // below this = go (dry-enough) — a 0.1mm tip must not flip GO↔GO-ANYWAY
 const LIGHT_MAX = 0.5  // raining but below this = light/drizzle → "you could still go out"
-const HEAVY_SOON = 4.0 // nowcast peak ≥ this (mm/15min) in next 45 min = real downpour → not "go anyway"
 const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
 const RAIN_SOON_NOTE = 90 // rain within this many min → drop the "go out & enjoy" weather notes
 
@@ -215,20 +214,18 @@ export function getStatus(
     return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
   }
 
-  const downpourSoon = trend.maxSoon != null && trend.maxSoon >= HEAVY_SOON
-
-  // Trace drizzle (< 0.2 mm) with no downpour imminent → still GO. A 0.1 mm tip (or
-  // the hysteresis hold) must NOT flip GEMMA RAUS ↔ GO ANYWAY; only a genuine
-  // ≥0.2 mm drizzle earns the light state. This kills the cross-device / refresh flicker.
-  if (currentPrecip < LIGHT_MIN && !downpourSoon) {
+  // Trace drizzle (< 0.2 mm) → still GO. A 0.1 mm tip must not flip GEMMA RAUS ↔
+  // GO ANYWAY; only a genuine ≥0.2 mm drizzle earns the light state.
+  if (currentPrecip < LIGHT_MIN) {
     const sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
   }
 
-  // ---- Light drizzle (0.2–0.5 mm), no downpour in 45 min: "you could still go" ----
-  // Headline PASST SCHON / GO ANYWAY. Sub uses DRIZZLE wording (never "rain") + the
-  // forward look: easing soon / easing in ~X / set in for a while. Night falls through.
-  if (!night && currentPrecip < LIGHT_MAX && !downpourSoon) {
+  // ---- Light drizzle (0.2–0.5 mm): "you could still go" ----
+  // Driven by the GROUND reading, so a stale/over-reading nowcast can't force STUCK
+  // while you're standing in a drizzle. Headline PASST SCHON / GO ANYWAY; sub uses
+  // DRIZZLE wording + the forward look. Night falls through to the rain branch.
+  if (!night && currentPrecip < LIGHT_MAX) {
     let sub
     if (firstGap) {
       const easeMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
