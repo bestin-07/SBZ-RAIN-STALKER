@@ -5,12 +5,22 @@ const SLOT_H = 52
 const MAX_SLOTS = 13       // 1 "now" anchor + 12 × 15-min nowcast steps = 3 h
 const DRY_THRESHOLD = 0.1
 
-function precipToColor(p) {
-  if (p < DRY_THRESHOLD) return '#D4A017'
-  if (p < 0.5)           return '#6CD1EB'
-  if (p < 2)             return '#1BAEE2'
-  if (p < 5)             return '#0077AA'
-  return                        '#E05C00'
+// Theme-aware rain palette. The dry / moderate / heavy values are kept identical
+// to the GO / WAIT / STUCK headline colours (--c-go / --c-wait / --c-stuck in
+// index.css) so the status headline always matches its legend swatch and bars —
+// in dark AND light mode. Light-mode values are darkened for contrast on cream.
+const PALETTE = {
+  dark:  { dry: '#D4A017', light: '#6CD1EB', mod: '#1BAEE2', heavy: '#0077AA', storm: '#E05C00' },
+  light: { dry: '#7A5E00', light: '#1E86B0', mod: '#0A6E9C', heavy: '#024D6E', storm: '#B34A00' },
+}
+function palOf(theme) { return PALETTE[theme === 'light' ? 'light' : 'dark'] }
+
+function precipToColor(p, pal) {
+  if (p < DRY_THRESHOLD) return pal.dry
+  if (p < 0.5)           return pal.light
+  if (p < 2)             return pal.mod
+  if (p < 5)             return pal.heavy
+  return                        pal.storm
 }
 
 function precipToHeight(p) {
@@ -48,6 +58,7 @@ export default function RainRibbon({ forecast, theme, t }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, cssW, SLOT_H)
 
+    const pal      = palOf(theme)
     const slotBg   = theme === 'light' ? '#E8E6E1' : '#111318'
     // Brighter/darker than before for a readable label at the larger size.
     const labelCol = theme === 'light' ? '#57544D' : '#9CA3AF'
@@ -55,7 +66,7 @@ export default function RainRibbon({ forecast, theme, t }) {
 
     slots.forEach((slot, i) => {
       const x     = i * SLOT_W
-      const color = precipToColor(slot.p)
+      const color = precipToColor(slot.p, pal)
       const barH  = precipToHeight(slot.p)
 
       ctx.fillStyle = slotBg
@@ -69,7 +80,7 @@ export default function RainRibbon({ forecast, theme, t }) {
       const m = d.getMinutes()
       if (m === 0 || m === 30) {
         ctx.fillStyle = labelCol
-        ctx.font = 'bold 10px "JetBrains Mono", monospace'
+        ctx.font = 'bold 12px "JetBrains Mono", monospace'
         const label = `${String(d.getHours()).padStart(2, '0')}:${m === 0 ? '00' : '30'}`
         ctx.fillText(label, x + 3, SLOT_H - 6)
       }
@@ -82,6 +93,7 @@ export default function RainRibbon({ forecast, theme, t }) {
   }, [forecast, theme])
 
   const isNowcast = forecast?.isNowcast !== false
+  const pal = palOf(theme)
 
   return (
     <div className="border-t border-b border-border shrink-0">
@@ -92,11 +104,11 @@ export default function RainRibbon({ forecast, theme, t }) {
         />
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
-        <Legend color="#D4A017" label={t('dry')} />
-        <Legend color="#6CD1EB" label={t('light_rain')} />
-        <Legend color="#1BAEE2" label={t('mod_rain')} />
-        <Legend color="#0077AA" label={t('heavy_rain')} />
-        <Legend color="#E05C00" label={t('storm_rain')} />
+        <Legend color={pal.dry}   label={t('dry')} />
+        <Legend color={pal.light} label={t('light_rain')} />
+        <Legend color={pal.mod}   label={t('mod_rain')} />
+        <Legend color={pal.heavy} label={t('heavy_rain')} />
+        <Legend color={pal.storm} label={t('storm_rain')} />
         <span className="font-mono text-xs text-muted ml-auto">
           {t('next_12h')}
           {!isNowcast && <span className="ml-1 opacity-50">·&nbsp;est</span>}
