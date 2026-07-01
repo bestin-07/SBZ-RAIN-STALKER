@@ -451,7 +451,7 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains (HTTPS only)
 ### Threat model notes
 
 - **No user accounts / sessions** — there is nothing to hijack. The only persistent identity is the push subscription endpoint URL, which is now protected by an unsubscribe token.
-- **All weather API calls are client-side** — Open-Meteo, GeoSphere, RainViewer calls go browser → external API directly. Our Railway backend handles only push subscriptions and accuracy tracking; it is not a proxy.
+- **Rain/radar calls are client-side** — GeoSphere nowcast + TAWES + RainViewer go browser → external API directly, per-GPS. **Exception:** the coarse Open-Meteo *ambient* fields (temp/wind/code/cape/uv + hourly precip probability) are fetched **once per 5-min cycle by the backend** for the 11 grid POINTS and served via `GET /api/ambient`; the browser picks the nearest point (`fetchForecast` prefers ambient, falls back to a direct Open-Meteo call). This dodges Open-Meteo's per-IP rate limit / shared-NAT throttling. **GPS still never touches the server** — `/api/ambient` returns all grid points and the nearest is chosen client-side.
 - **GPS coordinates never leave the browser** — the `/api/forecast` backend endpoint is no longer called from the frontend (data is fetched client-side); lat/lon is only sent to third-party weather APIs directly.
 - **Rate limits apply per user IP** (via slowapi) for the Railway backend endpoints. External weather APIs have their own rate limits per user IP.
 - **VAPID key pair** — private key is a Railway secret (`VAPID_PRIVATE_KEY` env var); public key is served via `/api/vapid-public-key` GET endpoint (public-key exposure is intentional and required for push subscriptions).

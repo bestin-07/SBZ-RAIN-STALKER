@@ -47,7 +47,54 @@ export const AREAS = [
   { name: "Eugendorf",      lat: 47.8567, lon: 13.1067 },
 ]
 
+// ---- Backend ambient snapshot (temp/wind/code/cape/uv + hourly precip prob) ----
+// One shared server call for the whole grid; clients pick the nearest point (GPS
+// stays in the browser). Prevents every user hitting Open-Meteo directly (rate
+// limits / shared NAT). Cached ~90s. Returns points[] or null.
+let _ambientPoints = null, _ambientPointsTs = 0
+async function fetchAmbient() {
+  const now = Date.now()
+  if (_ambientPoints && now - _ambientPointsTs < 90 * 1000) return _ambientPoints
+  try {
+    const r = await fetch(`${BACKEND}/api/ambient`, { signal: AbortSignal.timeout(5000) })
+    if (!r.ok) return _ambientPoints
+    const j = await r.json()
+    if (Array.isArray(j?.points) && j.points.length) { _ambientPoints = j.points; _ambientPointsTs = now; return j.points }
+    return _ambientPoints   // empty before first cycle → let caller fall back to direct OM
+  } catch { return _ambientPoints }
+}
+function nearestAmbientPoint(points, lat, lon) {
+  let best = null, bd = Infinity
+  for (const p of points) {
+    const d = haversineKm(lat, lon, p.lat, p.lon)
+    if (d < bd) { bd = d; best = p }
+  }
+  return best
+}
+// Shape an ambient point into the Open-Meteo response subset the app reads.
+function ambientToData(pt) {
+  return {
+    current: {
+      precipitation:  pt.precip ?? 0,
+      temperature_2m: pt.temp ?? null,
+      wind_speed_10m: pt.wind ?? null,
+      weather_code:   pt.code ?? null,
+      cape:           pt.cape ?? null,
+      uv_index:       pt.uv ?? null,
+    },
+    hourly: { time: pt.ptime ?? [], precipitation_probability: pt.pprob ?? [] },
+    // no minutely_15 — the GeoSphere nowcast is the timeline (only-now fallback if it fails)
+  }
+}
+
 export async function fetchForecast(lat, lon) {
+  // Prefer the backend ambient snapshot (no per-user Open-Meteo). Fall back to a
+  // direct Open-Meteo call only if the snapshot isn't available (backend down /
+  // not warmed up yet) — so behaviour is unchanged when the backend can't serve it.
+  const points = await fetchAmbient()
+  const pt = points ? nearestAmbientPoint(points, +lat, +lon) : null
+  if (pt) return ambientToData(pt)
+
   const params = new URLSearchParams({
     latitude: lat,
     longitude: lon,

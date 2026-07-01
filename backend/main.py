@@ -42,6 +42,14 @@ POINTS = [
 ]
 
 DRY_THRESHOLD = 0.1
+
+# Ambient weather snapshot (temp/wind/code/cape/uv + hourly precip probability) for
+# the grid, refreshed each 5-min cycle in ONE batched Open-Meteo call and served via
+# /api/ambient. Clients pick the nearest point (GPS stays client-side) instead of
+# each calling Open-Meteo — dodges the per-IP rate limit and shared-NAT throttling.
+# The rain verdict is unaffected (still GeoSphere nowcast + TAWES, client-side).
+_ambient = {"ts": 0, "points": []}
+
 VAPID_CONTACT = os.getenv("VAPID_CONTACT", "mailto:gemmaraus@example.com")
 MAX_PUSH_SUBS = 50_000
 PRUNE_DAYS    = 8
@@ -589,6 +597,42 @@ def check_accuracy_health(now_ts: int):
                   f" → threshold {old_th}→{new_th}")
 
 
+async def fetch_ambient(client: httpx.AsyncClient):
+    """One batched Open-Meteo call for all grid POINTS → the coarse weather fields
+    the app shows (temp/wind/code/cape/uv) + hourly precip probability. Returns a
+    list of per-point dicts, or None on failure (caller keeps the last snapshot)."""
+    lats = ",".join(str(p["lat"]) for p in POINTS)
+    lons = ",".join(str(p["lon"]) for p in POINTS)
+    r = await client.get(
+        "https://api.open-meteo.com/v1/forecast",
+        params={
+            "latitude": lats, "longitude": lons,
+            "current": "temperature_2m,wind_speed_10m,weather_code,precipitation,cape,uv_index",
+            "hourly": "precipitation_probability",
+            "forecast_hours": 6, "timeformat": "unixtime", "timezone": "UTC",
+        },
+        timeout=15,
+    )
+    if r.status_code != 200:
+        return None
+    arr = r.json()
+    if not isinstance(arr, list):
+        arr = [arr]
+    out = []
+    for i, p in enumerate(POINTS):
+        d = arr[i] if i < len(arr) else {}
+        cur = (d or {}).get("current", {}) or {}
+        hr  = (d or {}).get("hourly", {}) or {}
+        out.append({
+            "name": p["name"], "lat": p["lat"], "lon": p["lon"],
+            "temp": cur.get("temperature_2m"), "wind": cur.get("wind_speed_10m"),
+            "code": cur.get("weather_code"),  "precip": cur.get("precipitation"),
+            "cape": cur.get("cape"),          "uv": cur.get("uv_index"),
+            "ptime": hr.get("time", []),      "pprob": hr.get("precipitation_probability", []),
+        })
+    return out
+
+
 async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
     try:
         v = await fetch_tawes_precip(client, point["lat"], point["lon"])
@@ -803,6 +847,16 @@ async def run_cycle():
     now_dt = datetime.now(timezone.utc)
 
     async with httpx.AsyncClient() as client:
+        # Ambient weather snapshot for the grid (one batched Open-Meteo call) → served
+        # to clients so they don't each hit Open-Meteo. Keep the last snapshot on error.
+        try:
+            amb = await fetch_ambient(client)
+            if amb:
+                _ambient["ts"] = now_ts
+                _ambient["points"] = amb
+        except Exception as e:
+            print(f"[ambient] {e}")
+
         # Store new forecasts for all points × horizons
         forecast_rows = []
         for point in POINTS:
@@ -1067,6 +1121,16 @@ async def unsubscribe(request: Request):
         cur.execute("DELETE FROM push_subscriptions WHERE endpoint = %s", (endpoint,))
 
     return {"ok": True}
+
+
+@app.get("/api/ambient")
+@limiter.limit("120/minute")
+def get_ambient(request: Request):
+    """Latest ambient weather for the grid (temp/wind/code/cape/uv + hourly precip
+    probability per point). Public, no GPS involved — clients pick the nearest point
+    themselves. Empty points[] until the first cycle populates it (client falls back
+    to a direct Open-Meteo call)."""
+    return _ambient
 
 
 @app.get("/api/accuracy")
