@@ -16,10 +16,8 @@ const REFRESH_MS = 5 * 60 * 1000
 // Narrative continuity: a small story kept in localStorage so a refresh/re-open
 // a few minutes later stays coherent instead of contradicting itself.
 const STORY_RADIUS_M   = 1000        // continuity only trusted within 1 km of the stored spot
-const HOLD_MS          = 5 * 60 * 1000   // keep showing "raining" up to 5 min after it goes dry
-const HOLD_MIN_PRECIP  = 0.5         // only HOLD real rain (≥0.5) — a drizzle that stops must not linger as PASST SCHON
 const HEAVY_ESCALATE   = 3.0         // nowcast at your cell ≥ this (mm/15min) = real downpour → trust radar over light distant gauges
-const RECENT_RAIN_MS   = 15 * 60 * 1000  // "was raining recently" → say "rain back / eased", not "approaching"
+const RECENT_RAIN_MS   = 15 * 60 * 1000  // "was raining recently" → softer WORDING only (no state forcing)
 
 const SBZ_BOUNDS = { minLat: 47.35, maxLat: 48.20, minLon: 12.50, maxLon: 13.80 }
 const SBZ_CENTER = { lat: 47.8009, lon: 13.0448 }
@@ -598,29 +596,20 @@ export default function App() {
         try { story = JSON.parse(localStorage.getItem('story') || 'null') } catch {}
         const nearStory = story && typeof story.lat === 'number' &&
           metersBetween({ lat: story.lat, lon: story.lon }, location) < STORY_RADIUS_M
-        let lastWetAt     = nearStory && typeof story.lastWetAt === 'number' ? story.lastWetAt : 0
-        let lastWetPrecip = nearStory && typeof story.lastWetPrecip === 'number' ? story.lastWetPrecip : DRY_THRESHOLD
+        let lastWetAt = nearStory && typeof story.lastWetAt === 'number' ? story.lastWetAt : 0
+        if (effectivePrecip !== null && effectivePrecip >= DRY_THRESHOLD) lastWetAt = nowMs
 
-        const rawWet = effectivePrecip !== null && effectivePrecip >= DRY_THRESHOLD
-        if (rawWet) { lastWetAt = nowMs; lastWetPrecip = effectivePrecip }
-
-        // Time-based hysteresis: after real rain, keep showing it briefly (anti-flicker
-        // mid-shower; survives reload). ONLY for genuine rain (≥HOLD_MIN_PRECIP) — a
-        // drizzle that stops must clear to GO immediately, not linger as PASST SCHON
-        // (that made your spot show "light drizzle" while neighbours were dry). The
-        // story stays a light reference: recentRain still softens the wording below.
-        let displayPrecip = effectivePrecip
-        if (effectivePrecip !== null && !rawWet && lastWetAt &&
-            (nowMs - lastWetAt) < HOLD_MS && lastWetPrecip >= HOLD_MIN_PRECIP) {
-          displayPrecip = lastWetPrecip
-        }
-        // Longer window: was it raining recently? getStatus uses this to say "short
-        // break — rain back in X" / "rain's eased" instead of a fresh "approaching".
+        // The story is now a LIGHT reference only: it softens the WORDING (recentRain
+        // → "short break / eased") but no longer FORCES the displayed state. The old
+        // hysteresis hold made your live location diverge from the fixed-point dots —
+        // it clung to "almost out" / flashed STUCK while nearby spots were dry. The
+        // status is now the fresh reading, same basis as the dots → they agree.
+        const displayPrecip = effectivePrecip
         const recentRain = lastWetAt > 0 && (nowMs - lastWetAt) < RECENT_RAIN_MS
 
         try {
           localStorage.setItem('story', JSON.stringify({
-            lat: location.lat, lon: location.lon, ts: nowMs, lastWetAt, lastWetPrecip,
+            lat: location.lat, lon: location.lon, ts: nowMs, lastWetAt,
           }))
         } catch {}
 
