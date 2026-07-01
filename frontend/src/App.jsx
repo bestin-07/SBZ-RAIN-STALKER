@@ -365,17 +365,19 @@ export default function App() {
       fetchNearbyStationPrecip(lat, lon),
       fetchNowcastTimeline(lat, lon),
     ])
-    if (fRes.status !== 'fulfilled') return null
-    const data = fRes.value
-    const omTimes   = data.minutely_15?.time ?? []
-    const omPrecips = data.minutely_15?.precipitation ?? []
-    const measured  = data.current?.precipitation ?? 0
-    const stationData   = sRes.status === 'fulfilled' ? sRes.value : null
+    // Resilient like loadData: proceed if ANY source resolved (Open-Meteo can 429),
+    // else the popup would read "couldn't load" even though GeoSphere is fine.
+    const data        = fRes.status === 'fulfilled' ? fRes.value : null
+    const stationData = sRes.status === 'fulfilled' ? sRes.value : null
+    const nowcast     = nRes.status === 'fulfilled' ? nRes.value : null
+    if (!data && !nowcast && stationData === null) return null
+    const omTimes   = data?.minutely_15?.time ?? []
+    const omPrecips = data?.minutely_15?.precipitation ?? []
+    const measured  = data?.current?.precipitation ?? 0
     const stationPrecip = stationData?.precip ?? 0
     const omForNow = stationData !== null && stationPrecip === 0 ? (measured > 0.1 ? measured : 0) : measured
     const groundPrecip = Math.max(omForNow, stationPrecip)
     const groundDry = stationData !== null && groundPrecip < DRY_THRESHOLD
-    const nowcast = nRes.status === 'fulfilled' ? nRes.value : null
     const nowSec = Math.floor(Date.now() / 1000)
     const gapTimeline = nowcast
       ? { times: nowcast.times, precips: nowcast.precips }
@@ -397,16 +399,16 @@ export default function App() {
       if (soon.length) maxSoon = Math.max(...soon)
     }
     let rainProb = null
-    const hTimes = data.hourly?.time ?? [], hProb = data.hourly?.precipitation_probability ?? []
+    const hTimes = data?.hourly?.time ?? [], hProb = data?.hourly?.precipitation_probability ?? []
     if (nextRainAt && hTimes.length) {
       let bi = 0, bd = Infinity
       for (let i = 0; i < hTimes.length; i++) { const dd = Math.abs(hTimes[i] - nextRainAt); if (dd < bd) { bd = dd; bi = i } }
       rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
     }
     const weather = {
-      temp: stationData?.temp ?? data.current?.temperature_2m ?? null,
-      wind: data.current?.wind_speed_10m ?? null,
-      code: data.current?.weather_code ?? null,
+      temp: stationData?.temp ?? data?.current?.temperature_2m ?? null,
+      wind: data?.current?.wind_speed_10m ?? null,
+      code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
       { nextRainAt, dryEndsOpen, rvRainActive: false, rainProb, recentRain: false, maxSoon })
