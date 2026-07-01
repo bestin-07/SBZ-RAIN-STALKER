@@ -17,6 +17,7 @@ import re
 import uuid
 import secrets
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 try:
     from pywebpush import webpush, WebPushException
@@ -651,16 +652,44 @@ async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
 # ---------------------------------------------------------------------------
 
 MIN_PUSH_AGREEMENT  = 3   # points that must agree before any push fires (out of 11)
-PUSH_SESSION_HOURS  = 4   # rolling window for the session budget
-PUSH_SESSION_MAX    = 3   # max pushes within that window (all types combined)
 
-# Per-type cooldowns (seconds) — prevent re-firing the same notification
-PUSH_COOLDOWNS = {
-    "raining":       90 * 60,   # 1.5 h — announce rain/drizzle onset once, don't repeat
-    "rain_incoming": 60 * 60,   # 1 h — don't nag about approaching rain
-    "gap":           45 * 60,   # 45 min
-    "rain_clearing": 90 * 60,   # 1.5 h — rain ending is less urgent to repeat
-}
+# Notification pacing (deliberately conservative to avoid alert fatigue):
+#  - daytime only, Salzburg local time
+#  - ≥ 15 min between ANY two pushes
+#  - each type fires at most ONCE per calendar day → max 4 pushes/day
+try:
+    TZ_SALZBURG = ZoneInfo("Europe/Vienna")   # needs the tzdata pip package on slim images
+except Exception:
+    from datetime import timedelta
+    TZ_SALZBURG = timezone(timedelta(hours=2))  # CEST fallback; day/night gating tolerates ±1h
+PUSH_DAY_START = 8        # local hour: no pushes before 08:00
+PUSH_DAY_END   = 22       # local hour: no pushes at/after 22:00
+PUSH_MIN_GAP_S = 15 * 60  # ≥ 15 min between any two pushes
+
+
+def _salzburg_now(now_ts: int) -> datetime:
+    return datetime.fromtimestamp(now_ts, TZ_SALZBURG)
+
+
+def _is_push_daytime(now_ts: int) -> bool:
+    return PUSH_DAY_START <= _salzburg_now(now_ts).hour < PUSH_DAY_END
+
+
+def _global_gap_ok(now_ts: int) -> bool:
+    with get_db() as (_, cur):
+        cur.execute("SELECT MAX(sent_at) FROM push_log")
+        row = cur.fetchone()
+    last = row[0] if row and row[0] else 0
+    return (now_ts - last) >= PUSH_MIN_GAP_S
+
+
+def _type_fired_today(push_type: str, now_ts: int) -> bool:
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = %s", (f"last_{push_type}_push_ts",))
+        row = cur.fetchone()
+    if not row:
+        return False
+    return _salzburg_now(float(row[0])).date() == _salzburg_now(now_ts).date()
 
 
 def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, threshold: float = DRY_THRESHOLD):
@@ -709,21 +738,6 @@ def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, thre
                     "clears_in_min": max(0, round((gap_start - now_ts) / 60))}
 
     return None
-
-
-def _cooldown_ok(key: str, seconds: int, now_ts: int) -> bool:
-    with get_db() as (_, cur):
-        cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
-        row = cur.fetchone()
-    return (now_ts - float(row[0])) >= seconds if row else True
-
-
-def _session_budget_ok(now_ts: int) -> bool:
-    cutoff = now_ts - PUSH_SESSION_HOURS * 3600
-    with get_db() as (_, cur):
-        cur.execute("SELECT COUNT(*) FROM push_log WHERE sent_at > %s", (cutoff,))
-        count = cur.fetchone()[0]
-    return count < PUSH_SESSION_MAX
 
 
 def _log_push(now_ts: int, push_type: str, body_en: str):
@@ -801,8 +815,11 @@ def _build_payload(event: dict) -> dict:
 
 
 async def check_and_push(client: httpx.AsyncClient, now_ts: int):
-    if not _session_budget_ok(now_ts):
-        print(f"[push] session budget exhausted ({PUSH_SESSION_MAX} in {PUSH_SESSION_HOURS}h)")
+    if not _is_push_daytime(now_ts):
+        print("[push] outside daytime hours (Salzburg) — suppressed")
+        return
+    if not _global_gap_ok(now_ts):
+        print(f"[push] <{PUSH_MIN_GAP_S // 60} min since last push — skip")
         return
 
     events = []
@@ -840,8 +857,8 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
     counts = {k: len(v) for k, v in by_type.items()}
     print(f"[push] votes: {counts} / {total} (need {MIN_PUSH_AGREEMENT})")
 
-    # Story order: raining now > rain incoming > clearing > gap. Cooldowns + the
-    # 3-per-4h session budget keep it a paced story, not alert spam.
+    # Story order: raining now > rain incoming > clearing > gap. Daytime-only +
+    # ≥15-min gap (checked above) + once-per-type-per-day → max 4 paced pushes/day.
     for push_type in ("raining", "rain_incoming", "rain_clearing", "gap"):
         candidates = by_type.get(push_type, [])
         if not candidates:
@@ -850,13 +867,9 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         # forecast types need MIN_PUSH_AGREEMENT points to independently agree.
         if push_type != "raining" and len(candidates) < MIN_PUSH_AGREEMENT:
             continue
-        cooldown_key = f"last_{push_type}_push_ts"
-        if not _cooldown_ok(cooldown_key, PUSH_COOLDOWNS[push_type], now_ts):
-            print(f"[push] {push_type} cooldown active — skip")
+        if _type_fired_today(push_type, now_ts):
+            print(f"[push] {push_type} already fired today — skip")
             continue
-        if not _session_budget_ok(now_ts):
-            print(f"[push] budget used up mid-loop")
-            break
         if push_type == "raining":
             best = candidates[0]
         else:

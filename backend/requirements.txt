@@ -6,3 +6,4 @@ pywebpush==2.0.0
 slowapi==0.1.9
 cryptography==43.0.3
 psycopg2-binary==2.9.9
+tzdata==2024.1
