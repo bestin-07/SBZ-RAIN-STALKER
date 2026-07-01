@@ -134,6 +134,17 @@ const HEAVY_SOON = 4.0 // nowcast peak ≥ this (mm/15min) in next 45 min = real
 const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
 const RAIN_SOON_NOTE = 90 // rain within this many min → drop the "go out & enjoy" weather notes
 
+// Shared "what's ahead" sub-line for a dry window / gap opening — reused by both
+// the WAIT state and the light-rain ("go anyway") state so they carry the same
+// forward context (clearing vs a fixed break) without inventing new strings.
+function breakSub(firstGap, nowSec, t) {
+  const clearInMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
+  if (clearInMin < SOON_MIN)    return t('s_almost_now')
+  if (firstGap.opensEnded)      return t('s_clearing',    { min: clearInMin })
+  if (clearInMin <= ALMOST_MIN) return t('s_almost_over', { min: clearInMin, dur: firstGap.durationMinutes })
+  return t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
+}
+
 // nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
 // live between the 5-min data refreshes. getStatus() wraps this with the
 // night-time sleep nudge (below).
@@ -209,25 +220,20 @@ export function getStatus(
   // night (nobody's sprinting out) — falls through to the rain branch below.
   const downpourSoon = trend.maxSoon != null && trend.maxSoon >= HEAVY_SOON
   if (!night && currentPrecip < LIGHT_MAX && !downpourSoon) {
-    return { type: 'light', headline: t('LIGHT_RAIN'), sub: t('s_light'), weather: weatherNote }
+    // Headline stays "PASST SCHON / GO ANYWAY", but the sub reuses the existing
+    // forward wording so the user still knows whether this drizzle is clearing,
+    // opening a dry gap, or just hanging around — no new strings, still one glance.
+    const sub = firstGap ? breakSub(firstGap, nowSec, t) : t('s_light')
+    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote }
   }
 
   // ---- Raining now: narrate the break ahead ----
   if (firstGap) {
     const clearInMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
-    // Under 5 min the exact minute is noise — drop the number and go soft
-    // ("almost — check outside") rather than pretend to that precision.
+    // Under 5 min the exact minute is noise — drop the number and go soft.
     const soon = clearInMin < SOON_MIN
     const headline = soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
-    const sub = night
-      ? t('s_night_raining')
-      : soon
-        ? t('s_almost_now')
-        : firstGap.opensEnded
-          ? t('s_clearing',    { min: clearInMin })
-          : clearInMin <= ALMOST_MIN
-            ? t('s_almost_over', { min: clearInMin, dur: firstGap.durationMinutes })
-            : t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
+    const sub = night ? t('s_night_raining') : breakSub(firstGap, nowSec, t)
     return { type: 'wait', headline, sub, weather: weatherNote }
   }
 

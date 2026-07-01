@@ -4,7 +4,14 @@
 
 **Gemma Raus** ("let's go outside!" in Austrian dialect) is a hyper-local rain-window PWA for Salzburg, Austria. It answers one question: *when can I go outside without getting wet?*
 
-The app reads 4 real-time precipitation sources, finds dry windows of ≥30 minutes in the next 3 hours, and shows a single clear status: GO / WAIT N MIN / STUCK INSIDE. It works as a web app and installable PWA (no account, no tracking).
+The app reads several real-time precipitation sources, finds dry windows of ≥30 minutes in the next 3 hours, and shows a single clear status: **GEMMA RAUS (GO) / PASST SCHON (light rain, go anyway) / WAIT N MIN / BLEIB DRIN (STUCK)**. It works as a web app and installable PWA (no account, no tracking).
+
+**Core philosophy (read this first):** the app is NOT trying to mirror the exact weather outside — it exists to let a user make a *fast decision about the near future*. Two lanes drive everything:
+- **NOW lane** — "am I getting wet right now?" → trusts the **ground** (physical TAWES stations).
+- **NEXT lane** — "when does rain start / stop?" → trusts the **radar nowcast** (GeoSphere 1 km).
+- A **continuity layer** (localStorage "story") keeps the narrative coherent between refreshes so a quick re-open never contradicts what it just said.
+
+See `RAIN_LOGIC.md` (untracked, local) for the full flowchart.
 
 **Live URL:** Deployed on Railway (see `.railway.toml`)
 **Repo:** `bestin-07/SBZ-RAIN-STALKER`
@@ -18,19 +25,21 @@ The app reads 4 real-time precipitation sources, finds dry windows of ≥30 minu
 SBZ-RAIN-STALKER/
 ├── frontend/          # React + Vite PWA
 │   ├── src/
-│   │   ├── App.jsx              # Root component, data loading, state
-│   │   ├── api.js               # All API calls (4 precipitation sources)
-│   │   ├── gaps.js              # Gap detection + status logic
-│   │   ├── i18n.js              # DE/EN translations
+│   │   ├── App.jsx              # Root component, data loading, blending, localStorage "story"
+│   │   ├── main.jsx             # Entry + SW registration + JS force-update (controllerchange)
+│   │   ├── api.js               # All client-side API calls (weather + radar sources)
+│   │   ├── gaps.js              # detectGaps() + getStatus() (status decision tree)
+│   │   ├── i18n.js              # DE/EN translations (status one-liners are variant pools)
 │   │   └── components/
 │   │       ├── Header.jsx       # Top bar: theme/lang/notify/guide/refresh
-│   │       ├── GapBanner.jsx    # Main status display (GO/WAIT/STUCK)
-│   │       ├── RainRibbon.jsx   # 3h precipitation bar chart (radar nowcast only)
-│   │       ├── RadarMap.jsx     # Leaflet map with DWD+RainViewer overlay
+│   │       ├── GapBanner.jsx    # Main status display (GO/light/WAIT/STUCK), theme-aware colour
+│   │       ├── RainRibbon.jsx   # 3h precip bar chart (radar nowcast), theme-aware palette
+│   │       ├── RadarMap.jsx     # Leaflet map: RainViewer overlay + town dots + radar-time banner + relocate crosshair
 │   │       ├── LocationPrompt.jsx # Initial loading/permission screen
 │   │       └── InfoPanel.jsx    # Slide-up guide + about + data sources
 │   ├── public/
-│   │   ├── sw.js                # Service worker (network-first, cache v2)
+│   │   ├── admin/              # Hidden accuracy dashboard (index.html + admin.js), noindex
+│   │   ├── sw.js                # Service worker (network-first; cache name stamped per deploy)
 │   │   ├── manifest.json        # PWA manifest
 │   │   ├── support/            # Donate docs — set VITE_DONATE_URL (or DONATE_URL in InfoPanel.jsx) to a PayPal.me/Stripe/Ko-fi link
 │   │   ├── favicon.svg          # Brand icons (user-maintained)
@@ -59,11 +68,14 @@ SBZ-RAIN-STALKER/
 
 ## Data Sources & Rain Detection Pipeline
 
-Sources are queried in parallel on every refresh. The **gap timeline** (GO/WAIT/STUCK and "dry for N min") is driven by the finest-resolution forecast available — the GeoSphere 1 km / 15-min nowcast (source #3), falling back to Open-Meteo. The **current "now" condition** is the **maximum** of the live measurements (Open-Meteo current + TAWES) so any single signal seeing rain wins.
+Sources are queried in parallel on every refresh (all **client-side**, browser → API directly). The **NEXT lane** (gaps, countdowns, ribbon) is driven by the GeoSphere 1 km / 15-min nowcast (source #3), falling back to Open-Meteo. The **NOW lane** (is it raining on me) trusts the **ground** — see Signal Blending below.
+
+**Physical-sensor reality (important):** within 15 km of the city there are only **2 active TAWES rain gauges** — Freisaal (11350, 1.3 km) and Airport (11150, 3.0 km); the next is 19 km out (5 within 25 km, 13 within 40 km, of 272 nationwide). Everything else we read is radar (gridded) or a model — **not** a ground gauge. This ~3 km gauge gap is the root cause of the hyper-local misses (convective onset, virga over-read); no blending fully closes it. Checked 2026-07: eHYD/Salzburg Hydrographic Service is the only other *official* physical net (open CC-BY, but 30-min cadence + clunky WebGIS access, mostly valley/mountain stations, not the city gap); Netatmo is OAuth-gated with sparse rain-module coverage. Neither is worth integrating for the city.
 
 ### 1. Open-Meteo ICON-EU Forecast (`api.js: fetchForecast`)
 - **URL:** `https://api.open-meteo.com/v1/forecast`
-- **Params:** `minutely_15=precipitation&forecast_minutely_15=48&current=temperature_2m,wind_speed_10m,weather_code,precipitation`
+- **Params:** `current=temperature_2m,wind_speed_10m,weather_code,precipitation,cape,uv_index` + `minutely_15=precipitation&forecast_minutely_15=48` + `hourly=precipitation_probability&forecast_hours=6`
+- **`precipitation_probability`** — model confidence, used to soften the radar countdown: if the nowcast shows rain but probability < `RAIN_PROB_MIN` (50%), the sub-line becomes "rain possible later" (`s_rain_maybe`) instead of a firm ETA — the virga/over-read guard.
 - **Update cycle:** ~hourly model run, can lag 2-3h on convective alpine rain
 - **Used for:** weather notes (temp/wind/code), current measured precipitation, and **fallback** gap timeline + ribbon if the nowcast is unavailable. The Open-Meteo 3–12 h tail is no longer shown in the ribbon — stripped 2026-06 because it looked as confident as radar but isn't.
 - **Critical limitation:** ICON-EU is frequently blind to fast-moving convective cells in the Alps. `precipitation=0.00` and `weather_code=3` (partly cloudy) during active heavy rain is confirmed behavior — which is exactly why it is no longer the primary gap source.
@@ -87,24 +99,35 @@ Sources are queried in parallel on every refresh. The **gap timeline** (GO/WAIT/
 - **History:** replaced the hourly INCA analysis (too coarse in time) which itself replaced DWD RADOLAN `GetFeatureInfo` on `maps.dwd.de` — DWD is **HTTP 403 (WAF block)** from Austrian networks for both `GetFeatureInfo` and `GetMap`, so the whole `maps.dwd.de` host is unusable here.
 
 ### 4. Open-Meteo Current Measured (`App.jsx: loadData`)
-- `data.current.precipitation` — Open-Meteo's reported last-hour measured value
-- Same API call as source 1, no extra request
-- Contributes to the live "now" reading alongside TAWES
+- `data.current.precipitation` — Open-Meteo's reported last-hour measured value; same call as source 1, contributes to the NOW reading alongside TAWES (guarded against its 0.10 mm rounding when TAWES confirms 0).
 
-### Signal Blending (App.jsx: loadData)
+### 5. RainViewer radar tile sample at GPS (`api.js: fetchRainViewerPrecip`)
+- Downloads the latest RainViewer radar frame, converts the user's GPS to a **z=7 tile + pixel**, and reads a **5×5 pixel block** (~700 m) via a `crossOrigin` canvas; alpha > 30 → echo. Returns `0.3` (rain), `0` (clear), or `null` (CORS canvas tainted / unavailable — graceful no-op).
+- Purpose: a radar-at-your-exact-pixel signal that catches rain the stations miss (the Nonntal onset case), faster than the tipping bucket. **Best-effort** — if the CDN doesn't send CORS headers it silently returns null and the app behaves exactly as before.
+
+### Signal Blending (`App.jsx: loadData`) — ground-truth NOW, radar NEXT
 ```js
-const measured      = data.current?.precipitation ?? 0           // Open-Meteo current
-const stationPrecip = stationResult?.value ?? 0                  // TAWES max of nearest 6 + airport
-const nowPrecip     = Math.max(measured, stationPrecip)          // live "now" condition
+const omForNow    = /* OM current, 0 if TAWES present & 0 (kills OM's 0.10 rounding) */
+const stationPrecip = /* max RR of nearest TAWES (≤15 km) + airport */
+const rvPrecip    = /* RainViewer 5×5 sample, 0 if null */
+const groundPrecip = Math.max(omForNow, stationPrecip)   // ground only (no radar)
+const groundDry    = stationData !== null && groundPrecip < 0.1
 
-// Gap timeline: GeoSphere 1km/15-min nowcast (preferred) else Open-Meteo,
-// with a real "now" slot anchored from nowPrecip.
-const timeline = nowcast
-  ? { times: [nowSec, ...nowcast.times], precips: [nowPrecip, ...nowcast.precips] }
-  : { times: omTimes, precips: omPrecips }
-const cp = detectGaps(timeline.times, timeline.precips).currentPrecip
-const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
+// detectGaps runs on the RAW nowcast (no prepended TAWES slot). When groundDry,
+// the CURRENT nowcast slot is zeroed first so a light over-read overhead (virga)
+// doesn't hide the real next rain.
+const { currentPrecip: cp, gaps, nextRainAt, dryEndsOpen } = detectGaps(nowcast.times, gapPrecips)
+
+// NOW condition: if stations are reporting, trust the GROUND magnitude (not just
+// presence) — the radar over-reads light rain (0.4mm → 1.5mm) and would escalate a
+// drizzle to STUCK. Only with NO station do we fall back to the radar/RV max.
+const effectivePrecip = cp === null ? null
+  : stationData !== null ? groundPrecip
+  : Math.max(cp, nowPrecip)   // nowPrecip = max(omForNow, stationPrecip, rvPrecip)
+
+const maxSoon = /* peak nowcast precip over next 45 min — gates the light state */
 ```
+- **Why ground magnitude:** Salzburg's 2 city gauges are accurate once triggered; the radar nowcast is extrapolation and chronically over-reads light returns (virga). Trusting the ground magnitude when a station reports rain fixes the recurring "drizzle shown as STUCK". Radar/RV still catch rain the stations *miss* (station = 0) — the Nonntal onset case.
 
 ---
 
@@ -117,36 +140,63 @@ const effectivePrecip = cp === null ? null : Math.max(cp, nowPrecip)
 - `opensEnded: true` if gap extends to end of forecast window
 - **Trend fields** also returned by `detectGaps`: `nextRainAt` (unix ts of the next wet slot when it's dry now, independent of `MIN_GAP_SLOTS`) and `dryEndsOpen` (dry for the whole 3 h ahead).
 
-### Status Logic (`getStatus`) — narrative + live countdown
-`getStatus(currentPrecip, gaps, weather, t, nowSec, trend)`. `nowSec` is a per-minute ticker in App (`tickNow`, re-synced on each 5-min data refresh) so the countdowns move live. Thresholds: `URGENT_MIN = 15`, `ALMOST_MIN = 10`.
+### Status Logic (`getStatus`) — 4 states + live narrative
+`getStatus(currentPrecip, gaps, weather, t, nowSec, trend)`. `currentPrecip` is the hysteresis-held `displayPrecip`. `nowSec` is a per-minute ticker (`tickNow`). `trend` carries `{ nextRainAt, dryEndsOpen, rvRainActive, rainProb, recentRain, maxSoon }`.
+
+Thresholds (`gaps.js`): dry `0.1` · gap `≥30 min` (2 slots) · `SOON_MIN 5` · `RAIN_SHOW_MIN 10` · `ALMOST_MIN 10` · `LIGHT_MAX 0.5` · `HEAVY_SOON 4.0` · `RAIN_PROB_MIN 50` · `RAIN_SOON_NOTE 90`.
 
 ```
-currentPrecip === null → loading
+currentPrecip === null → CHECKING (loading)
 
-DRY now (isDry, or a gap already started):
-  dryEndsOpen            → GO · "clear skies for hours"          (s_clear_hours)
-  rain in ≤ 0 min        → GO · "rain could start any minute"    (s_rain_any)
-  rain in ≤ 15 min       → GO · "window closing, rain in X min"  (s_window_closing)  ← urgency
-  rain in > 15 min       → GO · "dry now, rain in about X min"   (s_rain_soon)
-  no trend info          → GO · "no rain right now"              (s_dry_generic)
+isDry (<0.1) OR gapNow → GO (GEMMA RAUS):
+  dryEndsOpen              → "clear for hours"                 (s_clear_hours)
+  rain coming (nextRainAt):
+    prob < 50%             → "rain possible later"             (s_rain_maybe)
+    recentRain & <10 min   → "short break — rain back shortly" (s_rain_back_soon)
+    recentRain & ≥10 min   → "short break — rain in about X"   (s_rain_back)
+    <10 min                → "any minute now"                  (s_rain_any)
+    ≥10 min                → "rain in about X" (rounded to 5)  (s_rain_soon)
+  recently rained, now dry → "rain's eased, dry now"          (s_rain_eased)
+  otherwise               → "no rain right now"               (s_dry_generic)
 
-RAINING now, a ≥30-min break ahead (gaps[0]):
-  clears in ≤ 10 min     → WAIT · "almost over, dry in X, get ready" (s_almost_over)
-  clears in > 10 min     → WAIT · "break opens in X, lasts Y"        (s_break_opens)
+LIGHT rain (daytime, currentPrecip<0.5, no downpour <45min) → PASST SCHON / GO ANYWAY:
+  gap ahead → reuse the break sub (breakSub): clearing / dry-window-in-X
+  else      → "just a light drizzle, go anyway"               (s_light)
 
-RAINING, no break in 3 h → STUCK · "rain straight through"       (s_stuck)
+RAINING, ≥30-min break ahead (gaps[0]) → WAIT:
+  clears <5 min → headline "GLEICH RAUS / ALMOST OUT"         (s_almost_now)
+  else headline "NOCH X MIN / WAIT X MIN"; sub via breakSub:
+    open-ended  → "rain ending in X"          (s_clearing)
+    ≤10 min     → "almost over, dry in X (Y)"  (s_almost_over)
+    else        → "break in X, lasts Y"        (s_break_opens)
+
+RAINING, no break in 3 h → BLEIB DRIN / STUCK                 (s_stuck / s_stuck_storm)
 ```
-- **Time-to-rain countdown** (`nextRainAt`) is what powers the "window closing" urgency; it uses the next wet slot's exact timestamp, so "rain in 10 min" is legitimate even though slots are 15-min apart.
-- **"Almost over"** (`ALMOST_MIN`) counts down to `gaps[0].startsAt` — i.e. the start of a *confirmed* ≥30-min break.
-- Countdown is cosmetic interpolation between refreshes; soft cases use "about/any minute" to avoid overstating precision.
 
-**WMO rain codes** checked by `precipByCode()`: `51-67` (drizzle/rain), `71-77` (snow), `80-99` (showers/storms). Snow is treated as "wet" (no separate arc); it surfaces only via the weather note.
+- **`gapNow`** = `firstGap.startsAt <= nowSec && !trend.rvRainActive` → routes to GO (model says dry now), *unless* RainViewer radar confirms rain overhead.
+- **Rounded ETA (2026-07):** radar onset time jitters between refreshes, so the incoming-rain sub says "shortly/any minute" under 10 min and "about X min" (rounded to nearest 5) at/above — no false-precise ranges like the old "1–18 min".
+- **`breakSub()`** is the shared "what's ahead" sub, reused by both WAIT and the light state so PASST SCHON still tells you if the drizzle is clearing / a gap is opening.
+- **Weather note** (`getWeatherNote`): hazards (thunder/storm/snow/fog) always show; the "go outside" comfort notes (perfect/hot/etc.) are suppressed when `raining` or when rain is < 90 min away, and `weather_perfect` also needs a clear sky (code ≤ 2) — so no "made for going out" under a countdown.
+- **Night nudge:** browser-local 00:00–04:59 → cozy `s_night_*` sub-lines; the light state is suppressed (falls to the rain branch).
+- **Rotating one-liners:** `s_*` keys are **arrays of variants** (3 each, DE & EN). `t()` picks stably via `(phraseSeed + dayNumber + hash(key)) % pool.length` (`phraseSeed` = per-user random in localStorage) → varies by user, stable within a day, rotates daily. Headlines are fixed (brand).
 
-**Note:** `gapNow` (a gap whose `startsAt <= nowSec`) routes to GO even if a station's RR still shows residual rain — trust the model when it says dry now.
+### Narrative continuity — the localStorage "story"
+`App.jsx` persists `story = { lat, lon, ts, lastWetAt }` each refresh. Trusted only **within 1 km** (`STORY_RADIUS_M`) of where it was written (else fresh start). It provides:
+- **Time-based hysteresis** (`HOLD_MS = 5 min`): once "raining" was shown, keep showing it up to 5 min after readings go dry — *survives reloads* (the old in-memory streak did not), so a quick refresh mid-shower won't flash GO.
+- **`recentRain`** (`RECENT_RAIN_MS = 15 min`): "was raining lately" → getStatus frames incoming rain as "short break — rain back" and a fresh dry spell as "rain's eased", instead of a contradictory "rain approaching" on a quick re-open.
+- Server is the *writer* (fresh data); localStorage only carries *continuity*.
 
-**Night nudge:** if the **browser-local** hour (from `nowSec`) is **00:00–04:59 (12am–5am)**, `getStatus` keeps the normal headline + colour but swaps the **sub-line** for a cozy `s_night_*` variant (and drops the "make it quick" urgency). The `NOCH X MIN` countdown headline still shows when raining, so timing info isn't lost.
+### Status colours — matched to the ribbon legend (theme-aware)
+Headline colour = `var(--c-<type>)` (GapBanner), and the RainRibbon palette + legend use the **same** values, so the headline always matches its legend swatch in both themes. Dark theme keeps the vivid palette; light theme darkens every accent for WCAG-AA contrast on the cream background (defined in `index.css`):
 
-**Rotating one-liners:** the `s_*` status sub-line keys in `i18n.js` are **arrays of variants** (3 each, DE & EN). `useI18n`'s `t()` picks one stably via `(phraseSeed + dayNumber + hash(key)) % pool.length` — where `phraseSeed` is a per-user random stored once in `localStorage`. Result: different users see different phrasings, the choice is stable within a day (no flicker on the minute-tick), and it rotates daily. Headlines stay fixed (brand). To add variety, just add strings to a pool; non-array values still work as plain strings.
+| state | token | dark | light |
+|---|---|---|---|
+| GO / dry | `--c-go` | `#D4A017` | `#7A5E00` |
+| light | `--c-light` | `#6CD1EB` | `#1E86B0` |
+| WAIT / moderate | `--c-wait` | `#1BAEE2` | `#0A6E9C` |
+| STUCK / heavy | `--c-stuck` | `#0077AA` | `#024D6E` |
+
+Warning-banner accents (`--c-uv/warn/alert`) and `--c-muted` are likewise darkened in light mode.
 
 ---
 
@@ -155,15 +205,23 @@ RAINING, no break in 3 h → STUCK · "rain straight through"       (s_stuck)
 | File | Purpose |
 |------|---------|
 | `frontend/src/App.jsx` | State management, data fetching, layout |
-| `frontend/src/api.js` | All 4 data sources |
-| `frontend/src/gaps.js` | `detectGaps()` + `getStatus()` |
+| `frontend/src/api.js` | All client-side data sources (Open-Meteo, TAWES, nowcast, RainViewer sample, area dots) |
+| `frontend/src/gaps.js` | `detectGaps()` + `getStatus()` + `breakSub()` |
 | `frontend/src/i18n.js` | All DE/EN strings |
 | `frontend/src/components/Header.jsx` | Top bar (always rendered, even before location granted) |
 | `frontend/src/components/GapBanner.jsx` | Main status display |
 | `frontend/src/components/RadarMap.jsx` | Leaflet base map + RainViewer overlay + nearby-town precip dots + "recenter on me" `flyTo` button |
 | `frontend/src/components/InfoPanel.jsx` | Guide + about + data sources |
-| `frontend/public/sw.js` | Service worker, cache name `gemma-raus-v2` |
-| `backend/main.py` | Push notifications, accuracy tracking |
+| `frontend/src/main.jsx` | SW registration + JS force-update (controllerchange reload) |
+| `frontend/public/sw.js` | Service worker; cache name stamped per deploy (Dockerfile) |
+| `frontend/public/admin/` | Hidden accuracy dashboard (index.html + admin.js) |
+| `backend/main.py` | Push notifications, accuracy tracking, F0.5 calibration, admin API |
+
+### localStorage keys (all client-side, never sent to us)
+`theme`, `lang`, `phrase_seed` (one-liner rotation), `push_unsub_token`, `ios_hint_dismissed`, `last_location` (`{lat,lon,ts}` — GPS cache), `story` (`{lat,lon,ts,lastWetAt}` — narrative continuity), `gr_admin_key` (sessionStorage, admin page only). The privacy copy (`privacy_2`, privacy page) discloses the local location cache.
+
+### JS force-update (deploy → fresh JS without hard-refresh)
+One `DEPLOY_TS` (Dockerfile) stamps **both** the SW cache name and Vite's `__BUILD_ID__` (logged on boot). A new deploy → new SW installs, `skipWaiting()`s, claims clients → `controllerchange` fires → `main.jsx` reloads once (guarded against first-load/loops) and re-checks for a new SW on tab focus.
 
 ---
 
@@ -186,13 +244,13 @@ RAINING, no break in 3 h → STUCK · "rain straight through"       (s_stuck)
 
 ### DWD `maps.dwd.de` — FULLY REMOVED (WAF-blocked, not CORS)
 **Resolved 2026-06.** Live testing showed **both** DWD WMS request types return **HTTP 403 ("Access Denied", F5/edge WAF signature)** from Austrian user IPs — not CORS, a server-side block that browser headers don't bypass:
-- `GetFeatureInfo` (the old `fetchRadarPrecipAtPoint()` data point) → 403, returned `null` every request → replaced by GeoSphere INCA (data source #3 above).
+- `GetFeatureInfo` (the old `fetchRadarPrecipAtPoint()` data point) → 403, returned `null` every request → replaced by the GeoSphere nowcast (data source #3 above).
 - `GetMap` (the `dwd:RX-Produkt` **tile overlay** on the map in `RadarMap.jsx`) → also 403, returned an HTML error body instead of a PNG → the radar overlay rendered nothing. **Removed entirely**; RainViewer is now the sole radar overlay.
 
 Do not reintroduce any `maps.dwd.de` request — the whole host is blocked for Austrian (and likely most EU residential) networks.
 
 ### ICON-EU Model Lag
-The Open-Meteo ICON-EU model runs roughly hourly and can be 2-3h behind convective rain events in the Alps. On fast-moving summer storms, all model-based signals (minutely_15, current.precipitation, weather_code) can show `0` while it's actively raining. The TAWES stations (fast, 10-min) and GeoSphere INCA nowcast (gridded, hourly) are meant to compensate — but only if those API calls succeed.
+The Open-Meteo ICON-EU model runs roughly hourly and can be 2-3h behind convective rain events in the Alps. On fast-moving summer storms, all model-based signals (minutely_15, current.precipitation, weather_code) can show `0` while it's actively raining. The TAWES stations (fast, 10-min) and the GeoSphere nowcast (1 km / 15-min radar) are meant to compensate — but only if those API calls succeed. The inverse also happens: the radar nowcast **over-reads** light returns (virga) — see the ground-magnitude blending above.
 
 ### Storm potential banner — Alpine/Salzburg specific (CAPE ≥ 1500 J/kg)
 A yellow ⚡ banner fires when `current.cape ≥ 1500 J/kg` between 12:00–21:00 local time. This threshold is **deliberately calibrated for the Alpine environment**: orographic lifting from the Alps means convective cells can fire and intensify within 15–20 min from a clear sky. 1500 J/kg is genuinely extreme here.
@@ -205,8 +263,16 @@ A yellow ⚡ banner fires when `current.cape ≥ 1500 J/kg` between 12:00–21:0
 ### GeoSphere TAWES Metadata Format — VERIFIED
 Live-confirmed 2026-06: the metadata endpoint returns `{ ..., stations: [...] }` where each station object has exactly `id` (string), `lat`, `lon`, `is_active` (bool). Discovery filters out inactive stations and falls back to `station_ids=11150` only if the whole metadata fetch fails.
 
-### Backend push & accuracy now use the nowcast (aligned with the app)
-`backend/main.py` previously computed push alerts and accuracy from Open-Meteo only — the lagging model — so it could miss convective rain and fire stale alerts. It now mirrors the frontend: `fetch_timeline()` prefers the GeoSphere 1 km/15-min nowcast (Open-Meteo fallback) for the forward timeline, and `fetch_now_precip()` uses nearest TAWES stations (Open-Meteo current fallback) for the live reading. `check_and_push` anchors a real "now" slot from TAWES before running `_analyze_forecast`; `run_cycle` stores nowcast predictions and verifies them against TAWES actuals. **24/7 caveat:** this only runs continuously if the Railway service stays awake (always-on plan); Web Push still reaches closed browsers via the service worker, subject to OS battery throttling.
+### Backend push, accuracy & calibration
+`backend/main.py` mirrors the frontend: `_fetch_timeline_sourced()` prefers the GeoSphere 1 km/15-min nowcast (Open-Meteo fallback) for the forward timeline; `fetch_now_precip()` uses nearest TAWES (Open-Meteo current fallback) for the live reading. `run_cycle()` (every 5 min) stores nowcast predictions for 11 city grid points at +30/60/90 min and verifies them against TAWES actuals; `check_and_push` requires ≥3/11 points to agree (majority vote) with a 3-per-4h session budget + per-type cooldowns.
+
+**Accuracy metrics vs the app's verdict:** the dashboard measures the *raw nowcast source* at a fixed 0.1 mm threshold — NOT the app's final blended verdict (ground override / RV / hysteresis / light-state are not logged). So "accuracy" is source health, not user-experienced correctness. Note also that headline "accuracy" (~95%) is **base-rate inflated** (rain ~4% of slots → "always dry" scores ~96%); judge skill by **CSI / FAR / POD**, not accuracy.
+
+**Calibration (F0.5, reviewed 2026-07):** `weekly_calibrate()` tunes each point's push threshold on 30 days of verified data. It optimises **F0.5 (precision-weighted)**, not F1 — rain is rare, so plain F1 drives thresholds down and floods false alarms; for a "should I go out" app a false alarm (false STUCK / false push) is worse than a miss. Candidates start at **0.10** (`get_threshold` floors there, so sub-floor candidates were silent no-ops). The calibrated threshold gates the push "rain incoming" forward detection, and the admin dashboard reports the **effective (floored)** value. `check_accuracy_health()` does an emergency raise if 7-day accuracy drops below 85%.
+
+**Admin dashboard** (`/admin/`, `X-Admin-Key`): restructured 2026-07 to lead with the honest **rain-skill scorecard** (hits/false/missed/POD/FAR/CSI/F1 per horizon) + **push activity** log; accuracy demoted to a footnote. `/api/admin/accuracy` (30-day classification) and `/api/admin/dashboard` (health, thresholds, calibration runs, alerts, rainfall history, source health, push log).
+
+**24/7 caveat:** the cycle only runs continuously if the Railway service stays awake (always-on plan); Web Push still reaches closed browsers via the service worker, subject to OS battery throttling.
 
 ### Far-from-Salzburg handling
 If the user's location is **> 50 km** from Salzburg centre (`kmFromSalzburg` vs `FAR_KM` in App.jsx), the app shows the `FarAway` screen ("Salzburg misses you") with a **View Salzburg center** button (calls `useDefaultLocation`) instead of loading unreliable far-away data — `loadData` early-returns past 50 km. Within 50 km but outside the bounding box, the softer `isOutsideSalzburg` banner still shows.
@@ -227,8 +293,15 @@ If the prompt still never appears, the permission is usually pre-**blocked/dismi
 `RadarMap.jsx` uses the RainViewer API for animated radar tiles (~40 min past + 2 nowcast frames). It is now the **only** radar overlay (DWD removed — see above).
 - **`maxNativeZoom: 7` — do NOT raise this.** Verified 2026-06 by decoding the tile PNGs: RainViewer's radar tiles are real only up to **zoom 7**; at **z8 and above it returns a fixed "Zoom Level Not Supported" placeholder image** (a gray box `(0,0,0,140)` with white text — not a transparent/empty tile). Any `maxNativeZoom ≥ 8` makes Leaflet request that placeholder, which is exactly the "Zoom Level Not Supported" boxes that plagued the map. With `7`, Leaflet upscales the z7 tile for higher map zooms. z7 is ~1.2 km/px, already near radar's native resolution, so little real detail is lost.
 - Clear sky → RainViewer tiles are fully transparent → **no overlay is the correct, expected look** (not a bug).
-- `RV_MAX_ZOOM = 14` gates the animation opacity across the interactive zoom range (minZoom 9 → maxZoom 14). Default map `ZOOM = 13` (close on the user).
+- `RV_MAX_ZOOM = 14` gates the animation opacity across the interactive zoom range (minZoom 9 → maxZoom 14). Default map `ZOOM = 11` (shows surrounding-area dots).
 - A `ResizeObserver` calls `map.invalidateSize()` on mount and resize, so the flex-mounted container (`flex-1 min-h-0`, with sibling banners that settle height after first paint) doesn't leave the base tiles blank.
+- **Radar-time banner** (top-left): shows the timestamp of the animating frame, with a dot + label distinguishing past `radar` from `nowcast` (forecast) frames.
+- **Relocate crosshair** (bottom-right): recenters *and* forces a fresh high-accuracy GPS fix (bypassing the 500 m debounce) — for a user who moved (cycled across town). No separate button.
+
+### Geolocation lifecycle (App.jsx)
+- On mount, `permissions.query('geolocation')`: `denied` → show help; `granted` → silently `requestLocation()` (no prompt shown when already granted). `last_location` is restored from localStorage first so the app renders immediately.
+- **500 m jitter debounce** (`MIN_MOVE_M`): a background GPS re-read < 500 m from the current fix is ignored (keeps `prev`) so it doesn't churn the pipeline / shuffle nearest stations. The explicit relocate crosshair and the accuracy "Improve" upgrade bypass it.
+- **Stale-location nudge:** once the stored fix is > 1 h old, a small dismissible banner suggests tapping the crosshair; reappears only after a fresh fix goes stale again.
 
 ---
 
@@ -257,9 +330,10 @@ uvicorn main:app --reload --port 8000
 
 ### Testing API sources locally
 From a browser on your machine, open DevTools → Network tab. With the app loaded and location granted, watch for:
-- `forecast` call to `api.open-meteo.com`
-- `tawes-v1-10min/metadata` then `tawes-v1-10min?parameters=RR&station_ids=...` to `dataset.api.hub.geosphere.at`
-- `maps.dwd.de/geoserver/dwd/wms?...REQUEST=GetFeatureInfo...` — **check if this returns 200 or CORS error**
+- `forecast` call to `api.open-meteo.com` (current + minutely_15 + hourly precip probability)
+- `tawes-v1-10min/metadata` then `tawes-v1-10min?parameters=RR,TL&station_ids=...` to `dataset.api.hub.geosphere.at`
+- `nowcast-v1-15min-1km?parameters=rr&lat_lon=...` to `dataset.api.hub.geosphere.at` (the primary NEXT-lane source)
+- a RainViewer `weather-maps.json` + a `tilecache.rainviewer.com` tile (the GPS radar sample)
 
 To debug rain detection:
 ```js
@@ -275,8 +349,8 @@ curl "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min?par
 # Test GeoSphere metadata
 curl "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min/metadata" | python3 -m json.tool | head -50
 
-# Test GeoSphere INCA 1km nowcast point (replaces DWD RADOLAN, which 403s)
-curl "https://dataset.api.hub.geosphere.at/v1/timeseries/historical/inca-v1-1h-1km?parameters=RR&start=2026-06-17T17:00&end=2026-06-17T20:00&lat_lon=47.8,13.04"
+# Test GeoSphere nowcast (primary NEXT-lane source; lowercase rr)
+curl "https://dataset.api.hub.geosphere.at/v1/timeseries/forecast/nowcast-v1-15min-1km?parameters=rr&lat_lon=47.8,13.04"
 
 # Test Open-Meteo for Salzburg
 curl "https://api.open-meteo.com/v1/forecast?latitude=47.8&longitude=13.04&current=precipitation,weather_code,temperature_2m,wind_speed_10m&minutely_15=precipitation&forecast_minutely_15=4&timeformat=unixtime&timezone=UTC"
@@ -318,9 +392,10 @@ When connecting Claude Code to a local remote development server (so API scripts
 4. Check browser DevTools Network tab to see actual API responses during rain events
 
 The most critical thing to verify during the next rain event:
-- Does `dataset.api.hub.geosphere.at/.../tawes-v1-10min?parameters=RR&station_ids=...` return non-zero `RR` values for the nearest stations (this is the fast 10-min signal)?
-- Does the INCA point query (`inca-v1-1h-1km?parameters=RR&lat_lon=...`) return a non-zero recent hourly sum?
-- (DWD GetFeatureInfo is no longer used — it 403s from Austrian networks. Don't reintroduce it.)
+- Does `tawes-v1-10min?parameters=RR&station_ids=...` return non-zero `RR` for the nearest stations (the fast 10-min ground signal, the NOW lane)?
+- Does `nowcast-v1-15min-1km?parameters=rr&lat_lon=...` show the incoming band (the NEXT lane)?
+- Watch for the **ground vs radar disagreement**: stations light (e.g. 0.4 mm) while the nowcast reads moderate (1.5 mm) is the virga over-read — the ground-magnitude blend + light-rain state handle it.
+- (DWD is no longer used — it 403s from Austrian networks. Don't reintroduce it.)
 
 ---
 
