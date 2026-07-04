@@ -88,7 +88,7 @@ function areaIcon(name, precip, code, status, dryLabel = 'dry') {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, computeStatusAt }) {
+export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, relocating, computeStatusAt }) {
   const containerRef   = useRef(null)
   const mapRef         = useRef(null)
   const markerRef      = useRef(null)
@@ -374,6 +374,42 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     }
   }
 
+  // Relocate crosshair: spinner feedback + a 10 s cooldown on the *real* GPS fetch,
+  // so a user who taps it repeatedly gets instant visual feedback (the spin) without
+  // firing a high-accuracy GPS + full data reload every tap. A press inside the
+  // cooldown "soft-blocks": it still spins briefly (acknowledged) but does no
+  // background work. Any spin is hard-capped at 30 s so it can never hang on.
+  const [spin, setSpin] = useState(false)
+  const lastRealRef = useRef(0)      // last time a REAL relocate actually fired
+  const realRef     = useRef(false)  // is the current spin backing real work?
+  const spinTimer   = useRef(null)
+  const RELOCATE_COOLDOWN_MS = 10_000
+  const SPIN_CAP_MS = 30_000
+
+  const stopSpin = () => { clearTimeout(spinTimer.current); realRef.current = false; setSpin(false) }
+
+  const handleRelocate = () => {
+    recenter()                       // always recenter — cheap, immediate feedback
+    const now = Date.now()
+    clearTimeout(spinTimer.current)
+    setSpin(true)
+    if (now - lastRealRef.current >= RELOCATE_COOLDOWN_MS) {
+      // Cooldown clear → do the real high-accuracy GPS + reload in the background.
+      lastRealRef.current = now
+      realRef.current = true
+      spinTimer.current = setTimeout(stopSpin, SPIN_CAP_MS)  // 30 s safety cap
+      onRelocate?.()
+    } else {
+      // Soft block: spin for feedback only, no background work.
+      realRef.current = false
+      spinTimer.current = setTimeout(() => setSpin(false), 1200)
+    }
+  }
+
+  // End the real-work spin the instant the GPS upgrade resolves (or fails).
+  useEffect(() => { if (!relocating && realRef.current) stopSpin() }, [relocating])
+  useEffect(() => () => clearTimeout(spinTimer.current), [])
+
   return (
     <div className="relative flex-1 min-h-0">
       <div ref={containerRef} className="absolute inset-0" style={{ zIndex: 0 }} />
@@ -390,21 +426,29 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       )}
       {location && (
         <button
-          onClick={() => { recenter(); onRelocate?.() }}
+          onClick={handleRelocate}
           aria-label={t ? t('recenter') : 'Center on my location'}
+          aria-busy={spin}
           className="absolute bottom-4 right-4 z-30 w-11 h-11 flex items-center justify-center
                      rounded-full bg-surface/90 backdrop-blur border border-border text-primary
                      shadow-lg hover:bg-surface active:scale-95 transition"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="7" />
-            <line x1="12" y1="1"  x2="12" y2="4" />
-            <line x1="12" y1="20" x2="12" y2="23" />
-            <line x1="1"  y1="12" x2="4"  y2="12" />
-            <line x1="20" y1="12" x2="23" y2="12" />
-            <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
-          </svg>
+          {spin ? (
+            <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="7" />
+              <line x1="12" y1="1"  x2="12" y2="4" />
+              <line x1="12" y1="20" x2="12" y2="23" />
+              <line x1="1"  y1="12" x2="4"  y2="12" />
+              <line x1="20" y1="12" x2="23" y2="12" />
+              <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+            </svg>
+          )}
         </button>
       )}
     </div>

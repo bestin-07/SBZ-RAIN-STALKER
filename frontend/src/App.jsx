@@ -852,7 +852,7 @@ export default function App() {
             </div>
           )}
           <RainRibbon forecast={forecast} theme={theme} t={t} />
-          <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} computeStatusAt={computeStatusAt} />
+          <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
         </>
       )}
 
