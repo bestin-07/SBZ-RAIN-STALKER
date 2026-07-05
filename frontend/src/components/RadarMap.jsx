@@ -127,10 +127,15 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       const head = (s) => `color:var(--c-${s.type}, var(--c-primary))`
       if (status === undefined) return `<div class="gr-pop"><div class="gr-pop-name">${escHtml(name)}</div><div class="gr-pop-load">…</div></div>`
       if (!status)              return `<div class="gr-pop"><div class="gr-pop-name">${escHtml(name)}</div><div class="gr-pop-sub">${escHtml(failMsg)}</div></div>`
+      // Popups speak in the passive "notice" voice (n_* strings), NOT the first-person
+      // brand voice (GEMMA RAUS / "bed is better") that stays on the big app headline.
+      // Fall back to headline/sub if a status predates the notice field.
+      const nHead = status.notice?.head || status.headline
+      const nSub  = status.notice?.sub  ?? status.sub
       return `<div class="gr-pop">
         <div class="gr-pop-name">${escHtml(name)}</div>
-        <div class="gr-pop-head" style="${head(status)}">${escHtml(status.headline)}</div>
-        <div class="gr-pop-sub">${escHtml(status.sub || '')}</div>
+        <div class="gr-pop-head" style="${head(status)}">${escHtml(nHead)}</div>
+        <div class="gr-pop-sub">${escHtml(nSub || '')}</div>
         ${hintLine}
       </div>`
     }

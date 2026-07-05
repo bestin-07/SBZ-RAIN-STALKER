@@ -145,6 +145,42 @@ function breakSub(firstGap, nowSec, t) {
   return t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
 }
 
+// Passive, third-person "notice" wording for the MAP POPUPS — a neutral status card
+// for a place ("Dry — rain arriving soon"), distinct from the app's first-person brand
+// voice (GEMMA RAUS / "bed is better"), which stays on the big headline + the user's own
+// banner. Same underlying facts, calmer register. Attached to every status as `notice`
+// so the popup renderer can pick it while the banner keeps headline/sub.
+function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
+  const head = type === 'go' ? t('n_dry') : type === 'light' ? t('n_light') : t('n_raining')
+  let sub
+  if (type === 'go') {
+    if (trend.dryEndsOpen) {
+      sub = t('n_clear_hours')
+    } else if (trend.nextRainAt) {
+      const min = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
+      const lowConf = trend.rainProb != null && trend.rainProb < RAIN_PROB_MIN
+      sub = lowConf ? t('n_rain_maybe')
+          : min < RAIN_SHOW_MIN ? t('n_rain_soon')
+          : t('n_rain_in', { min: Math.round(min / 5) * 5 })
+    } else {
+      sub = t('n_dry_now')
+    }
+  } else if (type === 'light') {
+    if (firstGap) {
+      const min = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
+      sub = min < RAIN_SHOW_MIN ? t('n_break_soon') : t('n_clearing', { min: Math.round(min / 5) * 5 })
+    } else {
+      sub = t('n_light_here')
+    }
+  } else if (type === 'wait') {
+    const min = firstGap ? Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60)) : 0
+    sub = min < SOON_MIN ? t('n_break_soon') : t('n_break_in', { min })
+  } else {
+    sub = t('n_no_break')
+  }
+  return { head, sub }
+}
+
 // nowSec + trend ({ nextRainAt, dryEndsOpen }) let the headline/sub tick down
 // live between the 5-min data refreshes. getStatus() wraps this with the
 // night-time sleep nudge (below).
@@ -211,14 +247,14 @@ export function getStatus(
         ? t('s_rain_eased')
         : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     }
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // Trace drizzle (< 0.2 mm) → still GO. A 0.1 mm tip must not flip GEMMA RAUS ↔
   // GO ANYWAY; only a genuine ≥0.2 mm drizzle earns the light state.
   if (currentPrecip < LIGHT_MIN) {
     const sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // ---- Light drizzle (0.2–0.5 mm): "you could still go" ----
@@ -237,7 +273,7 @@ export function getStatus(
     } else {
       sub = t('s_light')
     }
-    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote }
+    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // ---- Raining now: narrate the break ahead ----
@@ -247,7 +283,7 @@ export function getStatus(
     const soon = clearInMin < SOON_MIN
     const headline = soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
     const sub = night ? t('s_night_raining') : breakSub(firstGap, nowSec, t)
-    return { type: 'wait', headline, sub, weather: weatherNote }
+    return { type: 'wait', headline, sub, weather: weatherNote, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   const isThunder = (weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99
@@ -256,5 +292,6 @@ export function getStatus(
     headline: t('STUCK'),
     sub: t(isThunder ? 's_stuck_storm' : night ? 's_night_stuck' : evening ? 's_evening_stuck' : 's_stuck'),
     weather: weatherNote,
+    notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
   }
 }
