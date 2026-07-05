@@ -95,13 +95,30 @@ export default function RainRibbon({ forecast, theme, t }) {
   const isNowcast = forecast?.isNowcast !== false
   const pal = palOf(theme)
 
+  // A flat all-dry ribbon looks identical to a failed/empty one — label it so a
+  // dry forecast never reads as "broken". No data at all → "waiting for data".
+  const nowS = Math.floor(Date.now() / 1000)
+  const rslots = (forecast?.times || [])
+    .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0 }))
+    .filter(s => s.t >= nowS - 300)
+    .slice(0, MAX_SLOTS)
+  const hasData = rslots.length > 0
+  const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
+
   return (
     <div className="border-t border-b border-border shrink-0">
-      <div className="overflow-x-auto scrollbar-none">
+      <div className="relative overflow-x-auto scrollbar-none">
         <canvas
           ref={canvasRef}
           style={{ display: 'block' }}
         />
+        {(allDry || !hasData) && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
+              {hasData ? t('ribbon_dry') : t('ribbon_wait')}
+            </span>
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
         <Legend color={pal.dry}   label={t('dry')} />
