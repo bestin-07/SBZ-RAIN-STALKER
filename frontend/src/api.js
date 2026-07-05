@@ -191,6 +191,22 @@ async function tawesNearestIds(lat, lon, n = 6) {
 // precip = max RR across nearest stations (mm / 10 min).
 // temp   = average TL across stations that report it (°C), null if none.
 export async function fetchNearbyStationPrecip(lat, lon) {
+  // Prefer the backend's shared ground reading. A per-IP direct TAWES call flip-flops
+  // under rate limits, and when it drops the app falls back to the spiky radar current
+  // slot → the GO ANYWAY<->STUCK instability. The backend value is one stable shared
+  // fetch (all city points read the same 2 gauges anyway). GPS stays local — nearest
+  // point picked here. Only fall back to a direct call if the backend is unreachable.
+  try {
+    const points = await fetchAmbient()
+    if (points) {
+      const pt = nearestAmbientPoint(points, +lat, +lon)
+      if (pt && 'ground' in pt) {
+        // Backend reachable → authoritative. null = TAWES genuinely down server-side →
+        // return null so effectivePrecip uses the radar fallback (unchanged semantics).
+        return pt.ground == null ? null : { precip: pt.ground, temp: pt.temp ?? null }
+      }
+    }
+  } catch { /* fall through to the direct call */ }
   return cachedOrNull(`tawes:${(+lat).toFixed(3)},${(+lon).toFixed(3)}`, async () => {
     const ids = await tawesNearestIds(lat, lon, 6)
     const r = await fetch(

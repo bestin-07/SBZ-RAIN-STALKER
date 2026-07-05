@@ -153,7 +153,9 @@ function breakSub(firstGap, nowSec, t) {
 function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
   const head = type === 'go' ? t('n_dry') : type === 'light' ? t('n_light') : t('n_raining')
   let sub
-  if (type === 'go') {
+  if ((type === 'go' || type === 'light') && trend.downpourSoonMin != null) {
+    sub = t('n_downpour_soon', { min: trend.downpourSoonMin })
+  } else if (type === 'go') {
     if (trend.dryEndsOpen) {
       sub = t('n_clear_hours')
     } else if (trend.nextRainAt) {
@@ -220,7 +222,11 @@ export function getStatus(
   // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {
     let sub
-    if (trend.dryEndsOpen) {
+    if (trend.downpourSoonMin != null) {
+      // Radar shows a real downpour imminent — warn even though it's dry NOW, so
+      // "go" doesn't walk you into a soaking. Top priority over the calm dry subs.
+      sub = t('s_downpour_soon', { min: trend.downpourSoonMin })
+    } else if (trend.dryEndsOpen) {
       sub = t(night ? 's_night_clear' : evening ? 's_evening_clear' : 's_clear_hours')
     } else if (trend.nextRainAt) {
       if (night) {
@@ -263,7 +269,11 @@ export function getStatus(
   // falling through to a WAIT countdown; daytime keeps the forward easing/clearing text.
   if (currentPrecip < LIGHT_MAX) {
     let sub
-    if (night) {
+    if (trend.downpourSoonMin != null) {
+      // Drizzling now, but a real downpour is minutes away — warn instead of the
+      // casual "go anyway" that soaked the user in Nonntal.
+      sub = t('s_downpour_soon', { min: trend.downpourSoonMin })
+    } else if (night) {
       sub = t('s_night_drizzle')   // drizzle wording — never "raining" under GO ANYWAY
     } else if (firstGap) {
       const easeMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))

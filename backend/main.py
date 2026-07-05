@@ -954,12 +954,25 @@ async def run_cycle():
         # call instead of each hitting GeoSphere directly — which is what fails on
         # mobile CGNAT (thousands of users behind one rate-limited IP). No extra API
         # calls: this reuses the timelines already fetched above for accuracy.
-        if nowcasts:
-            for pt in _ambient.get("points", []):
-                nc = nowcasts.get(pt["name"])
-                if nc:
-                    precips = _filter_virga(nc["times"], nc["precips"], pt.get("ptime"), pt.get("pprob"))
-                    pt["nowcast"] = {"times": nc["times"], "precips": precips}
+        # Ground (TAWES) reading for the whole city grid — ONE shared fetch. There are
+        # only 2 active gauges within 15 km (Freisaal, Airport), so every city point
+        # reads the same pair; a single central fetch is representative and avoids 11
+        # redundant TAWES calls. Served so clients use this STABLE value instead of each
+        # making a per-IP TAWES call that flip-flops under rate limits — when that direct
+        # call dropped, the app fell back to the spiky radar current slot and swung
+        # GO ANYWAY<->STUCK. None = TAWES genuinely down → client falls back to radar.
+        try:
+            city_ground = await fetch_tawes_precip(client, 47.7985, 13.0469)  # altstadt (central)
+        except Exception as e:
+            print(f"[ground] {e}")
+            city_ground = None
+
+        for pt in _ambient.get("points", []):
+            pt["ground"] = city_ground   # shared 2-gauge reading (None if TAWES unavailable)
+            nc = nowcasts.get(pt["name"]) if nowcasts else None
+            if nc:
+                precips = _filter_virga(nc["times"], nc["precips"], pt.get("ptime"), pt.get("pprob"))
+                pt["nowcast"] = {"times": nc["times"], "precips": precips}
 
         if forecast_rows:
             with get_db() as (_, cur):
