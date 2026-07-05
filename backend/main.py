@@ -892,6 +892,30 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
 # Scheduler
 # ---------------------------------------------------------------------------
 
+# The radar nowcast over-reads light echo aloft (virga) on stable days — it paints
+# 0.10–0.11 mm (just over the 0.1 "wet" line) while the model reads 0 and probability
+# is low. That false "rain" then colours the ribbon AND registers as "rain coming" in
+# the verdict (both consume this same timeline). Suppress LIGHT echo only when the
+# model's hourly probability is low; heavier radar (real convective cells the model
+# misses) and high-probability slots pass through untouched, so genuine onset is kept.
+VIRGA_RADAR_CAP = 0.3   # only echo below this (light/drizzle) is a virga candidate
+VIRGA_PROB_MIN  = 50    # ... and only when hourly rain probability is under this
+
+def _filter_virga(times, precips, ptime, pprob):
+    if not ptime or not pprob:
+        return precips
+    out = []
+    for t, r in zip(times, precips):
+        if r < VIRGA_RADAR_CAP:
+            bi = min(range(len(ptime)), key=lambda i: abs(ptime[i] - t))
+            prob = pprob[bi] if bi < len(pprob) else None
+            if prob is not None and prob < VIRGA_PROB_MIN:
+                out.append(0.0)
+                continue
+        out.append(r)
+    return out
+
+
 async def run_cycle():
     now_ts = int(datetime.now(timezone.utc).timestamp())
     now_dt = datetime.now(timezone.utc)
@@ -934,7 +958,8 @@ async def run_cycle():
             for pt in _ambient.get("points", []):
                 nc = nowcasts.get(pt["name"])
                 if nc:
-                    pt["nowcast"] = nc
+                    precips = _filter_virga(nc["times"], nc["precips"], pt.get("ptime"), pt.get("pprob"))
+                    pt["nowcast"] = {"times": nc["times"], "precips": precips}
 
         if forecast_rows:
             with get_db() as (_, cur):
