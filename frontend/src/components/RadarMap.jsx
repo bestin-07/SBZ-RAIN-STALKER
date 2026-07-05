@@ -39,6 +39,14 @@ function precipColor(p) {
   return               '#E05C00'  // storm/thunderstorm — matches radar warm core
 }
 
+// Rough metres between two lat/lon (equirectangular — fine at city scale).
+function distM(aLat, aLon, bLat, bLon) {
+  const r = Math.PI / 180, R = 6371000
+  const x = (bLon - aLon) * r * Math.cos((aLat + bLat) / 2 * r)
+  const y = (bLat - aLat) * r
+  return Math.sqrt(x * x + y * y) * R
+}
+
 function areaIcon(name, precip, code, status, dryLabel = 'dry') {
   let color, isRaining, valueLine
   if (status && status.type) {
@@ -302,8 +310,24 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     areaMarkersRef.current.forEach(m => m.remove())
     const dryLabel = t ? t('dry') : 'dry'
     const statusOf = (name) => (areaStatus || []).find(s => s.name === name)?.status
+    // The dot you're standing in should mirror your OWN live reading, not an
+    // independently-timed snapshot. The dots refresh on a 6-min sweep and your
+    // location on a 5-min one, with separate per-coordinate caches — so at a
+    // threshold (drizzle ~0.2mm, or a gap that just opened) the coinciding dot
+    // and your headline briefly disagree until the sweep catches up. Mirror the
+    // single NEAREST dot within ~1.5km (dots are >2km apart, so at most one
+    // qualifies) → its colour AND tap-popup match your headline exactly.
+    let mirrorName = null
+    if (location && userStatus && userStatus.type !== 'loading') {
+      let bd = Infinity, best = null
+      for (const a of areaPrecip) {
+        const d = distM(location.lat, location.lon, a.lat, a.lon)
+        if (d < bd) { bd = d; best = a }
+      }
+      if (best && bd <= 1500) mirrorName = best.name
+    }
     areaMarkersRef.current = areaPrecip.map(area => {
-      const st = statusOf(area.name)
+      const st = area.name === mirrorName ? userStatus : statusOf(area.name)
       return L.marker([area.lat, area.lon], { icon: areaIcon(area.name, area.precip, area.code, st, dryLabel), zIndexOffset: 200 })
         .on('click', () => openStatusPopup(area.lat, area.lon, area.name, st))
         .addTo(mapRef.current)
@@ -312,7 +336,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       areaMarkersRef.current.forEach(m => m.remove())
       areaMarkersRef.current = []
     }
-  }, [areaPrecip, areaStatus, t, openStatusPopup])
+  }, [areaPrecip, areaStatus, userStatus, location, t, openStatusPopup])
 
   // Salzburg-centre marker — an extra tappable point (city core sits between the
   // surrounding-town dots). Hollow ring, tinted by its status when known.
