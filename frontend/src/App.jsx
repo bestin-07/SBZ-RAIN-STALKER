@@ -585,10 +585,18 @@ export default function App() {
             .map(sl => sl.p)
           if (soon.length) maxSoon = Math.max(...soon)
         }
-        // Ribbon: anchor a real "now" bar from TAWES so the chart reflects the live
-        // reading, even though gap detection uses the raw nowcast above.
+        // Ribbon: make the chart tell the SAME truth as the headline, so it can't
+        // show "raining now" while the verdict says GO.
+        //  • leading "now" bar = effectivePrecip (ground-trusted) — not nowPrecip,
+        //    which folds in the binary RainViewer echo (0/0.3) and made the first
+        //    bar flicker dry↔light between refreshes.
+        //  • nowcast slots = gapPrecips (the virga-corrected series: current slot
+        //    zeroed when the ground reads dry) — not the raw nowcast, whose light
+        //    echo aloft painted rain bars over a dry verdict.
+        // Future slots keep the real radar forecast, so an actual build-up still shows.
+        const nowBar = effectivePrecip == null ? 0 : effectivePrecip
         const ribbonTimeline = nowcast
-          ? { times: [nowSec, ...nowcast.times], precips: [nowPrecip, ...nowcast.precips] }
+          ? { times: [nowSec, ...nowcast.times], precips: [nowBar, ...gapPrecips] }
           : { times: omTimes, precips: omPrecips }
         setForecast({ times: ribbonTimeline.times, precips: ribbonTimeline.precips, isNowcast: !!nowcast })
 
