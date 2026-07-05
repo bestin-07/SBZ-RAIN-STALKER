@@ -219,6 +219,21 @@ export async function fetchNearbyStationPrecip(lat, lon) {
 // no WAF block). Returns { times:[unix seconds], precips:[mm] } or null.
 // (param name is lowercase `rr`; unit kg/m² = mm.)
 export async function fetchNowcastTimeline(lat, lon) {
+  // Prefer the backend's per-point nowcast (one shared server fetch) over a direct
+  // browser→GeoSphere call. The direct call is per-IP, so on mobile CGNAT (many
+  // users behind one carrier IP) it gets rate-limited and the ribbon goes blank.
+  // The backend snapshot is immune to that; GPS still stays local (we pick the
+  // nearest served point). Only fall back to the direct call if it isn't available.
+  try {
+    const points = await fetchAmbient()
+    if (points) {
+      const pt = nearestAmbientPoint(points, +lat, +lon)
+      const nc = pt?.nowcast
+      if (nc && Array.isArray(nc.times) && nc.times.length && nc.times.length === nc.precips?.length) {
+        return { times: nc.times, precips: nc.precips }
+      }
+    }
+  } catch { /* fall through to the direct call */ }
   // Cap stale serving at 20 min — the nowcast is a time-aligned timeline; older than
   // that its slots no longer line up with "now" and detectGaps yields nonsense.
   return cachedOrNull(`nc:${(+lat).toFixed(3)},${(+lon).toFixed(3)}`, async () => {

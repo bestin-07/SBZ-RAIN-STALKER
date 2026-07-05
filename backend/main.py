@@ -909,9 +909,11 @@ async def run_cycle():
 
         # Store new forecasts for all points × horizons
         forecast_rows = []
+        nowcasts = {}   # point name → full timeline, reused to enrich the ambient snapshot
         for point in POINTS:
             try:
                 times, precips, source = await _fetch_timeline_sourced(client, point)
+                nowcasts[point["name"]] = {"times": times, "precips": precips}
                 for horizon in [30, 60, 90]:
                     target_ts = now_ts + horizon * 60
                     best_idx  = min(range(len(times)), key=lambda i: abs(times[i] - target_ts), default=None)
@@ -922,6 +924,17 @@ async def run_cycle():
                         ))
             except Exception as e:
                 print(f"[cycle] forecast {point['name']}: {e}")
+
+        # Enrich the served ambient snapshot with the per-point nowcast timeline we
+        # just fetched. Clients then render the ribbon + gaps from OUR shared server
+        # call instead of each hitting GeoSphere directly — which is what fails on
+        # mobile CGNAT (thousands of users behind one rate-limited IP). No extra API
+        # calls: this reuses the timelines already fetched above for accuracy.
+        if nowcasts:
+            for pt in _ambient.get("points", []):
+                nc = nowcasts.get(pt["name"])
+                if nc:
+                    pt["nowcast"] = nc
 
         if forecast_rows:
             with get_db() as (_, cur):
