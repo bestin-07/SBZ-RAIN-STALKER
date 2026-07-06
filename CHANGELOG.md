@@ -12,6 +12,17 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.1.2] — 2026-07-06 — Decouple the two upstream APIs (resilience)
+### Fixed
+- `/api/ambient` served **nothing** whenever the Open-Meteo call failed (e.g. its daily
+  limit), because the GeoSphere ground + nowcast were attached to points that only
+  existed on Open-Meteo success — so one API being down wiped the other's data, and a
+  redeploy (which clears the in-memory snapshot) exposed it. Now, if Open-Meteo fails
+  and there's no prior snapshot, the backend seeds a POINTS skeleton (null weather) so
+  the ground + nowcast still reach clients. Clients already null-guard the weather fields.
+
+---
+
 ## [1.1.1] — 2026-07-06 — Fix broken install-prompt icon
 ### Fixed
 - The install popup showed a broken-image placeholder — it referenced a

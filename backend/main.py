@@ -928,11 +928,25 @@ async def run_cycle():
         # to clients so they don't each hit Open-Meteo. Keep the last snapshot on error.
         try:
             amb = await fetch_ambient(client)
-            if amb:
-                _ambient["ts"] = now_ts
-                _ambient["points"] = amb
         except Exception as e:
             print(f"[ambient] {e}")
+            amb = None
+        if amb:
+            _ambient["points"] = amb
+        elif not _ambient.get("points"):
+            # Open-Meteo failed (e.g. daily limit) AND we have no prior snapshot to keep.
+            # GeoSphere may still be fine, so seed a skeleton from POINTS with null weather
+            # — the ground + nowcast (attached below, from GeoSphere) then still reach
+            # clients instead of the whole snapshot being empty. Decouples our two upstream
+            # APIs: one being down no longer wipes the other's data. Client null-guards the
+            # weather fields; the virga filter no-ops without probability (serves raw nowcast).
+            _ambient["points"] = [
+                {"name": p["name"], "lat": p["lat"], "lon": p["lon"],
+                 "temp": None, "wind": None, "code": None, "precip": None,
+                 "cape": None, "uv": None, "ptime": [], "pprob": [], "mtime": [], "mprecip": []}
+                for p in POINTS
+            ]
+        _ambient["ts"] = now_ts
 
         # Store new forecasts for all points × horizons
         forecast_rows = []
