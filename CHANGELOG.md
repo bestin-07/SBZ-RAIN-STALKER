@@ -12,6 +12,13 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.1.1] — 2026-07-06 — Fix broken install-prompt icon
+### Fixed
+- The install popup showed a broken-image placeholder — it referenced a
+  non-existent `/icon-192.png`. Pointed it at the real `/android-chrome-192x192.png`.
+
+---
+
 ## [1.1.0] — 2026-07-06 — Catch the drizzle the gauges miss
 Policy shift toward caution: **better to keep someone in than send them into rain.**
 

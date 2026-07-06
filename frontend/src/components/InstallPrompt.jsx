@@ -57,7 +57,7 @@ export default function InstallPrompt({
     <div className="fixed inset-x-0 bottom-0 z-[1000] px-3 pb-3 pointer-events-none">
       <div className="mx-auto max-w-md rounded-xl bg-surface border border-border shadow-xl p-3.5 pointer-events-auto">
         <div className="flex items-start gap-3">
-          <img src="/icon-192.png" alt="" width="40" height="40" className="rounded-lg shrink-0" />
+          <img src="/android-chrome-192x192.png" alt="" width="40" height="40" className="rounded-lg shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="font-display font-bold text-primary">{t('ip_title')}</div>
             <div className="text-sm text-muted mt-0.5 leading-snug">{body}</div>

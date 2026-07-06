@@ -42,11 +42,13 @@ SBZ-RAIN-STALKER/
 │   │   ├── sw.js                # Service worker (network-first; cache name stamped per deploy)
 │   │   ├── manifest.json        # PWA manifest
 │   │   ├── support/            # Donate docs — set VITE_DONATE_URL (or DONATE_URL in InfoPanel.jsx) to a PayPal.me/Stripe/Ko-fi link
-│   │   ├── favicon.svg          # Brand icons (user-maintained)
-│   │   ├── favicon-32.png
+│   │   ├── logo.svg             # Brand icons (user-maintained)
+│   │   ├── favicon.ico
+│   │   ├── favicon-16x16.png / favicon-32x32.png
 │   │   ├── apple-touch-icon.png
-│   │   ├── icon-192.png
-│   │   └── icon-512.png
+│   │   ├── android-chrome-192x192.png / android-chrome-512x512.png  # PWA app icons (referenced by InstallPrompt + manifest)
+│   │   ├── maskable-icon-512.png
+│   │   └── og-image.png
 │   ├── index.html
 │   ├── vite.config.js
 │   └── tailwind.config.js
