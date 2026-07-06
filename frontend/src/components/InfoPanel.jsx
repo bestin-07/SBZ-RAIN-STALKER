@@ -137,6 +137,10 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
           >
             {t('close')}
           </button>
+
+          <p className="font-mono text-[11px] text-muted mt-8 opacity-70">
+            Gemma Raus v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}
+          </p>
         </div>
       </div>
     </>

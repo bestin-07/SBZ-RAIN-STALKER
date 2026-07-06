@@ -11,6 +11,7 @@ import FarAway from './components/FarAway'
 import InfoPanel from './components/InfoPanel'
 import NotifyModal from './components/NotifyModal'
 import PrivacyPanel from './components/PrivacyPanel'
+import InstallPrompt from './components/InstallPrompt'
 
 const REFRESH_MS = 5 * 60 * 1000
 // Imminent-downpour warning: if the (virga-filtered) radar shows a real downpour of
@@ -140,6 +141,7 @@ export default function App() {
   const _ua = navigator.userAgent
   const isIOSSafari = isIOS && /Safari/.test(_ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(_ua)
   const isIOSOther  = isIOS && /CriOS|FxiOS|EdgiOS|OPiOS/.test(_ua)
+  const isAndroid   = /Android/.test(_ua)
   const iosHint = (!isStandalone && !iosHintDismissed)
     ? (isIOSSafari ? 'ios_install' : isIOSOther ? 'ios_open_safari' : null)
     : null
@@ -897,6 +899,16 @@ export default function App() {
       )}
 
       <PrivacyPanel open={privacyOpen} onClose={closePrivacy} t={t} />
+
+      <InstallPrompt
+        t={t}
+        installable={installable && !isStandalone}
+        onInstall={headerProps.onInstall}
+        isStandalone={isStandalone}
+        isIOSSafari={isIOSSafari}
+        isIOSOther={isIOSOther}
+        isAndroid={isAndroid}
+      />
     </div>
   )
 }

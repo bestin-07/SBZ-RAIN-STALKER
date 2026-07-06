@@ -380,7 +380,34 @@ The Dockerfile is multi-stage:
 
 Push to `main` → Railway auto-deploys. No manual steps.
 
-**To check if deployment is live:** Look for the Railway deployment URL in project settings.
+**To check if deployment is live:** Look for the Railway deployment URL in project settings. NB: the bundle hash in `index.html` can contain a `-` (e.g. `index-Bpehv-4X.js`) — when scripting a deploy check, match `index-[A-Za-z0-9_-]+\.js`, not `[A-Za-z0-9_]+`.
+
+---
+
+## Versioning & rollback
+
+**Live since going public (2026-07): the app is versioned so we can always roll back to a known-good state.**
+
+- **Source of truth:** `frontend/package.json` → `version` (SemVer `MAJOR.MINOR.PATCH`). Vite bakes it in as `__APP_VERSION__`; it's shown in the info panel (`Gemma Raus vX.Y.Z`) so we always know what's live.
+- **`__BUILD_ID__` vs `__APP_VERSION__`:** `BUILD_ID` is a per-deploy timestamp (from the Dockerfile) used only to bust the service-worker cache — it changes every deploy. `APP_VERSION` is the human release we tag and roll back to. Don't conflate them.
+- **When to bump (SemVer):** PATCH = bug fix / copy / UI, no logic change · MINOR = new feature or a **rain-logic behavioural change** (also add a Logic change log entry) · MAJOR = breaking / re-architecture.
+- **`CHANGELOG.md`** records every release; **CLAUDE.md → Logic change log** records every change that alters the verdict.
+
+### Cutting a release
+```bash
+# 1. bump frontend/package.json "version"  →  e.g. 1.1.0
+# 2. add a CHANGELOG.md entry (and a Logic change log entry if logic changed)
+git add -A && git commit -m "Release v1.1.0: <summary>"
+git tag -a v1.1.0 -m "v1.1.0"
+git push origin main --tags        # Railway auto-deploys main
+```
+
+### Rolling back a bad deploy (fastest → cleanest)
+1. **Railway instant rollback (fastest):** Railway dashboard → the service → Deployments → pick the last good deployment → **Redeploy / Rollback**. No git change; buys time while you investigate.
+2. **Redeploy a known-good tag:** `git checkout v1.0.0 -- .` on a branch, or reset `main` to the tag and force-push *(only if you own the risk)*; Railway rebuilds it.
+3. **Revert the offending commits (cleanest history):** `git revert <sha>...` → push `main` → auto-deploys the reverted state. Then bump a PATCH and tag it.
+
+**Rule of thumb:** on a production failure, hit **Railway rollback first** (seconds), then fix forward with a `git revert` + PATCH release. Never leave `main` in a state you can't identify by tag.
 
 ---
 
