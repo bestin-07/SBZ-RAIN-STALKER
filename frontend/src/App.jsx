@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, AREAS } from './api'
-import { detectGaps, getStatus, DRY_THRESHOLD } from './gaps'
+import { detectGaps, getStatus, DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -414,12 +414,29 @@ export default function App() {
       gapPrecips = gapTimeline.precips.map((p, i) => (i === idx ? 0 : p))
     }
     const { currentPrecip: cp, gaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
-    // Same as loadData: trust the ground when stations report, else radar max
-    // (nowcast + RainViewer sample). Including RV here makes the town dots catch a
-    // drizzle the sparse gauges miss — so a dot agrees with the user's own location
-    // instead of reading GEMMA RAUS while the live view says GO ANYWAY.
-    const effectivePrecip = cp === null ? null
-      : stationData !== null ? groundPrecip : Math.max(cp, groundPrecip, rvPrecip)
+    // Raw nowcast value at "now" (un-zeroed) — to catch a drizzle the gauge misses.
+    let rawNowSlot = 0
+    if (nowcast) {
+      let bi = 0, bd = Infinity
+      for (let i = 0; i < nowcast.times.length; i++) { const dd = Math.abs(nowcast.times[i] - nowSec); if (dd < bd) { bd = dd; bi = i } }
+      rawNowSlot = nowcast.precips[bi] ?? 0
+    }
+    // Same surfacing rule as loadData (v1.1) so a town dot matches your live verdict:
+    // gauge dry but radar/RV see a LIGHT drizzle → GO ANYWAY (capped, never STUCK).
+    let effectivePrecip, drizzleSurfaced = false
+    if (cp === null) {
+      effectivePrecip = null
+    } else if (stationData !== null) {
+      effectivePrecip = groundPrecip
+      if (groundPrecip < DRY_THRESHOLD) {
+        const drizzle = Math.max(rawNowSlot, rvPrecip)
+        if (drizzle >= DRY_THRESHOLD && drizzle < LIGHT_MAX) {
+          effectivePrecip = Math.max(drizzle, LIGHT_MIN); drizzleSurfaced = true
+        }
+      }
+    } else {
+      effectivePrecip = Math.max(cp, groundPrecip, rvPrecip)
+    }
     let maxSoon = null
     if (nowcast) {
       const lim = nowSec + 45 * 60
@@ -441,7 +458,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb, recentRain: false, maxSoon, downpourSoonMin })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -587,15 +604,39 @@ export default function App() {
         }
 
         const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
-        // When stations report, trust the GROUND magnitude — a stale/over-reading
-        // radar nowcast must not force STUCK while you're in a light drizzle. Only
-        // with NO station reading do we fall back to the radar/RV max (catch onset
-        // the gauges miss). The nowcast still drives the forward gaps/countdown.
-        const effectivePrecip = cp === null
-          ? null
-          : stationData !== null
-            ? groundPrecip
-            : Math.max(cp, nowPrecip)
+        // Raw (un-zeroed) nowcast value at "now" — gapPrecips zeroes the current slot
+        // for gap detection, but here we want the real radar reading to catch a drizzle.
+        let rawNowSlot = 0
+        if (nowcast) {
+          let bi = 0, bd = Infinity
+          for (let i = 0; i < nowcast.times.length; i++) {
+            const d = Math.abs(nowcast.times[i] - nowSec)
+            if (d < bd) { bd = d; bi = i }
+          }
+          rawNowSlot = nowcast.precips[bi] ?? 0
+        }
+        // NOW magnitude: trust the GROUND when a gauge reports — a stale/over-reading
+        // radar must not force STUCK in a drizzle. BUT if the gauge reads dry while the
+        // radar/RainViewer see a LIGHT drizzle at your spot the 1–3 km gauge misses
+        // (hyperlocal / too fine for the bucket), surface it as GO ANYWAY — err toward
+        // caution, a jacket beats a soaking (v1.1). Only light echo (0.1–0.5) surfaces,
+        // bumped into the light band (not the GEMMA-RAUS trace zone) and capped so it can
+        // NEVER become a false STUCK; a genuine heavier cell keeps the ground's dry call.
+        let effectivePrecip, drizzleSurfaced = false
+        if (cp === null) {
+          effectivePrecip = null
+        } else if (stationData !== null) {
+          effectivePrecip = groundPrecip
+          if (groundPrecip < DRY_THRESHOLD) {
+            const drizzle = Math.max(rawNowSlot, rvPrecip)
+            if (drizzle >= DRY_THRESHOLD && drizzle < LIGHT_MAX) {
+              effectivePrecip = Math.max(drizzle, LIGHT_MIN)
+              drizzleSurfaced = true
+            }
+          }
+        } else {
+          effectivePrecip = Math.max(cp, nowPrecip)
+        }
         // Peak nowcast intensity over the next 45 min — lets getStatus offer the
         // "light rain, go anyway" nuance only when no real downpour is imminent.
         let maxSoon = null
@@ -667,7 +708,7 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD, rainProb, recentRain, maxSoon, downpourSoonMin })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data?.current?.temperature_2m ?? null,

@@ -129,8 +129,8 @@ function precipByCode(code) {
 const RAIN_SHOW_MIN = 10  // below this, say "shortly/any minute" — a numeric ETA is false precision
 const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get ready"
 const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
-const LIGHT_MIN = 0.2  // below this = go (dry-enough) — a 0.1mm tip must not flip GO↔GO-ANYWAY
-const LIGHT_MAX = 0.5  // raining but below this = light/drizzle → "you could still go out"
+export const LIGHT_MIN = 0.2  // below this = go (dry-enough) — a 0.1mm tip must not flip GO↔GO-ANYWAY
+export const LIGHT_MAX = 0.5  // raining but below this = light/drizzle → "you could still go out"
 const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
 const RAIN_SOON_NOTE = 90 // rain within this many min → drop the "go out & enjoy" weather notes
 

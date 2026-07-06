@@ -898,21 +898,24 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
 # the verdict (both consume this same timeline). Suppress LIGHT echo only when the
 # model's hourly probability is low; heavier radar (real convective cells the model
 # misses) and high-probability slots pass through untouched, so genuine onset is kept.
-VIRGA_RADAR_CAP = 0.3   # only echo below this (light/drizzle) is a virga candidate
-VIRGA_PROB_MIN  = 50    # ... and only when hourly rain probability is under this
+VIRGA_PROB_MIN  = 50     # low-confidence when hourly rain probability is under this
+VIRGA_CAP_TO    = 0.4    # cap (not zero) low-confidence echo → shows as at most LIGHT
 
 def _filter_virga(times, precips, ptime, pprob):
+    """Low-confidence echo (model probability < 50%) is CAPPED to ~light, not zeroed.
+    Rationale (2026-07, v1.1): zeroing hid real light drizzle the gauges miss and made
+    the ribbon claim a false "no rain in 3 h". Capping instead keeps two guarantees:
+      • a genuine light drizzle still SHOWS (ribbon + a GO ANYWAY heads-up), and
+      • a low-confidence HEAVY echo (virga aloft) can never paint a storm / force STUCK —
+        it's pulled down into the light band (0.4 < LIGHT_MAX 0.5).
+    High-probability rain passes through untouched → real WAIT/STUCK still fires."""
     if not ptime or not pprob:
         return precips
     out = []
     for t, r in zip(times, precips):
-        if r < VIRGA_RADAR_CAP:
-            bi = min(range(len(ptime)), key=lambda i: abs(ptime[i] - t))
-            prob = pprob[bi] if bi < len(pprob) else None
-            if prob is not None and prob < VIRGA_PROB_MIN:
-                out.append(0.0)
-                continue
-        out.append(r)
+        bi = min(range(len(ptime)), key=lambda i: abs(ptime[i] - t))
+        prob = pprob[bi] if bi < len(pprob) else None
+        out.append(min(r, VIRGA_CAP_TO) if (prob is not None and prob < VIRGA_PROB_MIN) else r)
     return out
 
 

@@ -12,6 +12,27 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.1.0] — 2026-07-06 — Catch the drizzle the gauges miss
+Policy shift toward caution: **better to keep someone in than send them into rain.**
+
+### Changed (rain logic)
+- **Surface a light drizzle when the gauge reads dry.** When a TAWES gauge reads dry
+  but the radar / RainViewer see a **light** echo (0.1–0.5 mm) at your spot the sparse
+  gauges miss, the verdict now shows **GO ANYWAY** instead of GEMMA RAUS. Only light
+  echo surfaces — bumped into the light band, **capped so it can never become a false
+  STUCK**; a genuine heavier cell keeps the ground's dry call. (`effectivePrecip`,
+  loadData + computeStatusAt; `rvRainActive` suppresses the `gapNow` override.)
+- **Virga filter caps instead of zeroing.** Low-confidence echo (< 50% probability) is
+  now capped to ~light (0.4 mm) rather than zeroed. This stops the ribbon claiming a
+  false "no rain in 3 h" over a real drizzle, while still preventing a low-confidence
+  heavy echo from painting a storm / forcing STUCK.
+
+### Trade-off (accepted)
+On a genuinely dry virga day the app may occasionally say "GO ANYWAY, light drizzle"
+when it's actually dry — the deliberate price of never sending someone into rain.
+
+---
+
 ## [1.0.0] — 2026-07-06 — First public release
 First version shipped to the public. Consolidates the stability + accuracy work.
 
