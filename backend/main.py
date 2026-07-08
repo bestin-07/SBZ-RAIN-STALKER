@@ -929,20 +929,31 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
 # model's hourly probability is low; heavier radar (real convective cells the model
 # misses) and high-probability slots pass through untouched, so genuine onset is kept.
 VIRGA_PROB_MIN  = 50     # low-confidence when hourly rain probability is under this
-VIRGA_CAP_TO    = 0.4    # cap (not zero) low-confidence echo → shows as at most LIGHT
+VIRGA_CAP_TO    = 0.4    # cap (not zero) low-confidence LIGHT echo → shows as at most LIGHT
+VIRGA_HEAVY_PASS = 1.5   # low-confidence echo AT/ABOVE this passes through UNTOUCHED
 
 def _filter_virga(times, precips, ptime, pprob):
-    """Low-confidence echo (model probability < 50%) is CAPPED to ~light, not zeroed.
-    Rationale (2026-07, v1.1): zeroing hid real light drizzle the gauges miss and made
-    the ribbon claim a false "no rain in 3 h". Capping instead keeps two guarantees:
-      • a genuine light drizzle still SHOWS (ribbon + a GO ANYWAY heads-up), and
-      • a low-confidence HEAVY echo (virga aloft) can never paint a storm / force STUCK —
-        it's pulled down into the light band (0.4 < LIGHT_MAX 0.5).
-    High-probability rain passes through untouched → real WAIT/STUCK still fires."""
+    """Low-confidence echo (model probability < 50%) is CAPPED to ~light, not zeroed —
+    EXCEPT heavy echo, which always passes through.
+
+    v1.1.4 REGRESSION FIX: the cap rewrite (v1.1.0) accidentally applied the cap to ALL
+    low-probability echo, including a real 2–3 mm convective cell. ICON-EU lags convection,
+    so on pop-up shower days its probability stays <50% exactly when the radar sees a real
+    downpour — the filter then capped the downpour to 0.4, the ribbon showed "light
+    drizzle", the ≥1.5 mm downpour-warning could never fire, and the app said GO ANYWAY
+    into a soaking. Radar seeing HEAVY rain is self-evidencing (virga is light echo);
+    ≥ VIRGA_HEAVY_PASS therefore passes regardless of what the lagging model thinks:
+      • light low-confidence echo (< 1.5) → capped to 0.4 (virga can't paint a storm,
+        but a real drizzle still shows),
+      • heavy echo (≥ 1.5) → untouched → ribbon shows it, downpour warning can fire,
+      • high-probability rain → untouched."""
     if not ptime or not pprob:
         return precips
     out = []
     for t, r in zip(times, precips):
+        if r >= VIRGA_HEAVY_PASS:
+            out.append(r)           # heavy radar echo is real — never filter it
+            continue
         bi = min(range(len(ptime)), key=lambda i: abs(ptime[i] - t))
         prob = pprob[bi] if bi < len(pprob) else None
         out.append(min(r, VIRGA_CAP_TO) if (prob is not None and prob < VIRGA_PROB_MIN) else r)

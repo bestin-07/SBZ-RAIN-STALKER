@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.1.4] — 2026-07-06 — CRITICAL: virga filter was hiding real downpours
+### Fixed (regression, introduced in 1.1.0)
+- The virga-filter "cap" rewrite accidentally applied to **all** low-probability echo —
+  including a real 2–3 mm convective downpour. ICON-EU lags convection, so on pop-up
+  shower days its probability stays <50% exactly when the radar sees a real cell: the
+  filter capped the downpour to 0.4 mm → ribbon showed "light drizzle", the ≥1.5 mm
+  downpour warning could never fire, and the verdict said GO ANYWAY into a soaking.
+  (The backend's push analysis reads the raw timeline — that's why it correctly fired
+  `rain_incoming` while the app showed dry: the app was served the filtered data.)
+- **Heavy echo (≥1.5 mm) now always passes through unfiltered** — radar seeing heavy
+  rain is self-evidencing; virga is light echo by nature. Light low-confidence echo is
+  still capped at 0.4 (no false storms), high-probability rain untouched.
+
+---
+
 ## [1.1.3] — 2026-07-06 — Cut GeoSphere calls ~5× (fix 429 rate-limiting)
 ### Fixed
 - The backend made **~67 GeoSphere calls per cycle** — the forecast loop *and*
