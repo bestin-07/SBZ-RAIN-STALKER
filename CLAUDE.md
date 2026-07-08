@@ -199,6 +199,8 @@ python backend/test_logic.py      # 8 tests: _filter_virga contract (heavy-pass!
                                    # threshold constants, MIN_PUSH_AGREEMENT
 ```
 
+**CI:** `.github/workflows/tests.yml` runs both suites + a frontend build check on every push/PR to `main`. A red ❌ on a commit = the logic contract broke — don't trust that deploy; roll back by tag (Railway deploys independently of CI, so the X is your signal, not a blocker).
+
 Rules:
 - A failing test means the change is a bug — **or the intent changed**, in which case update the test AND add a Logic change log entry **together, never silently**.
 - The threshold-contract tests (DRY 0.1 / LIGHT 0.2–0.5 / DOWNPOUR 1.5@30min / VIRGA 50%/0.4/1.5) exist precisely so a "harmless tweak" can't drift the verdict boundaries unnoticed.
