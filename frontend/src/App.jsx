@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, AREAS } from './api'
-import { detectGaps, getStatus, DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -14,11 +14,6 @@ import PrivacyPanel from './components/PrivacyPanel'
 import InstallPrompt from './components/InstallPrompt'
 
 const REFRESH_MS = 5 * 60 * 1000
-// Imminent-downpour warning: if the (virga-filtered) radar shows a real downpour of
-// ≥ DOWNPOUR_MM within DOWNPOUR_WINDOW_MIN, the GO / light state surfaces a "heavy rain
-// in ~X min" heads-up so "go anyway" never walks you into a soaking (the Nonntal case).
-const DOWNPOUR_MM = 1.5           // mm/15-min slot — clearly heavier than the 0.5 light band
-const DOWNPOUR_WINDOW_MIN = 30    // only warn about downpours arriving within this window
 // Narrative continuity: a small story kept in localStorage so a refresh/re-open
 // a few minutes later stays coherent instead of contradicting itself.
 const STORY_RADIUS_M   = 1000        // continuity only trusted within 1 km of the stored spot
@@ -55,20 +50,6 @@ function metersBetween(a, b) {
   const s = Math.sin(dLat / 2) ** 2
     + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s))
-}
-
-// Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
-// DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
-// verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
-// so it fires only on genuine heavy rain — never on light echo the model rejects.
-function firstDownpourMin(nowcast, nowSec) {
-  if (!nowcast) return null
-  const lim = nowSec + DOWNPOUR_WINDOW_MIN * 60
-  for (let i = 0; i < nowcast.times.length; i++) {
-    const tt = nowcast.times[i], p = nowcast.precips[i] ?? 0
-    if (tt >= nowSec && tt <= lim && p >= DOWNPOUR_MM) return Math.max(0, Math.round((tt - nowSec) / 60))
-  }
-  return null
 }
 
 // VAPID public key (base64url) → Uint8Array. The most compatible form for

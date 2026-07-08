@@ -2,6 +2,25 @@ export const DRY_THRESHOLD = 0.1
 const MIN_GAP_SLOTS = 2
 const LOOK_AHEAD = 3 * 3600
 
+// Imminent-downpour warning thresholds (used by firstDownpourMin below; surfaced by
+// getStatus as the top-priority s_downpour_soon sub in the GO / light states).
+export const DOWNPOUR_MM = 1.5           // mm/15-min slot — clearly heavier than the 0.5 light band
+export const DOWNPOUR_WINDOW_MIN = 30    // only warn about downpours arriving within this window
+
+// Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
+// DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
+// verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
+// so it fires only on genuine heavy rain — never on light echo the model rejects.
+export function firstDownpourMin(nowcast, nowSec) {
+  if (!nowcast) return null
+  const lim = nowSec + DOWNPOUR_WINDOW_MIN * 60
+  for (let i = 0; i < nowcast.times.length; i++) {
+    const tt = nowcast.times[i], p = nowcast.precips[i] ?? 0
+    if (tt >= nowSec && tt <= lim && p >= DOWNPOUR_MM) return Math.max(0, Math.round((tt - nowSec) / 60))
+  }
+  return null
+}
+
 export function detectGaps(times, precips) {
   const now = Math.floor(Date.now() / 1000)
   const cutoff = now + LOOK_AHEAD

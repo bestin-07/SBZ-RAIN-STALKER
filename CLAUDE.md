@@ -188,6 +188,23 @@ RAINING, no break in 3 h → BLEIB DRIN / STUCK                 (s_stuck / s_stu
 - **Night nudge:** browser-local 00:00–04:59 → cozy `s_night_*` sub-lines; the light state stays light but uses `s_night_drizzle` (calm drizzle wording, never "raining").
 - **Rotating one-liners:** `s_*` keys are **arrays of variants** (3 each, DE & EN). `t()` picks stably via `(phraseSeed + dayNumber + hash(key)) % pool.length` (`phraseSeed` = per-user random in localStorage) → varies by user, stable within a day, rotates daily. Headlines are fixed (brand).
 
+### Tests — the logic integrity guard (RUN BEFORE ANY LOGIC CHANGE)
+The intended logic is encoded as an executable contract; **run both suites before and after touching gaps.js, the App.jsx blend, or the backend filter/push logic**:
+
+```bash
+cd frontend && npm test            # 41 tests: detectGaps, getStatus (all 4 states,
+                                   # thresholds, downpour warning, night/evening voice,
+                                   # weather notes, notice voice), firstDownpourMin
+python backend/test_logic.py      # 8 tests: _filter_virga contract (heavy-pass!),
+                                   # threshold constants, MIN_PUSH_AGREEMENT
+```
+
+Rules:
+- A failing test means the change is a bug — **or the intent changed**, in which case update the test AND add a Logic change log entry **together, never silently**.
+- The threshold-contract tests (DRY 0.1 / LIGHT 0.2–0.5 / DOWNPOUR 1.5@30min / VIRGA 50%/0.4/1.5) exist precisely so a "harmless tweak" can't drift the verdict boundaries unnoticed.
+- The backend suite extracts the REAL functions from `main.py` via AST (no DB needed) — it always tests shipped code, not a copy.
+- v1.1.4's regression (virga filter silently hiding real downpours) is the canonical example these tests now make impossible: `test_real_downpour_survives_lagging_model` replays that exact incident.
+
 ### Logic change log
 Every change that alters the verdict or the data feeding it — newest first. Behavioural boundaries only; cosmetic/UI omitted.
 
