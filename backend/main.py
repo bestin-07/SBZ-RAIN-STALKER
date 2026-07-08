@@ -398,6 +398,13 @@ async def _load_tawes_stations(client: httpx.AsyncClient):
 
 TAWES_CAP_KM = 15  # mirror the frontend cap — distant mountain stations cause false "raining now"
 
+# Per-cycle TAWES cache (station-id key → (ts, value)). Every city grid point resolves
+# to the SAME 2 gauges (Freisaal 11350, Airport 11150), and each cycle the ground fetch +
+# per-row verification + check_and_push all read them — that was ~45 identical TAWES calls
+# a cycle, the main cause of the GeoSphere 429s. Cached < the 300 s cycle → one real call.
+_tawes_cache = {}
+_TAWES_TTL = 120
+
 async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
     stations = await _load_tawes_stations(client)
     if stations:
@@ -409,6 +416,11 @@ async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, 
         ids = ["11150"]
     if "11150" not in ids:
         ids.append("11150")
+    key  = ",".join(sorted(ids))
+    nowt = datetime.now(timezone.utc).timestamp()
+    hit  = _tawes_cache.get(key)
+    if hit and nowt - hit[0] < _TAWES_TTL:
+        return hit[1]
     r = await client.get(
         f"{GEOSPHERE}/station/current/tawes-v1-10min",
         params={"parameters": "RR", "station_ids": ",".join(ids)},
@@ -423,23 +435,41 @@ async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, 
                 vals.append(v)
         except (KeyError, IndexError, TypeError):
             continue
-    return max(vals) if vals else None
+    val = max(vals) if vals else None
+    _tawes_cache[key] = (nowt, val)
+    return val
 
 
 async def fetch_timeline(client: httpx.AsyncClient, point: dict):
     times, precips, _ = await _fetch_timeline_sourced(client, point)
     return times, precips
 
+# Per-cycle nowcast cache (point name → (ts, result)). The forecast loop AND
+# check_and_push both request every point's timeline in the same cycle; without this
+# that's 2× the GeoSphere nowcast calls, which (with the TAWES calls) tripped GeoSphere's
+# 429 rate limit and starved the served nowcast → false "rain then dry" retractions.
+# TTL < the 300 s cycle, so each cycle still gets FRESH data but reuses within the cycle.
+_nowcast_cache = {}
+_NOWCAST_TTL = 120
+
 async def _fetch_timeline_sourced(client: httpx.AsyncClient, point: dict):
-    """Like fetch_timeline but also returns the source string ('geosphere'|'open_meteo')."""
+    """Like fetch_timeline but also returns the source string ('geosphere'|'open_meteo').
+    Cached per point for _NOWCAST_TTL so repeated same-cycle requests reuse one call."""
+    name = point["name"]
+    nowt = datetime.now(timezone.utc).timestamp()
+    hit = _nowcast_cache.get(name)
+    if hit and nowt - hit[0] < _NOWCAST_TTL:
+        return hit[1]
     try:
         times, precips = await fetch_nowcast_timeline(client, point)
-        return times, precips, "geosphere"
+        res = (times, precips, "geosphere")
     except Exception:
         data = await fetch_forecast_for_point(client, point)
-        return (data.get("minutely_15", {}).get("time", []),
-                data.get("minutely_15", {}).get("precipitation", []),
-                "open_meteo")
+        res = (data.get("minutely_15", {}).get("time", []),
+               data.get("minutely_15", {}).get("precipitation", []),
+               "open_meteo")
+    _nowcast_cache[name] = (nowt, res)
+    return res
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.1.3] — 2026-07-06 — Cut GeoSphere calls ~5× (fix 429 rate-limiting)
+### Fixed
+- The backend made **~67 GeoSphere calls per cycle** — the forecast loop *and*
+  `check_and_push` each re-fetched all 11 nowcasts, plus a ground fetch and per-row
+  verification each hit TAWES (~45 identical calls, since every city point shares the
+  same 2 gauges). This tripped GeoSphere's **429** (`[ground] 429 Too Many Requests`),
+  occasionally starving the nowcast → an Open-Meteo fallback that lags convection.
+- Added per-cycle caches: **nowcast** by point (`_NOWCAST_TTL`) and **TAWES** by
+  station-id (`_TAWES_TTL`), both < the 300 s cycle. Same-cycle reuse collapses the
+  load to **~12 calls/cycle** (11 nowcast + 1 TAWES) — fresh data each cycle, no 429.
+
+_Note: investigation showed the missed-downpour report was primarily convective
+nowcast limitation (a 6 pm cell isn't predictable at noon; the backend detected it only
+as it arrived), not this rate-limit — but the 429 was a real reliability risk regardless._
+
+---
+
 ## [1.1.2] — 2026-07-06 — Decouple the two upstream APIs (resilience)
 ### Fixed
 - `/api/ambient` served **nothing** whenever the Open-Meteo call failed (e.g. its daily
