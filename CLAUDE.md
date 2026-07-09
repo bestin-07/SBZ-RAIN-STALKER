@@ -110,29 +110,47 @@ Sources are queried in parallel on every refresh (all **client-side**, browser �
 - Purpose: a radar-at-your-exact-pixel signal that catches rain the stations miss (the Nonntal onset case), faster than the tipping bucket. **Best-effort** — if the CDN doesn't send CORS headers it silently returns null and the app behaves exactly as before.
 - **Used for BOTH the live location AND the map dots (2026-07).** Originally sampled only for the user's own location. That created a persistent, confusing mismatch: during a hyperlocal drizzle the 2 sparse gauges miss, the live view read **GO ANYWAY** (RainViewer echo) while the town dots read **GEMMA RAUS** (nowcast/model only, no RainViewer) — the dots were *wrong*, not the location. `computeStatusAt` now folds the same 5×5 RainViewer sample into the dots' `effectivePrecip`/`rvRainActive`, so a dot agrees with the live view. **Do not "fix" this divergence by removing RainViewer from the location** — that makes both consistently wrong (blind to real drizzle). The correct direction is to give the dots the *same* signal, not to strip it from the location. `weather-maps.json` is cached 60 s (`getRainViewerMaps`) so sampling ~15 dots hits the endpoint once, not 15× (the z7 radar tile is already shared/browser-cached — every Salzburg point maps to the same tile).
 
-### Signal Blending (`App.jsx: loadData`) — ground-truth NOW, radar NEXT
+### Signal Blending (`App.jsx: loadData` + `computeStatusAt`) — ground-truth NOW, radar NEXT (v1.1.4)
 ```js
 const omForNow    = /* OM current, 0 if TAWES present & 0 (kills OM's 0.10 rounding) */
-const stationPrecip = /* max RR of nearest TAWES (≤15 km) + airport */
+const stationPrecip = /* backend shared `ground` (preferred) or direct TAWES max RR */
 const rvPrecip    = /* RainViewer 5×5 sample, 0 if null */
 const groundPrecip = Math.max(omForNow, stationPrecip)   // ground only (no radar)
 const groundDry    = stationData !== null && groundPrecip < 0.1
 
-// detectGaps runs on the RAW nowcast (no prepended TAWES slot). When groundDry,
-// the CURRENT nowcast slot is zeroed first so a light over-read overhead (virga)
-// doesn't hide the real next rain.
+// detectGaps runs on the (virga-filtered) nowcast. When groundDry, the CURRENT
+// slot is zeroed first so a light over-read overhead (virga) doesn't hide the
+// real next rain. Future slots are never touched.
 const { currentPrecip: cp, gaps, nextRainAt, dryEndsOpen } = detectGaps(nowcast.times, gapPrecips)
+const rawNowSlot = /* the UN-zeroed nowcast value at "now" (for drizzle surfacing) */
 
-// NOW condition: if stations are reporting, trust the GROUND magnitude (not just
-// presence) — the radar over-reads light rain (0.4mm → 1.5mm) and would escalate a
-// drizzle to STUCK. Only with NO station do we fall back to the radar/RV max.
-const effectivePrecip = cp === null ? null
-  : stationData !== null ? groundPrecip
-  : Math.max(cp, nowPrecip)   // nowPrecip = max(omForNow, stationPrecip, rvPrecip)
+// NOW value (exact v1.1.4 blend):
+let effectivePrecip, drizzleSurfaced = false
+if (cp === null)               effectivePrecip = null
+else if (stationData !== null) {
+  effectivePrecip = groundPrecip                       // ground magnitude rules
+  if (groundPrecip < DRY_THRESHOLD) {                  // gauge says dry, but…
+    const drizzle = Math.max(rawNowSlot, rvPrecip)
+    if (drizzle >= DRY_THRESHOLD && drizzle < LIGHT_MAX) {   // …radar/RV see LIGHT echo
+      effectivePrecip = Math.max(drizzle, LIGHT_MIN)   // → surface as GO ANYWAY
+      drizzleSurfaced = true                            //   (capped: never WAIT/STUCK)
+    }
+  }
+} else effectivePrecip = Math.max(cp, groundPrecip, rvPrecip)  // no gauge → radar max
 
-const maxSoon = /* peak nowcast precip over next 45 min — gates the light state */
+const downpourSoonMin = firstDownpourMin(nowcast, nowSec)  // ≥1.5mm within 30min → warn
+// trend.rvRainActive = rvPrecip >= DRY_THRESHOLD || drizzleSurfaced  (blocks gapNow)
 ```
 - **Why ground magnitude:** Salzburg's 2 city gauges are accurate once triggered; the radar nowcast is extrapolation and chronically over-reads light returns (virga). Trusting the ground magnitude when a station reports rain fixes the recurring "drizzle shown as STUCK". Radar/RV still catch rain the stations *miss* (station = 0) — the Nonntal onset case.
+- **Why drizzle surfacing (v1.1):** the 2 gauges can't feel a hyperlocal drizzle between them; a wet user was shown GEMMA RAUS. Light radar/RV echo (0.1–0.5) now surfaces as GO ANYWAY — hard-capped at the light band so radar can NEVER manufacture a false WAIT/STUCK, and `drizzleSurfaced` blocks `gapNow` so the two can't tug-of-war. Policy: *a jacket beats a soaking*.
+
+### The sensing layer — one line each
+| Instrument | Is | Truth for | Blind spot |
+|---|---|---|---|
+| **TAWES gauges** (Freisaal 1.3 km, Airport 3 km, 10-min) | physical tipping buckets | "am I wet NOW" | drizzle *between* the gauges |
+| **GeoSphere nowcast** (1 km / 15-min / +3 h) | radar echo extrapolated | "when does rain start/stop" | virga (echo that never lands) |
+| **ICON-EU** (Open-Meteo) | physics model, hourly prob | confidence — how firmly we speak | lags Alpine convection 2–3 h |
+| **RainViewer pixel** (5×5 px ≈ 700 m at GPS) | latest radar frame at your spot | eyewitness: catches gauge-missed rain, blocks false GO | binary echo only |
 
 ---
 
@@ -187,6 +205,49 @@ RAINING, no break in 3 h → BLEIB DRIN / STUCK                 (s_stuck / s_stu
 - **Weather note** (`getWeatherNote`): hazards (thunder/storm/snow/fog) always show; the "go outside" comfort notes (perfect/hot/etc.) are suppressed when `raining` or when rain is < 90 min away, and `weather_perfect` also needs a clear sky (code ≤ 2) — so no "made for going out" under a countdown.
 - **Night nudge:** browser-local 00:00–04:59 → cozy `s_night_*` sub-lines; the light state stays light but uses `s_night_drizzle` (calm drizzle wording, never "raining").
 - **Rotating one-liners:** `s_*` keys are **arrays of variants** (3 each, DE & EN). `t()` picks stably via `(phraseSeed + dayNumber + hash(key)) % pool.length` (`phraseSeed` = per-user random in localStorage) → varies by user, stable within a day, rotates daily. Headlines are fixed (brand).
+
+### Override precedence & audit (v1.1.4 — audited 2026-07, no circular contradictions)
+The full precedence chain is a **strict one-way ladder**; each override has exactly one guard and no pair can flip each other back and forth:
+
+**ground magnitude → drizzle surfacing → gapNow (RV-guarded) → downpour warning → wording softeners**
+
+| Override | What beats what | Guard against lying | Verdict |
+|---|---|---|---|
+| **Ground magnitude** | gauge beats radar magnitude for NOW | drizzle surfacing covers the gauge's blind spot | SOUND |
+| **Drizzle surfacing** | light echo (0.1–0.5) beats a dry gauge → GO ANYWAY | capped at light band — cannot produce WAIT/STUCK; sets `drizzleSurfaced` which blocks gapNow | SOUND |
+| **gapNow** | "gap already started" beats a still-wet gauge → GO (gauge RR lags ~10 min after rain stops) | blocked when RainViewer sees rain overhead or a drizzle was surfaced | ⚠️ SOFT SPOT ① |
+| **Virga cap** (backend) | low-prob (<50%) light echo capped to 0.4 | **heavy echo ≥1.5 ALWAYS passes** — the lagging model can never veto real downpours (v1.1.4, test-locked) | ⚠️ SOFT SPOT ② |
+| **Downpour warning** | imminent heavy radar beats every calm sub in GO/GO ANYWAY | runs on the FILTERED timeline → virga can't false-alarm it | SOUND |
+| **Probability softener** | model prob <50% softens countdown WORDING ("possible later") | wording only — never hides rain from ribbon/timeline | SOUND |
+| **Story / recentRain** | reframes wording ("rain back" vs "rain approaching") | wording only — state forcing was removed (caused dot/location divergence) | SOUND |
+| **Current-slot zeroing** | dry gauge zeroes the nowcast's CURRENT slot pre-gap-detection | only that slot — future rain untouched, onset still reported | SOUND |
+| **Night voice** | 00:00–04:59 swaps urgency for calm wording | state & colours unchanged — only the sentence | SOUND |
+
+**⚠️ SOFT SPOT ① — gapNow vs a wet gauge:** if radar declares the gap open while the gauge is still wet AND RainViewer is unreadable (CORS null), a brief false GO is possible. *Symptom: "GEMMA RAUS while I'm still getting wet."* Shelf fix: require the gap to be ≥1 slot old when the gauge is wet.
+
+**⚠️ SOFT SPOT ② — the 0.5–1.5 mm low-confidence band:** moderate echo at <50% probability is capped to 0.4 → shown as "light drizzle" though radar suggests moderate rain. Deliberate (this band is where radar over-reads live) but leans optimistic, slightly against the "better keep them in" policy. *Symptom: "GO ANYWAY light drizzle" that's actually steady moderate rain.* Shelf fix: `VIRGA_HEAVY_PASS` 1.5 → 0.8 (one constant + one test + one logic-log entry).
+
+Neither soft spot is an active bug — they are documented trade-offs to watch for in real-world reports. If a user report matches a symptom above, apply the shelf fix rather than inventing a new mechanism.
+
+### The countdown promise (core product requirement — do not regress)
+**Whenever any rain is involved, exactly ONE stable countdown is always on screen:**
+
+| Situation | Countdown shown |
+|---|---|
+| dry, rain coming | "rain in ~X min" (`s_rain_soon`) |
+| downpour ≤30 min | "heavy rain in ~X min" (`s_downpour_soon`) — top priority |
+| drizzling, clearing | "clearing in ~X min" (`s_light_clearing`) |
+| raining, break coming | "WAIT X MIN · break in X, lasts Y" |
+| raining, open-ended clearing | "rain ending in X" (`s_clearing`) |
+
+Stability mechanisms (why "when" never jumps around — **reduce noise is the design goal**):
+- **Rounded to 5 min** at ≥10 min; **"any minute / shortly"** under 10 min (radar onset jitters ±5 min between runs — false precision reads as broken).
+- **Local per-minute tick** (`tickNow`) — countdowns decrement −1/min on-device between the 5-min data refreshes; they never freeze or jump.
+- **One shared backend nowcast** (v1.1.3, cached ~12 calls/cycle) — no reload-roulette from per-IP rate limits.
+- **20-min stale cap** on cached timelines — an hour-old forecast can't produce "wait 100 min" garbage.
+- **Serve-stale response cache** (4-min TTL) — bursts of taps/re-opens can't flicker the verdict.
+- **≥30-min minimum gap** — never promise a break that is one noisy radar slot.
+- **Nearest dot mirrors the live verdict** — the map can't contradict the headline where you stand.
 
 ### Tests — the logic integrity guard (RUN BEFORE ANY LOGIC CHANGE)
 The intended logic is encoded as an executable contract; **run both suites before and after touching gaps.js, the App.jsx blend, or the backend filter/push logic**:
