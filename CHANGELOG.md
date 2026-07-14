@@ -12,6 +12,18 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.2.1] — 2026-07-14 — Gap-confidence softener (symmetry with rain onset)
+### Changed (wording only — times always kept)
+- A break predicted **≥60 min out** is now spoken as "**break likely in about X min**" /
+  "rain **should** end in about X min" (WAIT sub + popup notice); breaks under an hour
+  stay firm. Time-based on purpose: verified nowcast skill is strong under 1 h and
+  decays past it (POD ~50% at 60–90 min) — and the model's *hourly* probability stays
+  high through a whole rainy spell, so a probability-based softener would have marked
+  every intra-rain gap "likely" (over-softening). Mirrors the v1.2.0 far-rain rule:
+  soften the wording, never delete the countdown. 3 new contract tests (55).
+
+---
+
 ## [1.2.0] — 2026-07-14 — The countdown covers the FULL horizon (gaps-first)
 ### Changed (rain logic)
 - **Far-out rain (≥90 min) now always gets an explicit countdown, in hours** — "GEMMA

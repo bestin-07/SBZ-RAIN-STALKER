@@ -255,6 +255,28 @@ describe('getStatus — WAIT', () => {
     const s = getStatus(1.2, [gap], null, makeT(), NOON, noTrend)
     expect(s.sub).toBe('s_clearing')
   })
+
+  it('FAR break (≥60 min) is softened — "break likely", time kept (skill decays past 1h)', () => {
+    const t = makeT()
+    const gap = { startsAt: NOON + 75 * 60, startsInMinutes: 75, durationMinutes: 45, opensEnded: false }
+    const s = getStatus(1.2, [gap], null, t, NOON, noTrend)
+    expect(s.type).toBe('wait')
+    expect(s.sub).toBe('s_break_likely')                 // softened, NOT the firm form
+    expect(t.varsFor('s_break_likely').min).toBe(75)     // …but the time is kept
+    expect(s.notice.sub).toBe('n_break_likely')          // popup notice softened too
+  })
+
+  it('FAR open-ended clearing is softened — "rain should end in X"', () => {
+    const gap = { startsAt: NOON + 90 * 60, startsInMinutes: 90, durationMinutes: 90, opensEnded: true }
+    const s = getStatus(1.2, [gap], null, makeT(), NOON, noTrend)
+    expect(s.sub).toBe('s_clearing_far')
+  })
+
+  it('NEAR break (40 min) stays FIRM — under an hour the radar earns full confidence', () => {
+    const gap = { startsAt: NOON + 40 * 60, startsInMinutes: 40, durationMinutes: 45, opensEnded: false }
+    const s = getStatus(1.2, [gap], null, makeT(), NOON, noTrend)
+    expect(s.sub).toBe('s_break_opens')
+  })
 })
 
 describe('getStatus — STUCK (BLEIB DRIN)', () => {

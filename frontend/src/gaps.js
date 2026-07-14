@@ -182,15 +182,23 @@ function hoursLabel(min) {
   return h % 1 ? `${Math.floor(h)}½` : `${h}`
 }
 
+// Gap-confidence softener (v1.2.1): our verified nowcast skill is strong under an
+// hour and decays past it (POD ~50% at 60–90 min) — so a break predicted ≥60 min out
+// is spoken as "likely/should", nearer breaks stay firm. Time-based on purpose: the
+// model's HOURLY probability stays high through a whole rainy spell, so it would mark
+// every intra-rain gap "likely" (over-softening). Wording only — the time is kept.
+const GAP_FIRM_MIN = 60
+
 // Shared "what's ahead" sub-line for a dry window / gap opening — reused by both
 // the WAIT state and the light-rain ("go anyway") state so they carry the same
 // forward context (clearing vs a fixed break) without inventing new strings.
 function breakSub(firstGap, nowSec, t) {
   const clearInMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
+  const far = clearInMin >= GAP_FIRM_MIN
   if (clearInMin < SOON_MIN)    return t('s_almost_now')
-  if (firstGap.opensEnded)      return t('s_clearing',    { min: clearInMin })
+  if (firstGap.opensEnded)      return t(far ? 's_clearing_far' : 's_clearing', { min: clearInMin })
   if (clearInMin <= ALMOST_MIN) return t('s_almost_over', { min: clearInMin, dur: firstGap.durationMinutes })
-  return t('s_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
+  return t(far ? 's_break_likely' : 's_break_opens', { min: clearInMin, dur: firstGap.durationMinutes })
 }
 
 // Passive, third-person "notice" wording for the MAP POPUPS — a neutral status card
@@ -225,7 +233,9 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
     }
   } else if (type === 'wait') {
     const min = firstGap ? Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60)) : 0
-    sub = min < SOON_MIN ? t('n_break_soon') : t('n_break_in', { min })
+    sub = min < SOON_MIN ? t('n_break_soon')
+        : min >= GAP_FIRM_MIN ? t('n_break_likely', { min })
+        : t('n_break_in', { min })
   } else {
     sub = t('n_no_break')
   }
