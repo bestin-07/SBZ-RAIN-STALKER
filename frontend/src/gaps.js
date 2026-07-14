@@ -171,6 +171,16 @@ export const LIGHT_MIN = 0.2  // below this = go (dry-enough) — a 0.1mm tip mu
 export const LIGHT_MAX = 0.5  // raining but below this = light/drizzle → "you could still go out"
 const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
 const RAIN_SOON_NOTE = 90 // rain within this many min → drop the "go out & enjoy" weather notes
+const FAR_RAIN_MIN = 90   // rain ≥ this far out → speak in hours ("rain in about 2 h"),
+                          // so the countdown covers the FULL horizon (gaps-first philosophy:
+                          // the ribbon showing a 3h-out band while the sub says nothing
+                          // — or a timeless "possible later" — undersold the window)
+
+// 90 → "1½", 120 → "2", 150 → "2½", 170 → "3" — rounded to the nearest half hour.
+function hoursLabel(min) {
+  const h = Math.round(min / 30) / 2
+  return h % 1 ? `${Math.floor(h)}½` : `${h}`
+}
 
 // Shared "what's ahead" sub-line for a dry window / gap opening — reused by both
 // the WAIT state and the light-rain ("go anyway") state so they carry the same
@@ -199,7 +209,8 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
     } else if (trend.nextRainAt) {
       const min = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
       const lowConf = trend.rainProb != null && trend.rainProb < RAIN_PROB_MIN
-      sub = lowConf ? t('n_rain_maybe')
+      sub = min >= FAR_RAIN_MIN ? t('n_rain_far', { h: hoursLabel(min) })
+          : lowConf ? t('n_rain_maybe')
           : min < RAIN_SHOW_MIN ? t('n_rain_soon')
           : t('n_rain_in', { min: Math.round(min / 5) * 5 })
     } else {
@@ -278,7 +289,11 @@ export function getStatus(
         const rainInMin = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
         const about = Math.round(rainInMin / 5) * 5
         const lowConf = trend.rainProb != null && trend.rainProb < RAIN_PROB_MIN
-        if (lowConf) {
+        if (rainInMin >= FAR_RAIN_MIN) {
+          // Far-out rain: ALWAYS give the countdown, in hours — the window is the
+          // product. Low confidence softens the wording but keeps the time.
+          sub = t(lowConf ? 's_rain_far_maybe' : 's_rain_far', { h: hoursLabel(rainInMin) })
+        } else if (lowConf) {
           sub = t('s_rain_maybe')
         } else if (rainInMin < RAIN_SHOW_MIN) {
           sub = t(trend.recentRain ? 's_rain_back_soon' : 's_rain_any')

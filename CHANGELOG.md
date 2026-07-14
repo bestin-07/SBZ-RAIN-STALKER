@@ -12,6 +12,20 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.2.0] — 2026-07-14 — The countdown covers the FULL horizon (gaps-first)
+### Changed (rain logic)
+- **Far-out rain (≥90 min) now always gets an explicit countdown, in hours** — "GEMMA
+  RAUS · rain in about 3 h". Previously the explicit countdown stopped at ~90 min:
+  beyond that, low-confidence rain collapsed to a timeless "rain possible later" (and
+  the reader saw the band in the ribbon with no matching words — the Nonntal 3 h case).
+  Low model confidence now **softens the wording but keeps the time**: "rain possible
+  in about 2 h". Rounded to the nearest half hour (1½ / 2 / 2½ / 3). Map-popup notices
+  carry the same far countdown (`n_rain_far`).
+- Philosophy made explicit: **the dry window is the product** — every state that knows
+  when rain arrives says so, across the whole 3 h horizon. 4 new contract tests (52).
+
+---
+
 ## [1.1.5] — 2026-07-14 — Clear-sky clutter guard (fix "sunny but PASST SCHON")
 ### Fixed
 - On a sunny day the app showed **GO ANYWAY + light rain in the ribbon** while gauge,

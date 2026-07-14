@@ -133,6 +133,34 @@ describe('getStatus — GO (GEMMA RAUS)', () => {
     expect(s.sub).toBe('s_rain_maybe')
   })
 
+  it('FAR rain (≥90 min) ALWAYS gets a countdown, in hours — the window is the product', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON, { nextRainAt: NOON + 170 * 60, rainProb: 80 })
+    expect(s.sub).toBe('s_rain_far')
+    expect(t.varsFor('s_rain_far').h).toBe('3')          // 170 min → "about 3 h"
+  })
+
+  it('FAR rain with low confidence keeps the time, softens the wording (the Nonntal 3h case)', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON, { nextRainAt: NOON + 125 * 60, rainProb: 25 })
+    expect(s.sub).toBe('s_rain_far_maybe')               // NOT the timeless "possible later"
+    expect(t.varsFor('s_rain_far_maybe').h).toBe('2')    // 125 min → "about 2 h"
+  })
+
+  it('90 min is the far boundary → "about 1½ h"', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON, { nextRainAt: NOON + 90 * 60, rainProb: 80 })
+    expect(s.sub).toBe('s_rain_far')
+    expect(t.varsFor('s_rain_far').h).toBe('1½')
+  })
+
+  it('map-popup notice also carries the far countdown', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON, { nextRainAt: NOON + 170 * 60, rainProb: 25 })
+    expect(s.notice.sub).toBe('n_rain_far')
+    expect(t.varsFor('n_rain_far').h).toBe('3')
+  })
+
   it('recent rain + rain returning ≥10min → framed as "short break — rain back"', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
       { nextRainAt: NOON + 20 * 60, rainProb: 80, recentRain: true })

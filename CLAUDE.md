@@ -234,7 +234,8 @@ Neither soft spot is an active bug — they are documented trade-offs to watch f
 
 | Situation | Countdown shown |
 |---|---|
-| dry, rain coming | "rain in ~X min" (`s_rain_soon`) |
+| dry, rain coming (<90 min) | "rain in ~X min" (`s_rain_soon`) |
+| dry, rain coming (≥90 min) | "rain in about {1½/2/2½/3} h" (`s_rain_far` / low-conf `s_rain_far_maybe` — softened wording, time kept) |
 | downpour ≤30 min | "heavy rain in ~X min" (`s_downpour_soon`) — top priority |
 | drizzling, clearing | "clearing in ~X min" (`s_light_clearing`) |
 | raining, break coming | "WAIT X MIN · break in X, lasts Y" |
@@ -271,6 +272,7 @@ Rules:
 ### Logic change log
 Every change that alters the verdict or the data feeding it — newest first. Behavioural boundaries only; cosmetic/UI omitted.
 
+- **2026-07 · v1.2.0 · Far-rain countdown (`FAR_RAIN_MIN 90`, `s_rain_far[_maybe]`, `hoursLabel`).** Rain ≥90 min out now always gets an explicit hours countdown ("rain in about 3 h") in the GO sub AND the popup notice; low confidence softens the wording but **keeps the time** (was: timeless "rain possible later" while the ribbon showed the band — undersold the dry window). Rounded to the nearest ½ h. *The dry window is the product.*
 - **2026-07 · v1.1.5 · Clear-sky clutter guard on drizzle surfacing (`gaps.surfaceDrizzle`).** A raw-RainViewer-only echo can no longer surface GO ANYWAY when the model reports a clear sky (code ≤ 2) — raw radar tiles show ground clutter (mountain reflections/insects/anaprop) on sunny days, and one binary pixel must not overrule gauge + model-sky + filtered nowcast all reading dry ("sunny but PASST SCHON" report, Nonntal). Echo in the *filtered* nowcast still surfaces under any sky; RV under overcast/unknown sky still surfaces (the original gauge-blind drizzle case is preserved). Surfacing is now a pure exported function with 7 contract tests.
 - **2026-07 · v1.1.4 · CRITICAL regression fix: heavy radar echo bypasses the virga filter.** The v1.1 cap rewrite applied `min(r, 0.4)` to ALL low-probability echo — including a real 2–3 mm convective downpour. ICON-EU lags convection, so probability is <50% exactly when a pop-up cell is real → the served nowcast showed "light drizzle" during a downpour, the ≥1.5 downpour warning could never fire, and the verdict said GO ANYWAY into a soaking (user got caught; backend push analysis, which reads the RAW timeline, correctly fired `rain_incoming` at the same moment — the divergence was the tell). Now echo ≥ `VIRGA_HEAVY_PASS` (1.5 mm) always passes unfiltered: virga is light by nature, heavy radar echo is self-evidencing. **Lesson: never let the (lagging) model veto heavy radar.**
 
