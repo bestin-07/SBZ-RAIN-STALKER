@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.1.5] — 2026-07-14 — Clear-sky clutter guard (fix "sunny but PASST SCHON")
+### Fixed
+- On a sunny day the app showed **GO ANYWAY + light rain in the ribbon** while gauge,
+  model (code 1 = sunny) and the filtered nowcast all read bone dry. The lone witness
+  was the **raw RainViewer pixel** — raw radar tiles show ground clutter (mountain
+  reflections, insects, anaprop) on clear days; the GeoSphere nowcast is
+  clutter-filtered, RainViewer tiles are not.
+- Drizzle surfacing extracted to a pure, tested function (`gaps.surfaceDrizzle`) with
+  a **clear-sky clutter guard**: an RV-only echo cannot surface drizzle when the model
+  says the sky is clear (code ≤ 2). Echo in the *filtered* nowcast still surfaces even
+  under a clear sky (quality-controlled source), overcast/unknown sky still trusts RV
+  (the real Nonntal drizzle case) — so the gauge-blind-drizzle catch is fully preserved.
+- 7 new contract tests (48 total frontend).
+
+---
+
 ## [1.1.4] — 2026-07-06 — CRITICAL: virga filter was hiding real downpours
 ### Fixed (regression, introduced in 1.1.0)
 - The virga-filter "cap" rewrite accidentally applied to **all** low-probability echo —

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, DRY_THRESHOLD } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -402,19 +402,17 @@ export default function App() {
       for (let i = 0; i < nowcast.times.length; i++) { const dd = Math.abs(nowcast.times[i] - nowSec); if (dd < bd) { bd = dd; bi = i } }
       rawNowSlot = nowcast.precips[bi] ?? 0
     }
-    // Same surfacing rule as loadData (v1.1) so a town dot matches your live verdict:
-    // gauge dry but radar/RV see a LIGHT drizzle → GO ANYWAY (capped, never STUCK).
+    // Same surfacing rule as loadData (v1.1 + clear-sky clutter guard, v1.1.5) so a
+    // town dot matches your live verdict: gauge dry but radar sees a LIGHT drizzle →
+    // GO ANYWAY (capped, never STUCK) — unless the only witness is the raw RainViewer
+    // pixel under a sunny sky (ground clutter).
     let effectivePrecip, drizzleSurfaced = false
     if (cp === null) {
       effectivePrecip = null
     } else if (stationData !== null) {
       effectivePrecip = groundPrecip
-      if (groundPrecip < DRY_THRESHOLD) {
-        const drizzle = Math.max(rawNowSlot, rvPrecip)
-        if (drizzle >= DRY_THRESHOLD && drizzle < LIGHT_MAX) {
-          effectivePrecip = Math.max(drizzle, LIGHT_MIN); drizzleSurfaced = true
-        }
-      }
+      const surfaced = surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, data?.current?.weather_code)
+      if (surfaced !== null) { effectivePrecip = surfaced; drizzleSurfaced = true }
     } else {
       effectivePrecip = Math.max(cp, groundPrecip, rvPrecip)
     }
@@ -608,13 +606,9 @@ export default function App() {
           effectivePrecip = null
         } else if (stationData !== null) {
           effectivePrecip = groundPrecip
-          if (groundPrecip < DRY_THRESHOLD) {
-            const drizzle = Math.max(rawNowSlot, rvPrecip)
-            if (drizzle >= DRY_THRESHOLD && drizzle < LIGHT_MAX) {
-              effectivePrecip = Math.max(drizzle, LIGHT_MIN)
-              drizzleSurfaced = true
-            }
-          }
+          // v1.1 surfacing + v1.1.5 clear-sky clutter guard (see gaps.surfaceDrizzle)
+          const surfaced = surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, data?.current?.weather_code)
+          if (surfaced !== null) { effectivePrecip = surfaced; drizzleSurfaced = true }
         } else {
           effectivePrecip = Math.max(cp, nowPrecip)
         }

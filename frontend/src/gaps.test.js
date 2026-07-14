@@ -8,7 +8,7 @@
 // Run: npm test   (vitest)
 import { describe, it, expect } from 'vitest'
 import {
-  detectGaps, getStatus, firstDownpourMin,
+  detectGaps, getStatus, firstDownpourMin, surfaceDrizzle,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
 } from './gaps'
 
@@ -305,6 +305,49 @@ describe('getStatus — map-popup notice voice (passive, never first-person)', (
     expect(cases[1].notice.head).toBe('n_light')
     expect(cases[2].notice.head).toBe('n_raining')
     expect(cases[3].notice.sub).toBe('n_no_break')
+  })
+})
+
+// ---- surfaceDrizzle — gauge-blind drizzle + the clear-sky clutter guard -----------
+
+describe('surfaceDrizzle — catch what the gauges miss, reject sunny clutter', () => {
+  // args: (groundPrecip, rawNowSlot [filtered nowcast at now], rvPrecip, weather_code)
+
+  it('THE SUNNY-CLUTTER BUG (v1.1.5): RV-only echo under a clear sky → NOT surfaced', () => {
+    // Nonntal, sunny like crazy: gauge 0, nowcast 0, model code 1 (sunny),
+    // raw RainViewer pixel shows clutter echo 0.3 → must stay GEMMA RAUS.
+    expect(surfaceDrizzle(0, 0, 0.3, 1)).toBeNull()
+    expect(surfaceDrizzle(0, 0, 0.3, 0)).toBeNull()
+    expect(surfaceDrizzle(0, 0, 0.3, 2)).toBeNull()
+  })
+
+  it('RV-only echo under an OVERCAST sky → surfaced (real drizzle the gauges miss)', () => {
+    expect(surfaceDrizzle(0, 0, 0.3, 3)).toBe(0.3)      // overcast
+    expect(surfaceDrizzle(0, 0, 0.3, 61)).toBe(0.3)     // rain code
+    expect(surfaceDrizzle(0, 0, 0.3, null)).toBe(0.3)   // sky unknown → don't assume clutter
+  })
+
+  it('filtered-nowcast echo surfaces even under a clear sky (clutter-filtered source)', () => {
+    expect(surfaceDrizzle(0, 0.15, 0, 1)).toBe(LIGHT_MIN)   // bumped into the light band
+    expect(surfaceDrizzle(0, 0.3, 0, 0)).toBe(0.3)
+  })
+
+  it('wet gauge → not our case (ground magnitude rules)', () => {
+    expect(surfaceDrizzle(0.3, 0.4, 0.3, 3)).toBeNull()
+  })
+
+  it('heavier cell (≥0.5) → keep the ground dry call (never manufacture WAIT/STUCK)', () => {
+    expect(surfaceDrizzle(0, 0.8, 0, 3)).toBeNull()
+  })
+
+  it('nothing anywhere → null', () => {
+    expect(surfaceDrizzle(0, 0, 0, 3)).toBeNull()
+  })
+
+  it('surfaced value is always in the light band (≥0.2, <0.5)', () => {
+    const v = surfaceDrizzle(0, 0.12, 0, 3)
+    expect(v).toBeGreaterThanOrEqual(LIGHT_MIN)
+    expect(v).toBeLessThan(LIGHT_MAX)
   })
 })
 

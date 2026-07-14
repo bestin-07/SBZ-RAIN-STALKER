@@ -7,6 +7,25 @@ const LOOK_AHEAD = 3 * 3600
 export const DOWNPOUR_MM = 1.5           // mm/15-min slot — clearly heavier than the 0.5 light band
 export const DOWNPOUR_WINDOW_MIN = 30    // only warn about downpours arriving within this window
 
+// Drizzle surfacing (v1.1) with the clear-sky clutter guard (v1.1.5).
+// When the gauge reads dry but radar sees LIGHT echo at the user's spot, surface it
+// as GO ANYWAY ("a jacket beats a soaking") — EXCEPT when the only witness is the raw
+// RainViewer pixel under a clear sky. Raw radar tiles show ground clutter (Untersberg/
+// Gaisberg reflections, insects, anaprop) on sunny days; the GeoSphere nowcast is
+// clutter-filtered, RainViewer tiles are not. One binary pixel must not overrule
+// gauge + model-sky + filtered nowcast all reading dry ("sunny but PASST SCHON" bug).
+// Returns the surfaced precip (≥ LIGHT_MIN) or null (keep the ground's dry call).
+export function surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, code) {
+  if (groundPrecip >= DRY_THRESHOLD) return null       // gauge already wet — not our case
+  const drizzle = Math.max(rawNowSlot ?? 0, rvPrecip ?? 0)
+  if (drizzle < DRY_THRESHOLD || drizzle >= LIGHT_MAX) return null  // nothing, or a heavier
+                                                       // cell → the ground's dry call stands
+  const nowcastEcho = (rawNowSlot ?? 0) >= DRY_THRESHOLD   // clutter-filtered source agrees
+  const clearSky    = code != null && code <= 2            // model says sunny / mostly clear
+  if (!nowcastEcho && clearSky) return null            // RV-only echo under a clear sky = clutter
+  return Math.max(drizzle, LIGHT_MIN)
+}
+
 // Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
 // DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
 // verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
