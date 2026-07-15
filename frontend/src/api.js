@@ -343,14 +343,16 @@ function sampleRvFrame(host, framePath, z, tileX, tileY, px, py) {
   return Promise.race([imgPromise, new Promise(r => setTimeout(() => r(null), 5000))])
 }
 
-// Read RainViewer at the user's exact lat/lon — TWO frames:
-//  • now  — the latest PAST frame (real radar, ~5 min latency: the freshest "is echo
-//           over me" signal we have; GeoSphere's nowcast issues 15–25 min behind).
-//  • soon — the LAST RainViewer NOWCAST frame (~+20–30 min): radar echo whose observed
-//           MOTION brings it over this pixel shortly. This is the "I can see the rain
-//           coming as blue on the map while the app claims dry" signal, promoted from
-//           the map into the verdict (missed-evening-rain fix, v1.4).
-// Returns { now, soon } (each 0.3 | 0 | null) or null when RainViewer is unavailable.
+// Read RainViewer at the user's exact lat/lon:
+//  • now         — the latest PAST frame (real radar, ~5 min latency: the freshest
+//                  "is echo over me" signal we have; GeoSphere issues 15–25 min behind).
+//  • approachMin — minutes until the FIRST RainViewer forecast frame (10-min steps,
+//                  ~+10/+20/+30, observed echo motion) that shows echo at this pixel,
+//                  or null. ALL frames are sampled (v1.4.1), so an early-arriving cell
+//                  isn't missed and the verdict gets a real ETA ("~10 min"), not a
+//                  generic "~30". The "blue on the map while the app claims dry"
+//                  signal, promoted from the map into the verdict with a countdown.
+// Returns { now, approachMin } or null when RainViewer is unavailable.
 export function fetchRainViewerPrecip(lat, lon) {
   return getRainViewerMaps()
     .then(mapData => {
@@ -374,12 +376,21 @@ export function fetchRainViewerPrecip(lat, lon) {
       const py = Math.floor((mercY * n - tileY) * 256)
 
       const nowP  = sampleRvFrame(host, past[past.length - 1].path, z, tileX, tileY, px, py)
-      const soonP = fcst.length
-        ? sampleRvFrame(host, fcst[fcst.length - 1].path, z, tileX, tileY, px, py)
-        : Promise.resolve(null)
-      return Promise.all([nowP, soonP]).then(([now, soon]) => {
-        if (now === null && soon === null) return null
-        return { now, soon }
+      // Sample EVERY forecast frame (usually 2–3; same tile x/y, so the browser
+      // caches per frame path — dots and the live location share the downloads).
+      const soonPs = fcst.map(f =>
+        sampleRvFrame(host, f.path, z, tileX, tileY, px, py).then(v => ({ time: f.time, v })))
+      return Promise.all([nowP, Promise.all(soonPs)]).then(([now, soons]) => {
+        if (now === null && soons.every(s => s.v === null)) return null
+        const nowSec = Date.now() / 1000
+        let approachMin = null
+        for (const s of soons) {                    // frames are chronological
+          if (s.v !== null && s.v >= 0.1) {
+            approachMin = Math.max(1, Math.round((s.time - nowSec) / 60))
+            break                                    // first arrival = the ETA
+          }
+        }
+        return { now, approachMin }
       })
     })
     .catch(() => null)

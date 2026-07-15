@@ -383,9 +383,9 @@ export default function App() {
     const nowcast     = nRes.status === 'fulfilled' ? nRes.value : null
     const rv          = rvRes.status === 'fulfilled' && rvRes.value !== null ? rvRes.value : null
     const rvPrecip    = rv?.now ?? 0
-    // Approaching: pixel clear NOW but the RainViewer forecast frame (+20–30 min,
-    // observed echo motion) shows rain arriving. Moving echo can't be static clutter.
-    const rvApproaching = rvPrecip < DRY_THRESHOLD && (rv?.soon ?? 0) >= DRY_THRESHOLD
+    // Approaching: pixel clear NOW but a RainViewer forecast frame (observed echo
+    // motion, 10-min steps) shows rain arriving in ~N min. Moving echo ≠ clutter.
+    const rvApproachMin = rvPrecip < DRY_THRESHOLD ? (rv?.approachMin ?? null) : null
     if (!data && !nowcast && stationData === null) return null
     const omTimes   = data?.minutely_15?.time ?? []
     const omPrecips = data?.minutely_15?.precipitation ?? []
@@ -449,7 +449,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, rvApproaching })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, rvApproachMin })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -551,7 +551,7 @@ export default function App() {
         const rv = rvResult?.status === 'fulfilled' && rvResult.value !== null
           ? rvResult.value : null
         const rvPrecip = rv?.now ?? 0
-        const rvApproaching = rvPrecip < DRY_THRESHOLD && (rv?.soon ?? 0) >= DRY_THRESHOLD
+        const rvApproachMin = rvPrecip < DRY_THRESHOLD ? (rv?.approachMin ?? null) : null
         const nowPrecip = Math.max(omForNow, stationPrecip, rvPrecip)
         // Ground truth = physical stations + model current (no radar). When these
         // are available and read dry they are authoritative for "is it raining on
@@ -701,7 +701,7 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, rvApproaching })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, rvApproachMin })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data?.current?.temperature_2m ?? null,

@@ -246,8 +246,8 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
   if ((type === 'go' || type === 'light') && trend.downpourSoonMin != null) {
     sub = t('n_downpour_soon', { min: trend.downpourSoonMin })
   } else if (type === 'go') {
-    if (trend.rvApproaching && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
-      sub = t('n_rv_approach')
+    if (trend.rvApproachMin != null && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
+      sub = t('n_rv_approach', { min: trend.rvApproachMin })
     } else if (trend.dryEndsOpen && trend.modelRainAt) {
       const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
       sub = m >= FAR_RAIN_MIN ? t('n_model_rain_far', { h: hoursLabel(m) })
@@ -325,12 +325,13 @@ export function getStatus(
       // Radar shows a real downpour imminent — warn even though it's dry NOW, so
       // "go" doesn't walk you into a soaking. Top priority over the calm dry subs.
       sub = t('s_downpour_soon', { min: trend.downpourSoonMin })
-    } else if (trend.rvApproaching && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
-      // The RainViewer forecast frame shows OBSERVED echo arriving at this pixel
-      // within ~30 min while the (higher-latency) GeoSphere timeline still claims
-      // nothing near. Freshest radar wins: the "rain was visibly blue on the map
-      // while the app said dry" case. Yields to a nearer GeoSphere countdown.
-      sub = t('s_rv_approach')
+    } else if (trend.rvApproachMin != null && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
+      // A RainViewer forecast frame shows OBSERVED echo arriving at this pixel in
+      // ~N min while the (higher-latency) GeoSphere timeline still claims nothing
+      // near. Freshest radar wins, WITH a real ETA (all frames sampled): the "rain
+      // was visibly blue on the map while the app said dry" case. Yields to a
+      // nearer GeoSphere countdown.
+      sub = t('s_rv_approach', { min: trend.rvApproachMin })
     } else if (trend.dryEndsOpen && trend.modelRainAt) {
       // Radar sees NOTHING in 3 h but the MODEL's own timeline shows rain — the
       // frontal/stratiform case where the model leads the radar by hours. Never

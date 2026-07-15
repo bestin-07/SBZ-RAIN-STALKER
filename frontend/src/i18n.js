@@ -58,8 +58,8 @@ const translations = {
     s_model_rain_far: ['Radar noch frei — Modell erwartet Regen in etwa {h} Std', 'Modell erwartet Regen in etwa {h} Std, Radar sieht noch nichts', 'laut Modell Regen in etwa {h} Std — Radar noch frei'],
     n_model_rain: 'Modell erwartet Regen in etwa {min} min',
     n_model_rain_far: 'Modell erwartet Regen in etwa {h} Std',
-    s_rv_approach: ['Regen nähert sich am Radar — kann dich in ~30 min erreichen', 'Radar zeigt Regen im Anmarsch — etwa 30 min entfernt', 'Regen am Radar in der Nähe — kann in ~30 min da sein'],
-    n_rv_approach: 'Regen nähert sich am Radar (~30 min)',
+    s_rv_approach: ['Regen nähert sich am Radar — kann dich in etwa {min} min erreichen', 'Radar zeigt Regen im Anmarsch — etwa {min} min entfernt', 'Regen am Radar in der Nähe — kann in etwa {min} min da sein'],
+    n_rv_approach: 'Regen nähert sich am Radar (~{min} min)',
     // Passive "notice" wording for the MAP POPUPS (a neutral status card for a place —
     // no first person, no brand voice; that stays on the big headline / user's banner).
     n_dry:        'Trocken',
@@ -282,8 +282,8 @@ const translations = {
     s_model_rain_far: ['radar clear so far — model expects rain in about {h} h', 'model expects rain in about {h} h, radar sees nothing yet', 'rain expected in about {h} h (model) — radar still clear'],
     n_model_rain: 'model expects rain in about {min} min',
     n_model_rain_far: 'model expects rain in about {h} h',
-    s_rv_approach: ['rain approaching on radar — could reach you within ~30 min', 'radar shows rain moving in — roughly 30 min out', 'rain visible on radar nearby — could arrive within ~30 min'],
-    n_rv_approach: 'rain approaching on radar (~30 min)',
+    s_rv_approach: ['rain approaching on radar — could reach you in about {min} min', 'radar shows rain moving in — roughly {min} min out', 'rain visible on radar nearby — could arrive in about {min} min'],
+    n_rv_approach: 'rain approaching on radar (~{min} min)',
     // Passive "notice" wording for the MAP POPUPS (a neutral status card for a place —
     // no first person, no brand voice; that stays on the big headline / user's banner).
     n_dry:        'Dry',

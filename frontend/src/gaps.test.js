@@ -443,29 +443,39 @@ describe('model second-opinion — never claim an all-clear the model contradict
 })
 
 describe('RainViewer approach — the "blue on the map while the app said dry" guard', () => {
-  it('RV forecast frame shows echo arriving + GeoSphere silent → "rain approaching on radar"', () => {
-    const s = getStatus(0, [], null, makeT(), NOON,
-      { dryEndsOpen: true, rvApproaching: true })
+  it('RV forecast frames show echo arriving in ~20 min + GeoSphere silent → ETA shown', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, rvApproachMin: 20 })
     expect(s.type).toBe('go')
     expect(s.sub).toBe('s_rv_approach')
+    expect(t.varsFor('s_rv_approach').min).toBe(20)      // real ETA, not a generic "~30"
     expect(s.notice.sub).toBe('n_rv_approach')
+    expect(t.varsFor('n_rv_approach').min).toBe(20)
+  })
+
+  it('an early-arriving cell (~10 min, first frame) is not missed', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, rvApproachMin: 10 })
+    expect(t.varsFor('s_rv_approach').min).toBe(10)
   })
 
   it('outranks the model second-opinion (observed echo beats expectation)', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
-      { dryEndsOpen: true, rvApproaching: true, modelRainAt: NOON + 45 * 60 })
+      { dryEndsOpen: true, rvApproachMin: 20, modelRainAt: NOON + 45 * 60 })
     expect(s.sub).toBe('s_rv_approach')
   })
 
   it('yields to a NEARER GeoSphere countdown (more precise timing wins)', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
-      { nextRainAt: NOON + 20 * 60, rainProb: 80, rvApproaching: true })
+      { nextRainAt: NOON + 20 * 60, rainProb: 80, rvApproachMin: 20 })
     expect(s.sub).toBe('s_rain_soon')
   })
 
   it('downpour warning still outranks everything', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
-      { dryEndsOpen: true, rvApproaching: true, downpourSoonMin: 12 })
+      { dryEndsOpen: true, rvApproachMin: 20, downpourSoonMin: 12 })
     expect(s.sub).toBe('s_downpour_soon')
   })
 })

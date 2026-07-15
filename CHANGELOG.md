@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.0.0] — 2026-07-14 — Full-frame radar approach: a real ETA, not a guess
+### Changed (rain logic — refines the v1.4.0 approach guard)
+- The RainViewer approach guard now samples **every** forecast frame (10-min steps,
+  ~+10/+20/+30) instead of only the last one. Two wins: an **early-arriving cell
+  (+10 min) is no longer missed** (previously invisible if it passed before the +30
+  frame), and the verdict shows the **first-arrival ETA** — "rain approaching on radar
+  — could reach you in about **10** min" — instead of a generic "~30 min".
+- Tile cost unchanged in practice: every Salzburg point maps to the same z7 tile, so
+  the browser caches per frame path across the live location and all dots.
+- Versioned 2.0: with v1.4's model second-opinion + this, the forward view is now a
+  true **multi-source architecture** (gauges → RainViewer now/approach → GeoSphere
+  timeline → model second-opinion), each source used where it leads. 71 contract tests.
+
+---
+
 ## [1.4.0] — 2026-07-14 — Fix the missed evening rain: two onset guards
 **Post-mortem:** the app said dry all evening; rain came; other weather apps had it.
 Root cause was architectural: the NEXT lane was **radar-nowcast-only**, and radar
