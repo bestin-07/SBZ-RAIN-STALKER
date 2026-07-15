@@ -41,6 +41,23 @@ export function isUnsettled(cape, maxProb, hour) {
     hour >= 11 && hour < 20
 }
 
+// Model-current contribution to the NOW blend (v2.0.1). Open-Meteo's
+// current.precipitation is a PRECEDING-HOUR value — after rain ends it stays high for
+// up to an hour, and it was out-shouting a reporting gauge (gauge 0.0, model 0.7 →
+// max = 0.7 → a bogus "WAIT 50 MIN" on the trailing edge, in the sun). Doctrine:
+// a REPORTING gauge owns the NOW magnitude; the hour-lagged model may lift it at most
+// into the LIGHT band (cap 0.4 — same philosophy as the virga cap): it can whisper
+// "drizzle the gauge missed", it can never manufacture WAIT/STUCK alone. With no
+// gauge at all, the model passes through (the radar-max path handles that case).
+export const MODEL_NOW_CAP = 0.4
+export function modelNowValue(measured, stationPresent, stationPrecip) {
+  if (!stationPresent) return measured
+  // 0.10-rounding guard (unchanged): a 0-reading gauge needs the model to be
+  // STRICTLY above 0.1 before it may claim any wetness at all.
+  if (stationPrecip === 0 && measured <= 0.1) return 0
+  return Math.min(measured, MODEL_NOW_CAP)
+}
+
 // Model second-opinion (v1.4.0). The radar nowcast EXTRAPOLATES existing echo — it is
 // structurally blind to rain that hasn't formed yet. For frontal/stratiform onset the
 // MODEL leads the radar by hours (the exact mirror of convection, where radar leads a

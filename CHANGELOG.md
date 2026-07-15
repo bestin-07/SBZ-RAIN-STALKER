@@ -12,6 +12,19 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.0.1] — 2026-07-14 — Trailing-edge fix: the model can't out-shout a reporting gauge
+### Fixed (rain logic — the bogus "WAIT 50 MIN in the sun")
+- Open-Meteo's `current.precipitation` is a **preceding-hour** value — after rain ends
+  it stays high for up to an hour. The blend took `max(model 0.7, gauge 0.0) = 0.7` →
+  a false WAIT/STUCK on every trailing edge while the sky was already clearing.
+- New rule (`gaps.modelNowValue`, contract-tested): **a reporting gauge owns the NOW
+  magnitude**; the hour-lagged model current is capped at the light band (**0.4**) —
+  it may whisper "drizzle the gauge missed", it can never manufacture WAIT/STUCK alone.
+  The 0.10-rounding guard is preserved; with no gauge at all the model passes through.
+  Same cap philosophy as the virga filter. 4 new tests (75 total).
+
+---
+
 ## [2.0.0] — 2026-07-14 — Full-frame radar approach: a real ETA, not a guess
 ### Changed (rain logic — refines the v1.4.0 approach guard)
 - The RainViewer approach guard now samples **every** forecast frame (10-min steps,

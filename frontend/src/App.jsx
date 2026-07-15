@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -391,7 +391,7 @@ export default function App() {
     const omPrecips = data?.minutely_15?.precipitation ?? []
     const measured  = data?.current?.precipitation ?? 0
     const stationPrecip = stationData?.precip ?? 0
-    const omForNow = stationData !== null && stationPrecip === 0 ? (measured > 0.1 ? measured : 0) : measured
+    const omForNow = modelNowValue(measured, stationData !== null, stationPrecip)
     const groundPrecip = Math.max(omForNow, stationPrecip)
     const groundDry = stationData !== null && groundPrecip < DRY_THRESHOLD
     const nowSec = Math.floor(Date.now() / 1000)
@@ -536,14 +536,11 @@ export default function App() {
         const measured      = data?.current?.precipitation ?? 0
         const stationPrecip = stationData?.precip ?? 0
         const stationTemp   = stationData?.temp ?? null
-        // When TAWES sensors are available and confirm 0mm, require Open-Meteo to
-        // be strictly above the threshold (not just == 0.10) before overriding.
-        // Open-Meteo model rounds to 0.10mm increments and routinely reports exactly
-        // 0.10mm during cloudy/drizzly conditions that sensors don't detect — taking
-        // the max would falsely trigger "wet" status.
-        const omForNow = stationData !== null && stationPrecip === 0
-          ? (measured > 0.1 ? measured : 0)
-          : measured
+        // Model-current contribution (v2.0.1, gaps.modelNowValue): a reporting gauge
+        // owns the NOW magnitude — the hour-lagged model current is capped at the
+        // light band (0.4) and zeroed below 0.10 vs a 0-reading gauge, so a stale
+        // model value can never manufacture WAIT/STUCK on the trailing edge.
+        const omForNow = modelNowValue(measured, stationData !== null, stationPrecip)
         // RainViewer radar at your exact GPS pixel — { now, soon }. `now` is the
         // freshest is-it-raining signal we have (~5 min latency); `soon` is the
         // forecast frame ~20–30 min out (observed echo motion) → the "approaching"

@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
+  modelNowValue, MODEL_NOW_CAP,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB,
 } from './gaps'
@@ -399,6 +400,26 @@ describe('surfaceDrizzle — catch what the gauges miss, reject sunny clutter', 
     const v = surfaceDrizzle(0, 0.12, 0, 3)
     expect(v).toBeGreaterThanOrEqual(LIGHT_MIN)
     expect(v).toBeLessThan(LIGHT_MAX)
+  })
+})
+
+// ---- modelNowValue — the hour-lagged model can't out-shout a reporting gauge ------
+
+describe('modelNowValue — trailing-edge lag guard (the bogus "WAIT 50 in the sun")', () => {
+  it('THE BUG: gauge 0.0 + stale model 0.7 → capped to light (0.4), never WAIT/STUCK', () => {
+    expect(modelNowValue(0.7, true, 0)).toBe(MODEL_NOW_CAP)
+    expect(MODEL_NOW_CAP).toBe(0.4)
+    expect(MODEL_NOW_CAP).toBeLessThan(LIGHT_MAX)   // capped value stays in the light band
+  })
+  it('0.10-rounding guard preserved: gauge 0 + model ≤0.1 → 0', () => {
+    expect(modelNowValue(0.1, true, 0)).toBe(0)
+    expect(modelNowValue(0.05, true, 0)).toBe(0)
+  })
+  it('gauge wet + model higher → model still capped (gauge owns the magnitude)', () => {
+    expect(modelNowValue(2.0, true, 1.2)).toBe(MODEL_NOW_CAP)  // groundPrecip=max(1.2,0.4)=1.2
+  })
+  it('no gauge at all → model passes through (radar-max path handles that case)', () => {
+    expect(modelNowValue(0.7, false, 0)).toBe(0.7)
   })
 })
 
