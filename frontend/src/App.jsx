@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, DRY_THRESHOLD } from './gaps'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, AREAS } from './api'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, DRY_THRESHOLD } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -105,6 +105,8 @@ export default function App() {
   const [upgradingLocation, setUpgradingLocation] = useState(false)
   const [accuracyDismissed, setAccuracyDismissed] = useState(false)
   const [stormCape, setStormCape] = useState(null)
+  const [unsettled, setUnsettled] = useState(false)   // convective-watch Layer 1 (regime)
+  const [formingTs, setFormingTs] = useState(null)    // convective-watch Layer 2 (radar-confirmed)
   const [uvIndex, setUvIndex] = useState(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
@@ -148,6 +150,9 @@ export default function App() {
   const hourNow         = new Date(tickNow * 1000).getHours()
   const showCloudyNote  = currentWeather?.code === 3 && status?.type === 'go' && !rainImminent &&
                           hourNow >= 6 && hourNow < 20
+  // Radar-confirmed initiation stays visible for 30 min after the backend stamps it
+  // (tickNow-driven, so it expires live without a refresh).
+  const formingActive   = formingTs != null && (tickNow - formingTs) < 30 * 60 && (tickNow - formingTs) >= 0
 
   // Tick every minute so the "rain in X" / "dry in X" countdown moves live
   // between the 5-minute data refreshes (re-synced on each refresh).
@@ -698,6 +703,14 @@ export default function App() {
         const cape = data?.current?.cape ?? null
         const severeStorm = cape !== null && cape >= 1500 && localHour >= 12 && localHour < 21
         setStormCape(severeStorm ? cape : null)
+        // Convective watch (v1.3.0) — banners only, the verdict is untouched.
+        // Layer 1: CAPE + rising probability = unsettled regime (pop-up risk today).
+        const probs4 = (data?.hourly?.precipitation_probability ?? []).slice(0, 4)
+          .filter(v => typeof v === 'number')
+        const maxProb4 = probs4.length ? Math.max(...probs4) : null
+        setUnsettled(!severeStorm && isUnsettled(cape, maxProb4, localHour))
+        // Layer 2: radar-confirmed initiation stamped by the backend.
+        setFormingTs(ambientFormingTs())
         const uv = data?.current?.uv_index ?? null
         setUvIndex(uv !== null && uv >= 6 && localHour >= 7 && localHour < 20 ? uv : null)
         setLastUpdated(Date.now())
@@ -887,6 +900,20 @@ export default function App() {
             <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
               <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-alert)' }}>
                 ⚡ {t('storm_cape_warning')}
+              </span>
+            </div>
+          )}
+          {formingActive && (
+            <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
+              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-alert)' }}>
+                🌩 {t('forming_note')}
+              </span>
+            </div>
+          )}
+          {unsettled && !formingActive && (
+            <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
+              <span className="font-mono text-xs leading-relaxed" style={{ color: 'var(--c-warn)' }}>
+                🌤 {t('unsettled_note')}
               </span>
             </div>
           )}

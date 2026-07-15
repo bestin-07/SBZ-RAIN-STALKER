@@ -37,6 +37,7 @@ def _extract(names):
 NS = _extract({
     "_filter_virga", "VIRGA_PROB_MIN", "VIRGA_CAP_TO", "VIRGA_HEAVY_PASS",
     "DRY_THRESHOLD", "MIN_PUSH_AGREEMENT",
+    "_detect_forming", "FORMING_MIN_POINTS", "FORMING_CAPE_MIN",
 })
 
 
@@ -101,6 +102,37 @@ class TestPushContract(unittest.TestCase):
     def test_majority_agreement(self):
         # Push notifications need ≥3 of 11 grid points to agree (no single-point alarms).
         self.assertEqual(NS["MIN_PUSH_AGREEMENT"], 3)
+
+
+class TestFormingDetector(unittest.TestCase):
+    """Convective-initiation watch (v1.3.0): several points flipping dry→wet in one
+    cycle + real CAPE = radar-CONFIRMED formation. Observation, never speculation."""
+
+    def setUp(self):
+        self.f = NS["_detect_forming"]
+
+    def test_thresholds_contract(self):
+        self.assertEqual(NS["FORMING_MIN_POINTS"], 3)
+        self.assertEqual(NS["FORMING_CAPE_MIN"], 300)
+
+    def test_initiation_detected(self):
+        # 3 points newly wet under CAPE 400 → event (count reaches the fire line).
+        prev = {"a": False, "b": False, "c": False, "d": True}
+        cur  = {"a": True,  "b": True,  "c": True,  "d": True}
+        self.assertEqual(self.f(prev, cur, 400), 3)
+
+    def test_stable_air_never_fires(self):
+        # Same flips but CAPE 100 → drift/advection, not initiation.
+        prev = {"a": False, "b": False, "c": False}
+        cur  = {"a": True,  "b": True,  "c": True}
+        self.assertEqual(self.f(prev, cur, 100), 0)
+        self.assertEqual(self.f(prev, cur, None), 0)
+
+    def test_already_wet_points_do_not_count(self):
+        # Ongoing rain is not initiation — only dry→wet flips count.
+        prev = {"a": True, "b": True, "c": False}
+        cur  = {"a": True, "b": True, "c": True}
+        self.assertEqual(self.f(prev, cur, 400), 1)
 
 
 if __name__ == "__main__":

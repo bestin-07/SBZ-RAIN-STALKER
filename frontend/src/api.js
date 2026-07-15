@@ -58,7 +58,7 @@ export const AREAS = [
 // One shared server call for the whole grid; clients pick the nearest point (GPS
 // stays in the browser). Prevents every user hitting Open-Meteo directly (rate
 // limits / shared NAT). Cached ~90s. Returns points[] or null.
-let _ambientPoints = null, _ambientPointsTs = 0
+let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null
 async function fetchAmbient() {
   const now = Date.now()
   if (_ambientPoints && now - _ambientPointsTs < 90 * 1000) return _ambientPoints
@@ -66,10 +66,17 @@ async function fetchAmbient() {
     const r = await fetch(`${BACKEND}/api/ambient`, { signal: AbortSignal.timeout(5000) })
     if (!r.ok) return _ambientPoints
     const j = await r.json()
+    // Radar-confirmed convective initiation stamp (unix s) — set by the backend when
+    // several grid points flip dry→wet in one cycle under real CAPE. Drives the
+    // "showers forming right now" banner (App checks freshness).
+    if (typeof j?.forming_ts === 'number') _ambientFormingTs = j.forming_ts
     if (Array.isArray(j?.points) && j.points.length) { _ambientPoints = j.points; _ambientPointsTs = now; return j.points }
     return _ambientPoints   // empty before first cycle → let caller fall back to direct OM
   } catch { return _ambientPoints }
 }
+
+// Latest convective-initiation timestamp seen on /api/ambient (unix s), or null.
+export function ambientFormingTs() { return _ambientFormingTs }
 function nearestAmbientPoint(points, lat, lon) {
   let best = null, bd = Infinity
   for (const p of points) {

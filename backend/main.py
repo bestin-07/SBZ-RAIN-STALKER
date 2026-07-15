@@ -845,6 +845,14 @@ def _build_payload(event: dict) -> dict:
                 "body_de":  "Könnte dich treffen — check deinen Standort",
                 "title_en": "Rain over Salzburg",
                 "body_en":  "May affect your spot — check the app"}
+    if t == "forming":
+        # Radar-CONFIRMED convective initiation (multiple grid points newly wet +
+        # real instability) — the strongest early warning we can honestly give.
+        return {"type": "rain",
+                "title_de": "Schauer bilden sich über Salzburg",
+                "body_de":  "Zellen entstehen gerade in der Region - kann jeden Punkt treffen",
+                "title_en": "Showers forming over Salzburg",
+                "body_en":  "Cells forming in the area right now - any spot could get hit"}
     return {}
 
 
@@ -883,6 +891,11 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         median_wet = wet_sorted[len(wet_sorted) // 2]
         events.append({"type": "raining", "light": median_wet < 0.5})
 
+    # Convective initiation detected this cycle (run_cycle stamps _forming_ts) —
+    # already radar-verified across ≥FORMING_MIN_POINTS points, no extra vote needed.
+    if _forming_ts and now_ts - _forming_ts < 600:
+        events.append({"type": "forming"})
+
     total = len(POINTS)
     by_type = {}
     for e in events:
@@ -891,20 +904,20 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
     counts = {k: len(v) for k, v in by_type.items()}
     print(f"[push] votes: {counts} / {total} (need {MIN_PUSH_AGREEMENT})")
 
-    # Story order: raining now > rain incoming > clearing > gap. Daytime-only +
-    # ≥15-min gap (checked above) + once-per-type-per-day → max 4 paced pushes/day.
-    for push_type in ("raining", "rain_incoming", "rain_clearing", "gap"):
+    # Story order: forming > raining now > rain incoming > clearing > gap. Daytime-only
+    # + ≥15-min gap (checked above) + once-per-type-per-day → max 5 paced pushes/day.
+    for push_type in ("forming", "raining", "rain_incoming", "rain_clearing", "gap"):
         candidates = by_type.get(push_type, [])
         if not candidates:
             continue
-        # "raining" is a single event already verified by the wet-count above; the
-        # forecast types need MIN_PUSH_AGREEMENT points to independently agree.
-        if push_type != "raining" and len(candidates) < MIN_PUSH_AGREEMENT:
+        # "raining" and "forming" are single events already verified (wet-count /
+        # multi-point initiation); the forecast types need MIN_PUSH_AGREEMENT points.
+        if push_type not in ("raining", "forming") and len(candidates) < MIN_PUSH_AGREEMENT:
             continue
         if _type_fired_today(push_type, now_ts):
             print(f"[push] {push_type} already fired today — skip")
             continue
-        if push_type == "raining":
+        if push_type in ("raining", "forming"):
             best = candidates[0]
         else:
             # Pick the most imminent event across agreeing points
@@ -931,6 +944,23 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
 VIRGA_PROB_MIN  = 50     # low-confidence when hourly rain probability is under this
 VIRGA_CAP_TO    = 0.4    # cap (not zero) low-confidence LIGHT echo → shows as at most LIGHT
 VIRGA_HEAVY_PASS = 1.5   # low-confidence echo AT/ABOVE this passes through UNTOUCHED
+
+# ---- Convective-initiation detector (v1.3.0, "Layer 2") -------------------------
+# Radar-CONFIRMED formation: several grid points flipping dry → wet within one cycle,
+# under real instability (CAPE). This is observation, not speculation — it fires when
+# cells ARE forming over the basin, the case no point-forecast can warn about earlier.
+FORMING_MIN_POINTS = 3    # newly-wet points required (mirrors MIN_PUSH_AGREEMENT)
+FORMING_CAPE_MIN   = 300  # J/kg — below this, new echo is drift/noise, not initiation
+
+def _detect_forming(prev_wet, wet_now, max_cape):
+    """Count of points newly wet THIS cycle (dry last cycle). 0 when CAPE is too low
+    (stable air → new echo is advection, not initiation) or nothing is new."""
+    if (max_cape or 0) < FORMING_CAPE_MIN:
+        return 0
+    return sum(1 for k, v in wet_now.items() if v and not prev_wet.get(k))
+
+_prev_wet = {}      # point name → was wet last cycle
+_forming_ts = 0     # unix ts of the last detected initiation event
 
 def _filter_virga(times, precips, ptime, pprob):
     """Low-confidence echo (model probability < 50%) is CAPPED to ~light, not zeroed —
@@ -1031,6 +1061,26 @@ async def run_cycle():
             if nc:
                 precips = _filter_virga(nc["times"], nc["precips"], pt.get("ptime"), pt.get("pprob"))
                 pt["nowcast"] = {"times": nc["times"], "precips": precips}
+
+        # Convective-initiation watch: compare each point's "wet around now" against
+        # last cycle. Several dry→wet flips + real CAPE = cells forming over the basin
+        # RIGHT NOW → stamp forming_ts (served via /api/ambient → frontend banner) and
+        # let check_and_push fire the once-a-day "forming" notification.
+        global _prev_wet, _forming_ts
+        if nowcasts:
+            wet_now = {}
+            for name, nc in nowcasts.items():
+                near = [p for t_, p in zip(nc["times"], nc["precips"])
+                        if now_ts - 900 <= t_ <= now_ts + 900]
+                wet_now[name] = bool(near) and max(near) >= DRY_THRESHOLD
+            capes = [p.get("cape") for p in _ambient.get("points", [])
+                     if isinstance(p.get("cape"), (int, float))]
+            max_cape = max(capes) if capes else None
+            if _prev_wet and _detect_forming(_prev_wet, wet_now, max_cape) >= FORMING_MIN_POINTS:
+                _forming_ts = now_ts
+                _ambient["forming_ts"] = now_ts
+                print(f"[forming] convective initiation detected (CAPE {max_cape} J/kg)")
+            _prev_wet = wet_now
 
         if forecast_rows:
             with get_db() as (_, cur):

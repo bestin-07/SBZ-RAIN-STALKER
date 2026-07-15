@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.3.0] — 2026-07-14 — Convective watch: CAPE flags the risk, radar confirms it
+### Added (banners + one push — the verdict logic is untouched)
+- **Layer 1 · "Unsettled" regime flag** (frontend, muted banner): CAPE ≥ 300 J/kg AND
+  max hourly probability (next ~4 h) ≥ 50% during convective hours (11:00–20:00) →
+  *"unsettled air — showers can form fast today, windows may be short."* Sets
+  expectations on pop-up-shower days without contradicting GEMMA RAUS. Evidence-based
+  thresholds: the soaking day (CAPE 200–570, prob 40–78%) flags; the sunny-clutter day
+  (CAPE 90–330, prob 3–53%) doesn't. Suppressed when the ≥1500 storm banner is up.
+- **Layer 2 · Radar-confirmed initiation** (backend): each cycle compares every grid
+  point's "wet now" against the previous cycle; **≥3 points flipping dry→wet in one
+  cycle + CAPE ≥ 300** = cells forming over the basin RIGHT NOW (observation, not
+  speculation). Stamps `forming_ts` on `/api/ambient` → alert banner *"showers forming
+  over Salzburg right now — any spot could get hit"* (visible 30 min, live-expiring) +
+  a **once-per-day "forming" push** (top of the story order, daytime + pacing rules).
+- 6 new frontend tests + 4 new backend tests (73 total).
+
+---
+
 ## [1.2.1] — 2026-07-14 — Gap-confidence softener (symmetry with rain onset)
 ### Changed (wording only — times always kept)
 - A break predicted **≥60 min out** is now spoken as "**break likely in about X min**" /

@@ -26,6 +26,21 @@ export function surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, code) {
   return Math.max(drizzle, LIGHT_MIN)
 }
 
+// Convective-watch "Layer 1" (v1.3.0): the UNSETTLED regime flag. CAPE says the air
+// has fuel; rising model probability says the trigger is plausible; afternoon hours
+// are when Alpine convection fires. All three → a muted banner ("showers can form
+// fast today, windows may be short") that sets expectations WITHOUT touching the
+// verdict. Evidence: soaking day CAPE 200–570 + prob 40–78% vs sunny-clutter day
+// CAPE 90–330 + prob 3–53% — CAPE alone doesn't separate them, CAPE+prob does.
+// (Layer 2, radar-CONFIRMED initiation, lives in the backend: forming_ts.)
+export const UNSETTLED_CAPE = 300   // J/kg
+export const UNSETTLED_PROB = 50    // % — max hourly probability over the next ~4 h
+export function isUnsettled(cape, maxProb, hour) {
+  return cape != null && maxProb != null &&
+    cape >= UNSETTLED_CAPE && maxProb >= UNSETTLED_PROB &&
+    hour >= 11 && hour < 20
+}
+
 // Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
 // DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
 // verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,

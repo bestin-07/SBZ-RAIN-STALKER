@@ -8,8 +8,9 @@
 // Run: npm test   (vitest)
 import { describe, it, expect } from 'vitest'
 import {
-  detectGaps, getStatus, firstDownpourMin, surfaceDrizzle,
+  detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
+  UNSETTLED_CAPE, UNSETTLED_PROB,
 } from './gaps'
 
 // ---- helpers ---------------------------------------------------------------
@@ -398,6 +399,32 @@ describe('surfaceDrizzle — catch what the gauges miss, reject sunny clutter', 
     const v = surfaceDrizzle(0, 0.12, 0, 3)
     expect(v).toBeGreaterThanOrEqual(LIGHT_MIN)
     expect(v).toBeLessThan(LIGHT_MAX)
+  })
+})
+
+// ---- isUnsettled — convective-watch Layer 1 (regime flag, banner only) ------------
+
+describe('isUnsettled — CAPE flags the fuel, probability confirms the trigger', () => {
+  it('contract: CAPE ≥ 300 AND max prob ≥ 50, afternoon only (11:00–19:59)', () => {
+    expect(UNSETTLED_CAPE).toBe(300)
+    expect(UNSETTLED_PROB).toBe(50)
+  })
+  it('the soaking day (CAPE 400, prob 60, 14:00) → unsettled', () => {
+    expect(isUnsettled(400, 60, 14)).toBe(true)
+  })
+  it('the sunny-clutter day (CAPE 200, prob 53) → NOT unsettled (fuel too low)', () => {
+    expect(isUnsettled(200, 53, 14)).toBe(false)
+  })
+  it('fuel without trigger (CAPE 400, prob 30) → NOT unsettled', () => {
+    expect(isUnsettled(400, 30, 14)).toBe(false)
+  })
+  it('outside convective hours (09:00 / 20:00) → NOT unsettled', () => {
+    expect(isUnsettled(400, 60, 9)).toBe(false)
+    expect(isUnsettled(400, 60, 20)).toBe(false)
+  })
+  it('missing data → never flags (no data, no claim)', () => {
+    expect(isUnsettled(null, 60, 14)).toBe(false)
+    expect(isUnsettled(400, null, 14)).toBe(false)
   })
 })
 
