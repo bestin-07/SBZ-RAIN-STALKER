@@ -12,6 +12,7 @@ import InfoPanel from './components/InfoPanel'
 import NotifyModal from './components/NotifyModal'
 import PrivacyPanel from './components/PrivacyPanel'
 import InstallPrompt from './components/InstallPrompt'
+import UpdateNote from './components/UpdateNote'
 
 const REFRESH_MS = 5 * 60 * 1000
 // Narrative continuity: a small story kept in localStorage so a refresh/re-open
@@ -826,6 +827,8 @@ export default function App() {
   return (
     <div className="flex flex-col h-full bg-bg text-primary overflow-hidden">
       <Header {...headerProps} />
+
+      <UpdateNote t={t} />
 
       {notifyMsg && (
         <button

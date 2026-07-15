@@ -12,6 +12,16 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.0.3] — 2026-07-16 — One-time trust note (owning the July 15 miss)
+### Added (UI)
+- A one-time, closable in-app note: *"On July 15 we missed the evening rain — we're
+  sorry. The app now also cross-checks the weather model and the radar's motion, and
+  warns when rain is expected even while the radar is still clear."* Shown once per
+  device (localStorage `update_note_20260716`), dismissible, DE + EN. Owning the miss
+  publicly + saying exactly what changed.
+
+---
+
 ## [2.0.2] — 2026-07-16 — Map animation reaches the actual future
 ### Fixed (map UX)
 - The radar timeline often ended in the past ("stops at 20:30 when it's 20:34"):
