@@ -12,6 +12,17 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.0.2] — 2026-07-16 — Map animation reaches the actual future
+### Fixed (map UX)
+- The radar timeline often ended in the past ("stops at 20:30 when it's 20:34"):
+  RainViewer frames are 10-min quantized and generated ~5–10 min behind wall clock,
+  and we kept only 2 of its 3 forecast frames — so the "future" frames were frequently
+  already history. Now **all 3 forecast frames** are animated (loop reaches ~+20 min
+  past wall clock) and **forecast frames dwell 2× longer**, so the loop reads
+  "now → ahead" instead of a history reel. Frame set still refreshes every 5 min.
+
+---
+
 ## [2.0.1] — 2026-07-14 — Trailing-edge fix: the model can't out-shout a reporting gauge
 ### Fixed (rain logic — the bogus "WAIT 50 MIN in the sun")
 - Open-Meteo's `current.precipitation` is a **preceding-hour** value — after rain ends

@@ -211,13 +211,20 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
         const host = typeof rawHost === 'string' && /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}$/.test(rawHost)
           ? rawHost
           : ALLOWED_RV_HOST
-        // Last 4 past frames (~40 min history) + up to 2 nowcast extrapolations
+        // Last 4 past frames (~40 min history) + ALL nowcast extrapolations (usually 3,
+        // to ~+30 min). RainViewer frames are 10-min quantized and generated ~5–10 min
+        // behind wall clock — taking only 2 forecast frames meant the "future" was
+        // often already in the past by the time users looked ("timeline stops at
+        // 20:30 when it's 20:34"). All 3 keeps the loop genuinely ahead of now.
         const past    = (data.radar?.past     ?? []).slice(-4)
-        const nowcast = (data.radar?.nowcast  ?? []).slice(0, 2)
+        const nowcast = (data.radar?.nowcast  ?? [])
         const frames  = [...past, ...nowcast]
         if (!frames.length) return
         // Frame timestamps + past/forecast flag, for the little running-time banner.
         framesMetaRef.current = frames.map((f, i) => ({ time: f.time, forecast: i >= past.length }))
+        // Play order: forecast frames dwell 2 ticks each, so the loop *feels* forward-
+        // looking (~50% of loop time in the future) instead of a history reel.
+        const playlist = frames.flatMap((_, i) => (i >= past.length ? [i, i] : [i]))
 
         if (animTimerRef.current) { clearInterval(animTimerRef.current); animTimerRef.current = null }
         rvLayersRef.current.forEach(l => { try { mapRef.current?.removeLayer(l) } catch {} })
@@ -242,19 +249,23 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
           layer.addTo(mapRef.current)
           return layer
         })
-        animIdxRef.current = frames.length - 1
+        let pos = playlist.length - 1
+        animIdxRef.current = playlist[pos]
         syncRvOpacity()
         setRadarFrame(framesMetaRef.current[animIdxRef.current] ?? null)
 
         animTimerRef.current = setInterval(() => {
           const layers = rvLayersRef.current
           if (!layers.length) return
+          pos = (pos + 1) % playlist.length
           const prev = animIdxRef.current
-          const next = (prev + 1) % layers.length
-          try { layers[prev].setOpacity(0) } catch {}
-          if (rvVisible()) { try { layers[next].setOpacity(0.5) } catch {} }
-          animIdxRef.current = next
-          setRadarFrame(framesMetaRef.current[next] ?? null)
+          const next = playlist[pos]
+          if (next !== prev) {                       // dwell tick: same frame stays lit
+            try { layers[prev].setOpacity(0) } catch {}
+            if (rvVisible()) { try { layers[next].setOpacity(0.5) } catch {} }
+            animIdxRef.current = next
+            setRadarFrame(framesMetaRef.current[next] ?? null)
+          }
         }, 700)
       } catch {
         // RainViewer unavailable — base map + area dots remain
