@@ -12,6 +12,33 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.4.0] — 2026-07-14 — Fix the missed evening rain: two onset guards
+**Post-mortem:** the app said dry all evening; rain came; other weather apps had it.
+Root cause was architectural: the NEXT lane was **radar-nowcast-only**, and radar
+extrapolation cannot see rain that doesn't exist as echo yet. For frontal/stratiform
+onset the MODEL leads the radar by hours (the mirror of convection, where radar leads
+the lagging model — we'd over-fit to that first lesson and discarded the model whenever
+the radar answered). On top of that, GeoSphere's nowcast issues 15–25 min behind real
+time, while RainViewer's frames run ~5 min behind — users could SEE the rain as blue on
+our own map while the ribbon claimed dry.
+
+### Added (rain logic — two new onset guards, radar still leads when it sees rain)
+- **Model second-opinion** (`modelNextRainAt`): when the radar claims a full 3 h
+  all-clear but the model's own minutely timeline shows rain, the verdict says
+  "**radar clear so far — model expects rain in about X**" (minutes <90, hours ≥90),
+  in the sub, the popup notice AND the ribbon dry-label. Never a confident all-clear
+  the model contradicts: *better someone stays home dry.*
+- **RainViewer approach guard** (`rvApproaching`): the pixel sampler now also reads the
+  RainViewer FORECAST frame (~+20–30 min, observed echo motion). Pixel clear now + echo
+  arriving + GeoSphere silent → "**rain approaching on radar — could reach you within
+  ~30 min**". Moving echo can't be static clutter, so no clear-sky guard needed.
+  Promotes what users can already see on the map into the verdict.
+- Precedence: downpour warning > RV approach > model second-opinion > radar countdowns
+  (a nearer GeoSphere countdown always wins over the approach guard). 9 new contract
+  tests (70 frontend total).
+
+---
+
 ## [1.3.1] — 2026-07-14 — Honest dry-ribbon label (attribution + instability)
 ### Changed (wording only)
 - The all-dry ribbon label no longer reads as a promise. Default: "**radar sees** no

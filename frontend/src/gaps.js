@@ -41,6 +41,25 @@ export function isUnsettled(cape, maxProb, hour) {
     hour >= 11 && hour < 20
 }
 
+// Model second-opinion (v1.4.0). The radar nowcast EXTRAPOLATES existing echo — it is
+// structurally blind to rain that hasn't formed yet. For frontal/stratiform onset the
+// MODEL leads the radar by hours (the exact mirror of convection, where radar leads a
+// lagging model — we'd over-fit to that first lesson and discarded the model whenever
+// the radar answered; result: "dry all evening" while every model-based weather app
+// showed the incoming rain, and it rained). When the radar sees NOTHING in 3 h, this
+// returns the model's own first wet slot so the verdict can say "radar clear so far —
+// model expects rain in ~X" instead of a confident all-clear. Radar still wins when it
+// sees rain (it's more precise); the model is the safety net, never the override.
+export function modelNextRainAt(omTimes, omPrecips, nowSec) {
+  if (!omTimes?.length || !omPrecips?.length) return null
+  const lim = nowSec + 3 * 3600
+  for (let i = 0; i < omTimes.length; i++) {
+    const tt = omTimes[i], p = omPrecips[i] ?? 0
+    if (tt >= nowSec && tt <= lim && p >= DRY_THRESHOLD) return tt
+  }
+  return null
+}
+
 // Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
 // DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
 // verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
@@ -227,7 +246,13 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
   if ((type === 'go' || type === 'light') && trend.downpourSoonMin != null) {
     sub = t('n_downpour_soon', { min: trend.downpourSoonMin })
   } else if (type === 'go') {
-    if (trend.dryEndsOpen) {
+    if (trend.rvApproaching && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
+      sub = t('n_rv_approach')
+    } else if (trend.dryEndsOpen && trend.modelRainAt) {
+      const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
+      sub = m >= FAR_RAIN_MIN ? t('n_model_rain_far', { h: hoursLabel(m) })
+          : t('n_model_rain', { min: Math.max(5, Math.round(m / 5) * 5) })
+    } else if (trend.dryEndsOpen) {
       sub = t('n_clear_hours')
     } else if (trend.nextRainAt) {
       const min = Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60))
@@ -300,6 +325,21 @@ export function getStatus(
       // Radar shows a real downpour imminent — warn even though it's dry NOW, so
       // "go" doesn't walk you into a soaking. Top priority over the calm dry subs.
       sub = t('s_downpour_soon', { min: trend.downpourSoonMin })
+    } else if (trend.rvApproaching && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
+      // The RainViewer forecast frame shows OBSERVED echo arriving at this pixel
+      // within ~30 min while the (higher-latency) GeoSphere timeline still claims
+      // nothing near. Freshest radar wins: the "rain was visibly blue on the map
+      // while the app said dry" case. Yields to a nearer GeoSphere countdown.
+      sub = t('s_rv_approach')
+    } else if (trend.dryEndsOpen && trend.modelRainAt) {
+      // Radar sees NOTHING in 3 h but the MODEL's own timeline shows rain — the
+      // frontal/stratiform case where the model leads the radar by hours. Never
+      // claim a confident all-clear the model contradicts: better someone stays
+      // home dry than gets sent out into rain the radar couldn't see yet.
+      const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
+      sub = night ? t('s_night_rain_coming')
+          : m >= FAR_RAIN_MIN ? t('s_model_rain_far', { h: hoursLabel(m) })
+          : t('s_model_rain', { min: Math.max(5, Math.round(m / 5) * 5) })
     } else if (trend.dryEndsOpen) {
       sub = t(night ? 's_night_clear' : evening ? 's_evening_clear' : 's_clear_hours')
     } else if (trend.nextRainAt) {

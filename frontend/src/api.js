@@ -304,19 +304,61 @@ function getRainViewerMaps() {
   return p
 }
 
-// Sample the latest RainViewer radar tile at the user's exact lat/lon.
-// Returns 0.3 (above dry threshold) if radar sees rain, 0 if clear, null on
-// any error (CORS not available, tile fetch failed, etc.). This is the fastest
-// "is it raining right now?" signal — it uses the same radar frames displayed
-// on the map but reads the pixel at the user's GPS position directly.
+// Sample ONE RainViewer frame's tile at a pixel. Resolves 0.3 (echo), 0 (clear) or
+// null (CORS/tile failure). Shared by the "now" and "approaching" reads below.
+function sampleRvFrame(host, framePath, z, tileX, tileY, px, py) {
+  const tileUrl = `${host}${framePath}/256/${z}/${tileX}/${tileY}/2/1_1.png`
+  const imgPromise = new Promise(resolve => {
+    const img = new Image()
+    // crossOrigin='anonymous' requests CORS headers. If RainViewer responds
+    // with Access-Control-Allow-Origin, we can read pixel data. If not,
+    // onerror fires (browser treats missing CORS as a load failure) → null.
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 256; canvas.height = 256
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0)
+      try {
+        // Sample a 5×5 pixel block (~700 m box at z7) centred on the target
+        // pixel and take the max echo — catches a small cell sitting a pixel
+        // or two off the exact GPS point. Zero extra network cost (same tile).
+        const x0 = Math.max(0, px - 2), y0 = Math.max(0, py - 2)
+        const w = Math.min(256 - x0, 5), h = Math.min(256 - y0, 5)
+        const block = ctx.getImageData(x0, y0, w, h).data
+        // RainViewer Universal Blue scheme: transparent = no rain.
+        // alpha > 30 = meaningful radar echo above noise floor.
+        let maxAlpha = 0
+        for (let i = 3; i < block.length; i += 4) {
+          if (block[i] > maxAlpha) maxAlpha = block[i]
+        }
+        resolve(maxAlpha > 30 ? 0.3 : 0)
+      } catch {
+        resolve(null)  // tainted canvas — CORS headers not present
+      }
+    }
+    img.onerror = () => resolve(null)
+    img.src = tileUrl
+  })
+  return Promise.race([imgPromise, new Promise(r => setTimeout(() => r(null), 5000))])
+}
+
+// Read RainViewer at the user's exact lat/lon — TWO frames:
+//  • now  — the latest PAST frame (real radar, ~5 min latency: the freshest "is echo
+//           over me" signal we have; GeoSphere's nowcast issues 15–25 min behind).
+//  • soon — the LAST RainViewer NOWCAST frame (~+20–30 min): radar echo whose observed
+//           MOTION brings it over this pixel shortly. This is the "I can see the rain
+//           coming as blue on the map while the app claims dry" signal, promoted from
+//           the map into the verdict (missed-evening-rain fix, v1.4).
+// Returns { now, soon } (each 0.3 | 0 | null) or null when RainViewer is unavailable.
 export function fetchRainViewerPrecip(lat, lon) {
   return getRainViewerMaps()
     .then(mapData => {
       if (!mapData) return null
       const past = mapData.radar?.past ?? []
+      const fcst = mapData.radar?.nowcast ?? []
       if (!past.length) return null
 
-      const frame = past[past.length - 1]
       const rawHost = mapData.host
       const host = typeof rawHost === 'string' && /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}$/.test(rawHost)
         ? rawHost : ALLOWED_RV_TILE_HOST
@@ -331,42 +373,14 @@ export function fetchRainViewerPrecip(lat, lon) {
       const px = Math.floor(((lon + 180) / 360 * n - tileX) * 256)
       const py = Math.floor((mercY * n - tileY) * 256)
 
-      const tileUrl = `${host}${frame.path}/256/${z}/${tileX}/${tileY}/2/1_1.png`
-
-      // Timeout wrapper so a slow tile server doesn't block the whole loadData cycle
-      const imgPromise = new Promise(resolve => {
-        const img = new Image()
-        // crossOrigin='anonymous' requests CORS headers. If RainViewer responds
-        // with Access-Control-Allow-Origin, we can read pixel data. If not,
-        // onerror fires (browser treats missing CORS as a load failure) → null.
-        img.crossOrigin = 'anonymous'
-        img.onload = () => {
-          const canvas = document.createElement('canvas')
-          canvas.width = 256; canvas.height = 256
-          const ctx = canvas.getContext('2d')
-          ctx.drawImage(img, 0, 0)
-          try {
-            // Sample a 5×5 pixel block (~700 m box at z7) centred on the user's
-            // pixel and take the max echo — catches a small cell sitting a pixel
-            // or two off the exact GPS point. Zero extra network cost (same tile).
-            const x0 = Math.max(0, px - 2), y0 = Math.max(0, py - 2)
-            const w = Math.min(256 - x0, 5), h = Math.min(256 - y0, 5)
-            const block = ctx.getImageData(x0, y0, w, h).data
-            // RainViewer Universal Blue scheme: transparent = no rain.
-            // alpha > 30 = meaningful radar echo above noise floor.
-            let maxAlpha = 0
-            for (let i = 3; i < block.length; i += 4) {
-              if (block[i] > maxAlpha) maxAlpha = block[i]
-            }
-            resolve(maxAlpha > 30 ? 0.3 : 0)
-          } catch {
-            resolve(null)  // tainted canvas — CORS headers not present
-          }
-        }
-        img.onerror = () => resolve(null)
-        img.src = tileUrl
+      const nowP  = sampleRvFrame(host, past[past.length - 1].path, z, tileX, tileY, px, py)
+      const soonP = fcst.length
+        ? sampleRvFrame(host, fcst[fcst.length - 1].path, z, tileX, tileY, px, py)
+        : Promise.resolve(null)
+      return Promise.all([nowP, soonP]).then(([now, soon]) => {
+        if (now === null && soon === null) return null
+        return { now, soon }
       })
-      return Promise.race([imgPromise, new Promise(r => setTimeout(() => r(null), 5000))])
     })
     .catch(() => null)
 }

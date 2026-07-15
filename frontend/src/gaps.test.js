@@ -8,7 +8,7 @@
 // Run: npm test   (vitest)
 import { describe, it, expect } from 'vitest'
 import {
-  detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled,
+  detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB,
 } from './gaps'
@@ -399,6 +399,74 @@ describe('surfaceDrizzle — catch what the gauges miss, reject sunny clutter', 
     const v = surfaceDrizzle(0, 0.12, 0, 3)
     expect(v).toBeGreaterThanOrEqual(LIGHT_MIN)
     expect(v).toBeLessThan(LIGHT_MAX)
+  })
+})
+
+// ---- the missed-evening-rain fixes (v1.4): model second-opinion + RV approach -----
+
+describe('model second-opinion — never claim an all-clear the model contradicts', () => {
+  it('modelNextRainAt finds the model\'s first wet slot within 3 h', () => {
+    const times = [NOON, NOON + 900, NOON + 1800, NOON + 2700]
+    expect(modelNextRainAt(times, [0, 0, 0.3, 0.6], NOON)).toBe(NOON + 1800)
+    expect(modelNextRainAt(times, [0, 0, 0, 0], NOON)).toBeNull()
+    expect(modelNextRainAt([], [], NOON)).toBeNull()
+  })
+
+  it('THE MISSED EVENING RAIN: radar all-clear + model shows rain → says so, with time', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, modelRainAt: NOON + 45 * 60 })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_model_rain')                    // NOT "clear for hours"
+    expect(t.varsFor('s_model_rain').min).toBe(45)
+  })
+
+  it('far model rain → hours form ("model expects rain in about 2½ h")', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, modelRainAt: NOON + 150 * 60 })
+    expect(s.sub).toBe('s_model_rain_far')
+    expect(t.varsFor('s_model_rain_far').h).toBe('2½')
+  })
+
+  it('radar seeing rain itself → radar countdown wins, model stays quiet', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { nextRainAt: NOON + 40 * 60, rainProb: 80, modelRainAt: NOON + 60 * 60 })
+    expect(s.sub).toBe('s_rain_soon')
+  })
+
+  it('popup notice carries the model expectation too', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, modelRainAt: NOON + 45 * 60 })
+    expect(s.notice.sub).toBe('n_model_rain')
+  })
+})
+
+describe('RainViewer approach — the "blue on the map while the app said dry" guard', () => {
+  it('RV forecast frame shows echo arriving + GeoSphere silent → "rain approaching on radar"', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, rvApproaching: true })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_rv_approach')
+    expect(s.notice.sub).toBe('n_rv_approach')
+  })
+
+  it('outranks the model second-opinion (observed echo beats expectation)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, rvApproaching: true, modelRainAt: NOON + 45 * 60 })
+    expect(s.sub).toBe('s_rv_approach')
+  })
+
+  it('yields to a NEARER GeoSphere countdown (more precise timing wins)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { nextRainAt: NOON + 20 * 60, rainProb: 80, rvApproaching: true })
+    expect(s.sub).toBe('s_rain_soon')
+  })
+
+  it('downpour warning still outranks everything', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, rvApproaching: true, downpourSoonMin: 12 })
+    expect(s.sub).toBe('s_downpour_soon')
   })
 })
 

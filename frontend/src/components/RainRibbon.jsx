@@ -23,13 +23,28 @@ function precipToColor(p, pal) {
   return                        pal.storm
 }
 
+// Label priority when the drawn ribbon is dry/empty: MODEL disagreeing with a radar
+// all-clear beats everything (frontal rain the radar can't see yet), then CAPE
+// instability, then the plain radar-attributed dry line.
+function dryLabel(t, hasData, unstable, modelRainMin) {
+  if (!hasData) return t('ribbon_wait')
+  if (modelRainMin != null) {
+    if (modelRainMin >= 90) {
+      const h = Math.round(modelRainMin / 30) / 2
+      return t('ribbon_dry_model_far', { h: h % 1 ? `${Math.floor(h)}½` : `${h}` })
+    }
+    return t('ribbon_dry_model', { min: Math.max(5, Math.round(modelRainMin / 5) * 5) })
+  }
+  return t(unstable ? 'ribbon_dry_unstable' : 'ribbon_dry')
+}
+
 function precipToHeight(p) {
   if (p < DRY_THRESHOLD) return 4
   const pct = Math.min(p / 5, 1)
   return Math.round(4 + pct * (SLOT_H - 10))
 }
 
-export default function RainRibbon({ forecast, theme, t, unstable }) {
+export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
@@ -115,9 +130,11 @@ export default function RainRibbon({ forecast, theme, t, unstable }) {
         {(allDry || !hasData) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
-              {/* Honest attribution: this is what the RADAR sees, not a promise — and
-                  under unstable air (elevated CAPE) it's explicitly marked changeable. */}
-              {hasData ? t(unstable ? 'ribbon_dry_unstable' : 'ribbon_dry') : t('ribbon_wait')}
+              {/* Honest attribution, in priority order: the MODEL disagreeing with a
+                  radar all-clear beats everything (frontal rain the radar can't see
+                  yet — the missed-evening-rain case); then CAPE instability; then the
+                  plain radar-attributed dry line. Never an unqualified promise. */}
+              {dryLabel(t, hasData, unstable, modelRainMin)}
             </span>
           </div>
         )}

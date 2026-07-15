@@ -51,7 +51,15 @@ const translations = {
     next_12h:   '3h · Radar',
     ribbon_dry:  'Radar sieht keinen Regen in den nächsten 3 Std',
     ribbon_dry_unstable: 'Radar sieht noch keinen Regen — labile Luft, kann schnell kippen',
+    ribbon_dry_model: 'Radar frei — Modell erwartet Regen in etwa {min} min',
+    ribbon_dry_model_far: 'Radar frei — Modell erwartet Regen in etwa {h} Std',
     ribbon_wait: 'warte auf Daten …',
+    s_model_rain: ['Radar noch frei — Modell erwartet Regen in etwa {min} min', 'Modell erwartet Regen in etwa {min} min, Radar sieht noch nichts', 'laut Modell Regen in etwa {min} min — Radar noch frei'],
+    s_model_rain_far: ['Radar noch frei — Modell erwartet Regen in etwa {h} Std', 'Modell erwartet Regen in etwa {h} Std, Radar sieht noch nichts', 'laut Modell Regen in etwa {h} Std — Radar noch frei'],
+    n_model_rain: 'Modell erwartet Regen in etwa {min} min',
+    n_model_rain_far: 'Modell erwartet Regen in etwa {h} Std',
+    s_rv_approach: ['Regen nähert sich am Radar — kann dich in ~30 min erreichen', 'Radar zeigt Regen im Anmarsch — etwa 30 min entfernt', 'Regen am Radar in der Nähe — kann in ~30 min da sein'],
+    n_rv_approach: 'Regen nähert sich am Radar (~30 min)',
     // Passive "notice" wording for the MAP POPUPS (a neutral status card for a place —
     // no first person, no brand voice; that stays on the big headline / user's banner).
     n_dry:        'Trocken',
@@ -267,7 +275,15 @@ const translations = {
     next_12h:   '3h · radar',
     ribbon_dry:  'radar sees no rain in the next 3 h',
     ribbon_dry_unstable: 'radar sees no rain yet — unstable air, can change fast',
+    ribbon_dry_model: 'radar clear — model expects rain in about {min} min',
+    ribbon_dry_model_far: 'radar clear — model expects rain in about {h} h',
     ribbon_wait: 'waiting for data …',
+    s_model_rain: ['radar clear so far — model expects rain in about {min} min', 'model expects rain in about {min} min, radar sees nothing yet', 'rain expected in about {min} min (model) — radar still clear'],
+    s_model_rain_far: ['radar clear so far — model expects rain in about {h} h', 'model expects rain in about {h} h, radar sees nothing yet', 'rain expected in about {h} h (model) — radar still clear'],
+    n_model_rain: 'model expects rain in about {min} min',
+    n_model_rain_far: 'model expects rain in about {h} h',
+    s_rv_approach: ['rain approaching on radar — could reach you within ~30 min', 'radar shows rain moving in — roughly 30 min out', 'rain visible on radar nearby — could arrive within ~30 min'],
+    n_rv_approach: 'rain approaching on radar (~30 min)',
     // Passive "notice" wording for the MAP POPUPS (a neutral status card for a place —
     // no first person, no brand voice; that stays on the big headline / user's banner).
     n_dry:        'Dry',

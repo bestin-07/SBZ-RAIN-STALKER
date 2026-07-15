@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -107,6 +107,7 @@ export default function App() {
   const [stormCape, setStormCape] = useState(null)
   const [unsettled, setUnsettled] = useState(false)   // convective-watch Layer 1 (regime)
   const [capeUnstable, setCapeUnstable] = useState(false) // CAPE ≥ 300 → ribbon dry-label says "can change fast"
+  const [modelRainMin, setModelRainMin] = useState(null)  // model's first wet slot (min from now) — ribbon dry-label second opinion
   const [formingTs, setFormingTs] = useState(null)    // convective-watch Layer 2 (radar-confirmed)
   const [uvIndex, setUvIndex] = useState(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
@@ -380,7 +381,11 @@ export default function App() {
     const data        = fRes.status === 'fulfilled' ? fRes.value : null
     const stationData = sRes.status === 'fulfilled' ? sRes.value : null
     const nowcast     = nRes.status === 'fulfilled' ? nRes.value : null
-    const rvPrecip    = rvRes.status === 'fulfilled' && rvRes.value !== null ? rvRes.value : 0
+    const rv          = rvRes.status === 'fulfilled' && rvRes.value !== null ? rvRes.value : null
+    const rvPrecip    = rv?.now ?? 0
+    // Approaching: pixel clear NOW but the RainViewer forecast frame (+20–30 min,
+    // observed echo motion) shows rain arriving. Moving echo can't be static clutter.
+    const rvApproaching = rvPrecip < DRY_THRESHOLD && (rv?.soon ?? 0) >= DRY_THRESHOLD
     if (!data && !nowcast && stationData === null) return null
     const omTimes   = data?.minutely_15?.time ?? []
     const omPrecips = data?.minutely_15?.precipitation ?? []
@@ -430,6 +435,7 @@ export default function App() {
       if (soon.length) maxSoon = Math.max(...soon)
     }
     const downpourSoonMin = firstDownpourMin(nowcast, nowSec)
+    const modelRainAt = modelNextRainAt(omTimes, omPrecips, nowSec)
     let rainProb = null
     const hTimes = data?.hourly?.time ?? [], hProb = data?.hourly?.precipitation_probability ?? []
     if (nextRainAt && hTimes.length) {
@@ -443,7 +449,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, rvApproaching })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -538,12 +544,14 @@ export default function App() {
         const omForNow = stationData !== null && stationPrecip === 0
           ? (measured > 0.1 ? measured : 0)
           : measured
-        // RainViewer radar tile sample at your exact GPS pixel — catches a drizzle the
-        // 2 sparse city gauges miss (radar sees your spot; the gauges are 1–4 km away).
-        // This is why YOUR location is more accurate than the town dots, which don't
-        // sample RainViewer. Returns null if the CORS tile read isn't available.
-        const rvPrecip = rvResult?.status === 'fulfilled' && rvResult.value !== null
-          ? rvResult.value : 0
+        // RainViewer radar at your exact GPS pixel — { now, soon }. `now` is the
+        // freshest is-it-raining signal we have (~5 min latency); `soon` is the
+        // forecast frame ~20–30 min out (observed echo motion) → the "approaching"
+        // guard. Null if the CORS tile read isn't available.
+        const rv = rvResult?.status === 'fulfilled' && rvResult.value !== null
+          ? rvResult.value : null
+        const rvPrecip = rv?.now ?? 0
+        const rvApproaching = rvPrecip < DRY_THRESHOLD && (rv?.soon ?? 0) >= DRY_THRESHOLD
         const nowPrecip = Math.max(omForNow, stationPrecip, rvPrecip)
         // Ground truth = physical stations + model current (no radar). When these
         // are available and read dry they are authoritative for "is it raining on
@@ -630,6 +638,10 @@ export default function App() {
           if (soon.length) maxSoon = Math.max(...soon)
         }
         const downpourSoonMin = firstDownpourMin(nowcast, nowSec)
+        // Model second-opinion (v1.4): the model's own first wet slot within 3 h —
+        // consulted by getStatus only when the radar claims a full all-clear.
+        const modelRainAt = modelNextRainAt(omTimes, omPrecips, nowSec)
+        setModelRainMin(modelRainAt ? Math.max(0, Math.round((modelRainAt - nowSec) / 60)) : null)
         // Ribbon: make the chart tell the SAME truth as the headline, so it can't
         // show "raining now" while the verdict says GO.
         //  • leading "now" bar = effectivePrecip (ground-trusted) — not nowPrecip,
@@ -689,7 +701,7 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, rvApproaching })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data?.current?.temperature_2m ?? null,
@@ -929,7 +941,7 @@ export default function App() {
               </span>
             </div>
           )}
-          <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} />
+          <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
           <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
         </>
       )}
