@@ -29,7 +29,7 @@ function precipToHeight(p) {
   return Math.round(4 + pct * (SLOT_H - 10))
 }
 
-export default function RainRibbon({ forecast, theme, t }) {
+export default function RainRibbon({ forecast, theme, t, unstable }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
@@ -115,7 +115,9 @@ export default function RainRibbon({ forecast, theme, t }) {
         {(allDry || !hasData) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
-              {hasData ? t('ribbon_dry') : t('ribbon_wait')}
+              {/* Honest attribution: this is what the RADAR sees, not a promise — and
+                  under unstable air (elevated CAPE) it's explicitly marked changeable. */}
+              {hasData ? t(unstable ? 'ribbon_dry_unstable' : 'ribbon_dry') : t('ribbon_wait')}
             </span>
           </div>
         )}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, DRY_THRESHOLD } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -106,6 +106,7 @@ export default function App() {
   const [accuracyDismissed, setAccuracyDismissed] = useState(false)
   const [stormCape, setStormCape] = useState(null)
   const [unsettled, setUnsettled] = useState(false)   // convective-watch Layer 1 (regime)
+  const [capeUnstable, setCapeUnstable] = useState(false) // CAPE ≥ 300 → ribbon dry-label says "can change fast"
   const [formingTs, setFormingTs] = useState(null)    // convective-watch Layer 2 (radar-confirmed)
   const [uvIndex, setUvIndex] = useState(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
@@ -709,6 +710,9 @@ export default function App() {
           .filter(v => typeof v === 'number')
         const maxProb4 = probs4.length ? Math.max(...probs4) : null
         setUnsettled(!severeStorm && isUnsettled(cape, maxProb4, localHour))
+        // Ribbon honesty: an all-dry ribbon under unstable air must say "can change
+        // fast" — CAPE alone gates this (no hour/prob filter; it's wording, not a banner).
+        setCapeUnstable(cape != null && cape >= UNSETTLED_CAPE)
         // Layer 2: radar-confirmed initiation stamped by the backend.
         setFormingTs(ambientFormingTs())
         const uv = data?.current?.uv_index ?? null
@@ -925,7 +929,7 @@ export default function App() {
               </span>
             </div>
           )}
-          <RainRibbon forecast={forecast} theme={theme} t={t} />
+          <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} />
           <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
         </>
       )}

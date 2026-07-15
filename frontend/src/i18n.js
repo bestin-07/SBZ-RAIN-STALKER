@@ -49,7 +49,8 @@ const translations = {
     heavy_rain: 'starker Regen',
     storm_rain: 'Gewitter',
     next_12h:   '3h · Radar',
-    ribbon_dry:  'kein Regen in den nächsten 3 Std',
+    ribbon_dry:  'Radar sieht keinen Regen in den nächsten 3 Std',
+    ribbon_dry_unstable: 'Radar sieht noch keinen Regen — labile Luft, kann schnell kippen',
     ribbon_wait: 'warte auf Daten …',
     // Passive "notice" wording for the MAP POPUPS (a neutral status card for a place —
     // no first person, no brand voice; that stays on the big headline / user's banner).
@@ -264,7 +265,8 @@ const translations = {
     heavy_rain: 'heavy rain',
     storm_rain: 'storm',
     next_12h:   '3h · radar',
-    ribbon_dry:  'no rain in the next 3 h',
+    ribbon_dry:  'radar sees no rain in the next 3 h',
+    ribbon_dry_unstable: 'radar sees no rain yet — unstable air, can change fast',
     ribbon_wait: 'waiting for data …',
     // Passive "notice" wording for the MAP POPUPS (a neutral status card for a place —
     // no first person, no brand voice; that stays on the big headline / user's banner).

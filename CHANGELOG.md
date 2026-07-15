@@ -12,6 +12,15 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [1.3.1] — 2026-07-14 — Honest dry-ribbon label (attribution + instability)
+### Changed (wording only)
+- The all-dry ribbon label no longer reads as a promise. Default: "**radar sees** no
+  rain in the next 3 h" (attributes the claim to the instrument). Under unstable air
+  (CAPE ≥ 300): "radar sees no rain **yet — unstable air, can change fast**". CAPE
+  alone gates the variant (no hour/probability filter — it's wording, not a banner).
+
+---
+
 ## [1.3.0] — 2026-07-14 — Convective watch: CAPE flags the risk, radar confirms it
 ### Added (banners + one push — the verdict logic is untouched)
 - **Layer 1 · "Unsettled" regime flag** (frontend, muted banner): CAPE ≥ 300 J/kg AND
