@@ -21,8 +21,16 @@ export function surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, code) {
   if (drizzle < DRY_THRESHOLD || drizzle >= LIGHT_MAX) return null  // nothing, or a heavier
                                                        // cell → the ground's dry call stands
   const nowcastEcho = (rawNowSlot ?? 0) >= DRY_THRESHOLD   // clutter-filtered source agrees
-  const clearSky    = code != null && code <= 2            // model says sunny / mostly clear
-  if (!nowcastEcho && clearSky) return null            // RV-only echo under a clear sky = clutter
+  const clearSky     = code != null && code <= 2            // model says sunny / mostly clear
+  // v2.2.1: a RV-only claim (nowcastEcho false) needs SOME independent corroboration —
+  // any non-zero radar trace, however small. Overcast sky alone is NOT enough: real
+  // incident (Nonntal, overcast/code 3) showed a flat, exact-zero radar reading across
+  // the whole 3h window while a single raw RainViewer pixel claimed echo — that's
+  // terrain clutter (Untersberg/Gaisberg) or tile noise, not weather, regardless of
+  // cloud cover. "Sky unknown" (code null) no longer gets a free pass either; zero
+  // corroboration from anywhere is the same evidence whether or not we know the sky.
+  const anyRadarTrace = (rawNowSlot ?? 0) > 0
+  if (!nowcastEcho && (clearSky || !anyRadarTrace)) return null
   return Math.max(drizzle, LIGHT_MIN)
 }
 

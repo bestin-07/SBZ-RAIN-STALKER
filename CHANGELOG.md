@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.2.1] — 2026-07-17 — Fix the overcast-clutter bug (GO ANYWAY while genuinely dry)
+### Fixed (rain logic)
+- Live incident, Nonntal: gauge 0.0, radar nowcast an **exact 0.0 across the whole 3h
+  window**, sky overcast (code 3) — yet a raw RainViewer pixel claimed echo, and the
+  drizzle-surfacing guard (only blocking under a *clear* sky) let it through. The app
+  said GO ANYWAY while it genuinely was not raining.
+- `surfaceDrizzle` now requires **independent radar corroboration** for an RV-only
+  claim: any non-zero nowcast trace (however small) near the pixel, not just "sky isn't
+  clear". A flat, exact-zero radar reading is treated as active disagreement — real
+  weather leaves *some* radar signature; a total absence, overcast or not, is clutter
+  (terrain reflection off Untersberg/Gaisberg, or tile noise). "Sky unknown" no longer
+  gets a free pass either. The original hyperlocal-drizzle catch this feature was built
+  for is unaffected — that case already had a non-zero (near-threshold) radar trace.
+  2 new / 4 updated contract tests (85 total).
+
+---
+
 ## [2.2.0] — 2026-07-16 — Ribbon extended to 12h + mobile auto-scroll
 ### Added (ribbon UI)
 - **Ribbon now spans 12h** (was 3h): radar covers the first ~3h as solid bars

@@ -360,9 +360,9 @@ describe('getStatus — map-popup notice voice (passive, never first-person)', (
   })
 })
 
-// ---- surfaceDrizzle — gauge-blind drizzle + the clear-sky clutter guard -----------
+// ---- surfaceDrizzle — gauge-blind drizzle, but needs radar corroboration ----------
 
-describe('surfaceDrizzle — catch what the gauges miss, reject sunny clutter', () => {
+describe('surfaceDrizzle — catch what the gauges miss, reject unsupported RV-only claims', () => {
   // args: (groundPrecip, rawNowSlot [filtered nowcast at now], rvPrecip, weather_code)
 
   it('THE SUNNY-CLUTTER BUG (v1.1.5): RV-only echo under a clear sky → NOT surfaced', () => {
@@ -373,13 +373,34 @@ describe('surfaceDrizzle — catch what the gauges miss, reject sunny clutter', 
     expect(surfaceDrizzle(0, 0, 0.3, 2)).toBeNull()
   })
 
-  it('RV-only echo under an OVERCAST sky → surfaced (real drizzle the gauges miss)', () => {
-    expect(surfaceDrizzle(0, 0, 0.3, 3)).toBe(0.3)      // overcast
-    expect(surfaceDrizzle(0, 0, 0.3, 61)).toBe(0.3)     // rain code
-    expect(surfaceDrizzle(0, 0, 0.3, null)).toBe(0.3)   // sky unknown → don't assume clutter
+  it('THE OVERCAST-CLUTTER BUG (v2.2.1): RV-only echo + a flat, exact-zero radar → NOT surfaced', () => {
+    // Real incident, Nonntal: gauge 0.0, radar nowcast an exact 0.0 across the whole
+    // 3h window, sky overcast (code 3), yet a raw RainViewer pixel claimed echo → the
+    // app said GO ANYWAY while it genuinely was not raining. Overcast alone is not
+    // corroboration — zero radar trace anywhere means clutter (terrain reflection /
+    // tile noise), regardless of cloud cover. Must stay GEMMA RAUS.
+    expect(surfaceDrizzle(0, 0, 0.3, 3)).toBeNull()
+    expect(surfaceDrizzle(0, 0, 0.3, 61)).toBeNull()
+    // "sky unknown" no longer gets a free pass either — zero corroboration is zero
+    // corroboration whether or not we know the sky.
+    expect(surfaceDrizzle(0, 0, 0.3, null)).toBeNull()
   })
 
-  it('filtered-nowcast echo surfaces even under a clear sky (clutter-filtered source)', () => {
+  it('RV-only echo WITH a non-zero radar trace + non-clear sky → surfaced (real hyperlocal drizzle)', () => {
+    // The original Nonntal case this feature was built for: radar shows SOME trace
+    // (even sub-threshold) near the RV pixel's reading — independent corroboration —
+    // under an overcast sky. That combination is trustworthy.
+    expect(surfaceDrizzle(0, 0.03, 0.3, 3)).toBe(0.3)
+    expect(surfaceDrizzle(0, 0.05, 0.3, 61)).toBe(0.3)
+  })
+
+  it('a radar trace under a CLEAR sky still does not surface an RV-only claim', () => {
+    // Clear-sky clutter (anaprop/insects) can itself produce a faint sub-threshold
+    // radar blip — the sky guard stays strict regardless of a small trace.
+    expect(surfaceDrizzle(0, 0.03, 0.3, 1)).toBeNull()
+  })
+
+  it('filtered-nowcast echo AT/ABOVE threshold surfaces even under a clear sky (trusted source)', () => {
     expect(surfaceDrizzle(0, 0.15, 0, 1)).toBe(LIGHT_MIN)   // bumped into the light band
     expect(surfaceDrizzle(0, 0.3, 0, 0)).toBe(0.3)
   })
