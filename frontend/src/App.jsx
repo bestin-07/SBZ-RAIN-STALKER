@@ -656,11 +656,27 @@ export default function App() {
         const ribbonTimeline = nowcast
           ? { times: [nowSec, ...nowcast.times], precips: [nowBar, ...gapPrecips] }
           : { times: omTimes, precips: omPrecips }
+        // Extend the ribbon to 12h (v2.2): radar only reaches ~3h, so beyond its last
+        // slot append the MODEL's own timeline (already fetched to 12h for the ghost
+        // bars/second-opinions above) — zero extra API cost. radarUntil marks the
+        // handoff point so the renderer can draw hours 3–12 as clearly "model" bars
+        // rather than pretending radar precision that far out.
+        const radarUntil = ribbonTimeline.times[ribbonTimeline.times.length - 1] ?? nowSec
+        const horizon12h = nowSec + 12 * 3600
+        const extTimes = [], extPrecips = []
+        for (let i = 0; i < omTimes.length; i++) {
+          if (omTimes[i] > radarUntil && omTimes[i] <= horizon12h) {
+            extTimes.push(omTimes[i]); extPrecips.push(omPrecips[i] ?? 0)
+          }
+        }
         setForecast({
-          times: ribbonTimeline.times, precips: ribbonTimeline.precips, isNowcast: !!nowcast,
+          times: [...ribbonTimeline.times, ...extTimes],
+          precips: [...ribbonTimeline.precips, ...extPrecips],
+          isNowcast: !!nowcast,
+          radarUntil: nowcast ? radarUntil : nowSec,   // no radar at all → everything is "model"
           // Model series for the ribbon's GHOST bars (v2.1): model-only rain drawn as
-          // outlined bars so both instruments are visible at a glance. Only meaningful
-          // when the bars themselves are radar (isNowcast) — else the bars ARE the model.
+          // outlined bars so both instruments are visible at a glance within the radar
+          // zone. Only meaningful when the bars themselves are radar (isNowcast).
           modelTimes: omTimes, modelPrecips: omPrecips,
         })
 

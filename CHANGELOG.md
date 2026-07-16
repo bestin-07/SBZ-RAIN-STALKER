@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.2.0] — 2026-07-16 — Ribbon extended to 12h + mobile auto-scroll
+### Added (ribbon UI)
+- **Ribbon now spans 12h** (was 3h): radar covers the first ~3h as solid bars
+  (unchanged, ground/radar-trusted); beyond that, the model's own 12h timeline fills
+  the rest as **dashed outlined bars** — same visual language as the v2.1 ghost bars,
+  so "this is an estimate, not radar precision" reads consistently across the whole
+  chart. A subtle dashed divider + "model →" tag marks the handoff point. Zero extra
+  API calls — the model timeline was already fetched for the ghost bars/second-opinions.
+- **Auto-scroll for mobile**: the ribbon now slowly drifts forward (so all 12h become
+  visible without manual scrolling), pauses briefly at the end, then rewinds quickly
+  back to "now" and repeats. Self-gates to when the ribbon actually overflows the
+  screen (desktop where it all fits does nothing), respects
+  `prefers-reduced-motion` (disabled entirely), and pauses for 5s the instant the user
+  touches/scrolls/wheels it — never fights a manual read.
+- Ribbon label updated from "3h · Radar" to "12h · radar + model".
+
+---
+
 ## [2.1.0] — 2026-07-16 — Model in the gaps: ghost bars + STUCK second-opinion
 ### Added (rain logic + ribbon)
 - **Ghost bars:** model-only rain (radar slot dry, model slot wet) is now drawn in the

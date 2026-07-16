@@ -1,8 +1,11 @@
 import { useEffect, useRef } from 'react'
 
-const SLOT_W = 46          // wider — only 12–13 slots now instead of 48
+const SLOT_W = 46
 const SLOT_H = 52
-const MAX_SLOTS = 13       // 1 "now" anchor + 12 × 15-min nowcast steps = 3 h
+// 1 "now" anchor + 48 × 15-min steps = 12 h (v2.2: extended from 3h so the model tail
+// is visible, not just implied by a text label). Mobile can't see all 49 slots at
+// once — that's what the auto-scroll below is for.
+const MAX_SLOTS = 49
 const DRY_THRESHOLD = 0.1
 
 // Theme-aware rain palette. The dry / moderate / heavy values are kept identical
@@ -46,6 +49,8 @@ function precipToHeight(p) {
 
 export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
   const canvasRef = useRef(null)
+  const scrollRef = useRef(null)
+  const pausedUntilRef = useRef(0)
 
   useEffect(() => {
     if (!forecast || !canvasRef.current) return
@@ -79,9 +84,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const labelCol = theme === 'light' ? '#57544D' : '#9CA3AF'
     const nowCol   = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
 
-    // Model series lookup (ghost bars): nearest model slot within ±8 min of a ribbon
-    // slot. Only drawn when the solid bars are radar (isNowcast) — otherwise the bars
-    // themselves ARE the model and ghosts would duplicate them.
+    // Model series lookup (ghost bars, within the radar zone): nearest model slot
+    // within ±8 min of a ribbon slot. Only meaningful when the bars ARE radar
+    // (isNowcast) — otherwise the bars themselves ARE the model already.
     const mTimes = forecast.isNowcast !== false ? (forecast.modelTimes ?? []) : []
     const mPrecips = forecast.modelPrecips ?? []
     const modelAt = (tt) => {
@@ -93,29 +98,52 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       return best
     }
 
-    slots.forEach((slot, i) => {
-      const x     = i * SLOT_W
-      const color = precipToColor(slot.p, pal)
-      const barH  = precipToHeight(slot.p)
+    // v2.2: radar only covers ~3h; beyond radarUntil the bars ARE the model (no radar
+    // to compare against), so they're drawn as dashed/lighter to stay honest about
+    // being an estimate rather than a radar-precise reading.
+    const radarUntil = forecast.radarUntil ?? Infinity
+    let boundaryX = null
 
-      ctx.fillStyle = slotBg
+    slots.forEach((slot, i) => {
+      const x = i * SLOT_W
+      const beyondRadar = slot.t > radarUntil
+      if (beyondRadar && boundaryX === null) boundaryX = x
+
+      ctx.fillStyle = beyondRadar
+        ? (theme === 'light' ? '#DEDBD3' : '#0B0D11')   // subtly dimmer — "estimate" zone
+        : slotBg
       ctx.fillRect(x, 0, SLOT_W - 1, SLOT_H)
 
-      ctx.fillStyle = color
-      ctx.fillRect(x, SLOT_H - barH, SLOT_W - 1, barH)
+      if (beyondRadar) {
+        // Model-only bar: dashed outline at the model's own intensity (or nothing if
+        // dry — a dry read this far out isn't worth flagging as a special estimate).
+        if (slot.p >= DRY_THRESHOLD) {
+          const gh = precipToHeight(slot.p)
+          ctx.save()
+          ctx.strokeStyle = precipToColor(slot.p, pal)
+          ctx.setLineDash([3, 2])
+          ctx.lineWidth = 1.5
+          ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
+          ctx.restore()
+        }
+      } else {
+        // Radar zone: solid bar, ground/radar-trusted.
+        const color = precipToColor(slot.p, pal)
+        const barH  = precipToHeight(slot.p)
+        ctx.fillStyle = color
+        ctx.fillRect(x, SLOT_H - barH, SLOT_W - 1, barH)
 
-      // GHOST bar (v2.1): radar says dry here but the MODEL expects rain → outlined
-      // dashed bar at the model's intensity. Both instruments visible at a glance,
-      // without faking radar precision for model data.
-      const mp = modelAt(slot.t)
-      if (slot.p < DRY_THRESHOLD && mp != null && mp >= DRY_THRESHOLD) {
-        const gh = precipToHeight(mp)
-        ctx.save()
-        ctx.strokeStyle = pal.light
-        ctx.setLineDash([3, 2])
-        ctx.lineWidth = 1.5
-        ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
-        ctx.restore()
+        // GHOST bar (v2.1): radar says dry here but the MODEL expects rain.
+        const mp = modelAt(slot.t)
+        if (slot.p < DRY_THRESHOLD && mp != null && mp >= DRY_THRESHOLD) {
+          const gh = precipToHeight(mp)
+          ctx.save()
+          ctx.strokeStyle = pal.light
+          ctx.setLineDash([3, 2])
+          ctx.lineWidth = 1.5
+          ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
+          ctx.restore()
+        }
       }
 
       // label at :00 and :30 boundaries
@@ -129,11 +157,88 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       }
     })
 
+    // Radar → model handoff marker: a dashed vertical line + small tag so the switch
+    // in bar style (solid → dashed) has an obvious reason.
+    if (boundaryX !== null) {
+      ctx.save()
+      ctx.strokeStyle = labelCol
+      ctx.globalAlpha = 0.5
+      ctx.setLineDash([2, 3])
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(boundaryX, 0)
+      ctx.lineTo(boundaryX, SLOT_H)
+      ctx.stroke()
+      ctx.restore()
+      ctx.fillStyle = labelCol
+      ctx.font = '9px "JetBrains Mono", monospace'
+      ctx.fillText(t ? t('ribbon_model_from') : 'model →', boundaryX + 3, 11)
+    }
+
     // "now" marker
     ctx.fillStyle = nowCol
     ctx.fillRect(0, 0, 2, SLOT_H)
 
-  }, [forecast, theme])
+  }, [forecast, theme, t])
+
+  // Auto-scroll the ribbon (v2.2) — a slow forward drift so mobile users who can't
+  // see all 12h at once still see the whole thing, then a quick rewind flourish back
+  // to "now" and repeat. Self-gates to when content actually overflows (desktop where
+  // the full ribbon fits does nothing), skips entirely under prefers-reduced-motion,
+  // and pauses for a few seconds the moment the user touches/scrolls/wheels it —
+  // never fights a manual read.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+
+    const FORWARD_PX_S = 34   // slow enough to actually read the bars while it drifts
+    const REWIND_PX_S  = 900  // fast "launch back to start" flourish
+    const HOLD_END_MS  = 1800
+    const HOLD_START_MS = 600
+    const RESUME_AFTER_MS = 5000
+
+    let phase = 'forward'     // 'forward' | 'holdEnd' | 'rewind' | 'holdStart'
+    let holdUntil = 0
+    let lastTs = null
+    let rafId
+
+    function frame(ts) {
+      rafId = requestAnimationFrame(frame)
+      if (lastTs == null) lastTs = ts
+      const dt = (ts - lastTs) / 1000
+      lastTs = ts
+
+      if (Date.now() < pausedUntilRef.current) return   // user is interacting — hands off
+      const max = el.scrollWidth - el.clientWidth
+      if (max <= 4) return                               // fits on screen, nothing to do
+
+      if (phase === 'holdEnd' || phase === 'holdStart') {
+        if (Date.now() >= holdUntil) phase = phase === 'holdEnd' ? 'rewind' : 'forward'
+        return
+      }
+      if (phase === 'forward') {
+        el.scrollLeft = Math.min(max, el.scrollLeft + FORWARD_PX_S * dt)
+        if (el.scrollLeft >= max - 1) { phase = 'holdEnd'; holdUntil = Date.now() + HOLD_END_MS }
+      } else {   // 'rewind'
+        el.scrollLeft = Math.max(0, el.scrollLeft - REWIND_PX_S * dt)
+        if (el.scrollLeft <= 1) { phase = 'holdStart'; holdUntil = Date.now() + HOLD_START_MS }
+      }
+    }
+    rafId = requestAnimationFrame(frame)
+
+    const pause = () => { pausedUntilRef.current = Date.now() + RESUME_AFTER_MS }
+    el.addEventListener('pointerdown', pause, { passive: true })
+    el.addEventListener('wheel', pause, { passive: true })
+    el.addEventListener('touchstart', pause, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(rafId)
+      el.removeEventListener('pointerdown', pause)
+      el.removeEventListener('wheel', pause)
+      el.removeEventListener('touchstart', pause)
+    }
+  }, [forecast])
 
   const isNowcast = forecast?.isNowcast !== false
   const pal = palOf(theme)
@@ -150,7 +255,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
 
   return (
     <div className="border-t border-b border-border shrink-0">
-      <div className="relative overflow-x-auto scrollbar-none">
+      <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none">
         <canvas
           ref={canvasRef}
           style={{ display: 'block' }}
