@@ -77,6 +77,26 @@ export function modelNextRainAt(omTimes, omPrecips, nowSec) {
   return null
 }
 
+// Model ease second-opinion (v2.1.0) — the STUCK-side mirror of modelNextRainAt.
+// When the radar sees no break in 3 h (STUCK) but the model's own timeline shows the
+// rain ENDING, say so: "no break on radar — model expects easing in ~2 h". Returns the
+// start of the model's final dry stretch within 3 h, or null. Requires the model to
+// actually SHOW the rain first (≥1 wet slot before the ease point) — a model that's
+// dry the whole window is contradicting the present, not forecasting the end.
+export function modelEaseAt(omTimes, omPrecips, nowSec) {
+  if (!omTimes?.length || !omPrecips?.length) return null
+  const lim = nowSec + 3 * 3600
+  let wetSeen = false, ease = null
+  for (let i = 0; i < omTimes.length; i++) {
+    const tt = omTimes[i]
+    if (tt < nowSec || tt > lim) continue
+    const p = omPrecips[i] ?? 0
+    if (p >= DRY_THRESHOLD) { wetSeen = true; ease = null }
+    else if (wetSeen && ease === null) ease = tt
+  }
+  return wetSeen ? ease : null
+}
+
 // Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
 // DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
 // verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
@@ -294,7 +314,13 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
         : min >= GAP_FIRM_MIN ? t('n_break_likely', { min })
         : t('n_break_in', { min })
   } else {
-    sub = t('n_no_break')
+    if (trend.modelEaseAt) {
+      const m = Math.max(0, Math.round((trend.modelEaseAt - nowSec) / 60))
+      sub = m >= FAR_RAIN_MIN ? t('n_stuck_ease_far', { h: hoursLabel(m) })
+          : t('n_stuck_ease', { min: Math.max(5, Math.round(m / 5) * 5) })
+    } else {
+      sub = t('n_no_break')
+    }
   }
   return { head, sub }
 }
@@ -433,10 +459,23 @@ export function getStatus(
   }
 
   const isThunder = (weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99
+  // Model ease second-opinion (v2.1): STUCK means "radar sees no break" — if the
+  // model shows the rain ending within 3 h, say so instead of a bare "stay in".
+  // Wording only; the state (and colour) stays STUCK until radar confirms a gap.
+  let stuckSub
+  if (isThunder) {
+    stuckSub = t('s_stuck_storm')
+  } else if (trend.modelEaseAt) {
+    const m = Math.max(0, Math.round((trend.modelEaseAt - nowSec) / 60))
+    stuckSub = m >= FAR_RAIN_MIN ? t('s_stuck_ease_far', { h: hoursLabel(m) })
+             : t('s_stuck_ease', { min: Math.max(5, Math.round(m / 5) * 5) })
+  } else {
+    stuckSub = t(night ? 's_night_stuck' : evening ? 's_evening_stuck' : 's_stuck')
+  }
   return {
     type: 'stuck',
     headline: t('STUCK'),
-    sub: t(isThunder ? 's_stuck_storm' : night ? 's_night_stuck' : evening ? 's_evening_stuck' : 's_stuck'),
+    sub: stuckSub,
     weather: weatherNote,
     notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
   }

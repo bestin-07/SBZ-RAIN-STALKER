@@ -79,6 +79,20 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const labelCol = theme === 'light' ? '#57544D' : '#9CA3AF'
     const nowCol   = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
 
+    // Model series lookup (ghost bars): nearest model slot within ±8 min of a ribbon
+    // slot. Only drawn when the solid bars are radar (isNowcast) — otherwise the bars
+    // themselves ARE the model and ghosts would duplicate them.
+    const mTimes = forecast.isNowcast !== false ? (forecast.modelTimes ?? []) : []
+    const mPrecips = forecast.modelPrecips ?? []
+    const modelAt = (tt) => {
+      let best = null, bd = 8 * 60
+      for (let i = 0; i < mTimes.length; i++) {
+        const d = Math.abs(mTimes[i] - tt)
+        if (d < bd) { bd = d; best = mPrecips[i] ?? 0 }
+      }
+      return best
+    }
+
     slots.forEach((slot, i) => {
       const x     = i * SLOT_W
       const color = precipToColor(slot.p, pal)
@@ -89,6 +103,20 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
 
       ctx.fillStyle = color
       ctx.fillRect(x, SLOT_H - barH, SLOT_W - 1, barH)
+
+      // GHOST bar (v2.1): radar says dry here but the MODEL expects rain → outlined
+      // dashed bar at the model's intensity. Both instruments visible at a glance,
+      // without faking radar precision for model data.
+      const mp = modelAt(slot.t)
+      if (slot.p < DRY_THRESHOLD && mp != null && mp >= DRY_THRESHOLD) {
+        const gh = precipToHeight(mp)
+        ctx.save()
+        ctx.strokeStyle = pal.light
+        ctx.setLineDash([3, 2])
+        ctx.lineWidth = 1.5
+        ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
+        ctx.restore()
+      }
 
       // label at :00 and :30 boundaries
       const d = new Date(slot.t * 1000)
@@ -142,6 +170,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
         <Legend color={pal.dry}   label={t('dry')} />
         <Legend color={pal.light} label={t('light_rain')} />
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 shrink-0 border border-dashed" style={{ borderColor: pal.light }} />
+          <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_model')}</span>
+        </div>
         <Legend color={pal.mod}   label={t('mod_rain')} />
         <Legend color={pal.heavy} label={t('heavy_rain')} />
         <Legend color={pal.storm} label={t('storm_rain')} />

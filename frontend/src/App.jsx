@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -437,6 +437,7 @@ export default function App() {
     }
     const downpourSoonMin = firstDownpourMin(nowcast, nowSec)
     const modelRainAt = modelNextRainAt(omTimes, omPrecips, nowSec)
+    const modelEase = modelEaseAt(omTimes, omPrecips, nowSec)
     let rainProb = null
     const hTimes = data?.hourly?.time ?? [], hProb = data?.hourly?.precipitation_probability ?? []
     if (nextRainAt && hTimes.length) {
@@ -450,7 +451,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, rvApproachMin })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -640,6 +641,8 @@ export default function App() {
         // consulted by getStatus only when the radar claims a full all-clear.
         const modelRainAt = modelNextRainAt(omTimes, omPrecips, nowSec)
         setModelRainMin(modelRainAt ? Math.max(0, Math.round((modelRainAt - nowSec) / 60)) : null)
+        // …and its STUCK-side mirror (v2.1): when does the model say this rain ENDS.
+        const modelEase = modelEaseAt(omTimes, omPrecips, nowSec)
         // Ribbon: make the chart tell the SAME truth as the headline, so it can't
         // show "raining now" while the verdict says GO.
         //  • leading "now" bar = effectivePrecip (ground-trusted) — not nowPrecip,
@@ -653,7 +656,13 @@ export default function App() {
         const ribbonTimeline = nowcast
           ? { times: [nowSec, ...nowcast.times], precips: [nowBar, ...gapPrecips] }
           : { times: omTimes, precips: omPrecips }
-        setForecast({ times: ribbonTimeline.times, precips: ribbonTimeline.precips, isNowcast: !!nowcast })
+        setForecast({
+          times: ribbonTimeline.times, precips: ribbonTimeline.precips, isNowcast: !!nowcast,
+          // Model series for the ribbon's GHOST bars (v2.1): model-only rain drawn as
+          // outlined bars so both instruments are visible at a glance. Only meaningful
+          // when the bars themselves are radar (isNowcast) — else the bars ARE the model.
+          modelTimes: omTimes, modelPrecips: omPrecips,
+        })
 
         // ---- Narrative continuity across refreshes (persisted per location) ----
         // Remember, in localStorage, when it was last actually raining at ~this spot.
@@ -699,7 +708,7 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, rvApproachMin })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data?.current?.temperature_2m ?? null,

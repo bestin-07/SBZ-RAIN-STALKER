@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.1.0] — 2026-07-16 — Model in the gaps: ghost bars + STUCK second-opinion
+### Added (rain logic + ribbon)
+- **Ghost bars:** model-only rain (radar slot dry, model slot wet) is now drawn in the
+  ribbon as **dashed outlined bars** at the model's intensity, with a "model (expected)"
+  legend chip — both instruments visible at a glance without faking radar precision.
+  Only drawn when the solid bars are radar (in model-fallback mode the bars ARE the model).
+- **STUCK second-opinion** (`modelEaseAt`): STUCK means "radar sees no break in 3 h" —
+  if the model's own timeline shows the rain **ending**, the sub now says "no break on
+  radar — **model expects easing in about 2 h**" (popup notice too). Wording only; the
+  state and colour stay STUCK until radar confirms. Requires the model to actually show
+  the rain first (a model that's dry all window contradicts the present → no claim).
+  Thunderstorm wording still outranks it. Completes the design law on the STUCK side:
+  *never claim what any of our own sources contradicts.* 8 new tests (83 total).
+
+---
+
 ## [2.0.3] — 2026-07-16 — One-time trust note (owning the July 15 miss)
 ### Added (UI)
 - A one-time, closable in-app note: *"On July 15 we missed the evening rain — we're

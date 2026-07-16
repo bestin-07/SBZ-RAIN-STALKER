@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
-  modelNowValue, MODEL_NOW_CAP,
+  modelNowValue, MODEL_NOW_CAP, modelEaseAt,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB,
 } from './gaps'
@@ -498,6 +498,51 @@ describe('RainViewer approach — the "blue on the map while the app said dry" g
     const s = getStatus(0, [], null, makeT(), NOON,
       { dryEndsOpen: true, rvApproachMin: 20, downpourSoonMin: 12 })
     expect(s.sub).toBe('s_downpour_soon')
+  })
+})
+
+// ---- model ease — the STUCK-side second opinion (v2.1) ----------------------------
+
+describe('modelEaseAt + STUCK second-opinion — never a bare "no break" the model contradicts', () => {
+  const times = Array.from({ length: 12 }, (_, i) => NOON + i * 900)
+
+  it('model shows rain then a lasting dry stretch → ease point found', () => {
+    const p = [0.8, 0.6, 0.4, 0.2, 0, 0, 0, 0, 0, 0, 0, 0]
+    expect(modelEaseAt(times, p, NOON)).toBe(NOON + 4 * 900)   // +60 min
+  })
+  it('rain re-starting later resets the ease point to the FINAL dry stretch', () => {
+    const p = [0.8, 0, 0, 0.5, 0.5, 0, 0, 0, 0, 0, 0, 0]
+    expect(modelEaseAt(times, p, NOON)).toBe(NOON + 5 * 900)
+  })
+  it('model wet the whole window → no ease claim', () => {
+    expect(modelEaseAt(times, times.map(() => 0.5), NOON)).toBeNull()
+  })
+  it('model dry the whole window (contradicting the present) → no ease claim', () => {
+    expect(modelEaseAt(times, times.map(() => 0), NOON)).toBeNull()
+  })
+
+  it('STUCK + model ease in ~60 min → "model expects easing", time kept, state stays STUCK', () => {
+    const t = makeT()
+    const s = getStatus(1.8, [], null, t, NOON, { modelEaseAt: NOON + 60 * 60 })
+    expect(s.type).toBe('stuck')                       // colour/state unchanged
+    expect(s.sub).toBe('s_stuck_ease')
+    expect(t.varsFor('s_stuck_ease').min).toBe(60)
+    expect(s.notice.sub).toBe('n_stuck_ease')          // popup carries it too
+  })
+  it('far ease (~2 h) → hours form', () => {
+    const t = makeT()
+    const s = getStatus(1.8, [], null, t, NOON, { modelEaseAt: NOON + 120 * 60 })
+    expect(s.sub).toBe('s_stuck_ease_far')
+    expect(t.varsFor('s_stuck_ease_far').h).toBe('2')
+  })
+  it('thunderstorm wording still outranks the ease hint', () => {
+    const s = getStatus(4.0, [], { temp: 18, wind: 20, code: 96 }, makeT(), NOON,
+      { modelEaseAt: NOON + 60 * 60 })
+    expect(s.sub).toBe('s_stuck_storm')
+  })
+  it('no model ease → plain STUCK unchanged', () => {
+    const s = getStatus(1.8, [], null, makeT(), NOON, {})
+    expect(s.sub).toBe('s_stuck')
   })
 })
 
