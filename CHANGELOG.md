@@ -12,6 +12,38 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.5.0] — 2026-07-17 — Gemma Raus just got better: it now foresees drizzle, not just rain 🔮
+*Follow-up to today's drizzle incident: catching it live wasn't enough — you should have seen it coming.*
+
+**What's new for you**
+- **Drizzle countdowns:** when the radar's own timeline shows faint sub-threshold
+  echo starting later ("drops on your face" level, under our 0.1 mm reporting line),
+  the app now says so — *"light drizzle possible in about 30 min — radar shows the
+  first faint echoes"* — instead of claiming "clear for hours".
+- **Drizzle in the ribbon:** trace-level slots now draw as low translucent stubs (new
+  "drizzle possible" legend entry), so the next hours never look blank while faint
+  echo is on the way. An all-trace ribbon says *"only faint drizzle traces on radar —
+  nothing heavier in sight"* instead of "no rain in 3h".
+
+**Why**
+- Live incident, same day as v2.4.1: while it drizzled, our nowcast *did* show the
+  field continuing as 0.01 mm slots an hour ahead — the exact signal wetter.com was
+  painting as "light until 13:00" — but everything below the reporting cutoff
+  rendered as "nothing coming". We had the foresight and hid it.
+
+**Under the hood (for the curious)**
+- New pure `traceAheadMin(times, precips, nowSec)`: minutes until the first RUN of
+  ≥2 consecutive trace slots (0 < mm < 0.1) within the 3 h radar window — a single
+  0.01 noise blip can never paint drizzle on a dry day.
+- New wording tier in the GO branch, radar-trace beats model-guess: approach ETA and
+  nearby-watch (observed echo NOW) outrank it; it outranks the model second-opinion;
+  real ≥0.1 mm countdowns are untouched; quiet at night. **No state changes** — trace
+  futures are wording + ribbon only, they can never create a WAIT/STUCK.
+- Verified against live data: the two still-dry grid points got "drizzle possible in
+  ~13/~28 min" from the real feed. 15 new contract tests (143 total: 127 + 16).
+
+---
+
 ## [2.4.1] — 2026-07-17 — Gemma Raus just got better: drizzle can't hide anymore 🌦
 *Thank you for the live report — a real drizzle the app called "dry" is exactly the bug we care most about.*
 

@@ -153,6 +153,31 @@ export function hasTraceEcho(rawNowSlot) {
   return (rawNowSlot ?? 0) > 0 && (rawNowSlot ?? 0) < DRY_THRESHOLD
 }
 
+// v2.5.0: FUTURE trace drizzle — minutes until sub-threshold echo STARTS on the
+// radar's own timeline, or null. Live incident (2026-07-17): the INCA nowcast showed
+// the drizzle field arriving as 0.01mm slots an hour ahead, but everything below
+// DRY_THRESHOLD rendered as "nothing coming" — the app claimed a clear 3h while
+// wetter.com-class apps painted "light until 13:00" from the SAME signal. Requires a
+// RUN of ≥ TRACE_RUN_SLOTS consecutive trace slots so a single 0.01 noise blip can't
+// paint drizzle on a genuinely dry day. Wording + ribbon only — a trace future never
+// creates a countdown-to-WAIT, never flips any state.
+export const TRACE_RUN_SLOTS = 2
+export function traceAheadMin(times, precips, nowSec) {
+  if (!times?.length) return null
+  const isTrace = p => p > 0 && p < DRY_THRESHOLD
+  const slots = times
+    .map((tt, i) => ({ t: tt, p: precips?.[i] ?? 0 }))
+    .filter(s => s.t >= nowSec - 300 && s.t <= nowSec + LOOK_AHEAD)
+  for (let i = 0; i < slots.length; i++) {
+    if (!isTrace(slots[i].p)) continue
+    let run = 1
+    while (i + run < slots.length && isTrace(slots[i + run].p)) run++
+    if (run >= TRACE_RUN_SLOTS) return Math.max(0, Math.round((slots[i].t - nowSec) / 60))
+    i += run   // too-short blip — skip past it
+  }
+  return null
+}
+
 // Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
 // DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
 // verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
@@ -353,6 +378,10 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
       }
     } else if (trend.dryEndsOpen && trend.rvNearbyDir) {
       sub = t('n_rv_nearby', { dir: t('dir_' + trend.rvNearbyDir) })
+    } else if (trend.dryEndsOpen && trend.traceAheadMin != null) {
+      sub = trend.traceAheadMin >= FAR_RAIN_MIN
+        ? t('n_trace_ahead_far', { h: hoursLabel(trend.traceAheadMin) })
+        : t('n_trace_ahead', { min: Math.max(5, Math.round(trend.traceAheadMin / 5) * 5) })
     } else if (trend.dryEndsOpen && trend.modelRainAt) {
       const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
       sub = m >= FAR_RAIN_MIN ? t('n_model_rain_far', { h: hoursLabel(m) })
@@ -467,6 +496,14 @@ export function getStatus(
       // the pixel and its whole 3h timeline are dry, and no arrival ETA yet — the
       // honest "keep an eye on it" lead. Observed echo outranks a forecast hint.
       sub = t('s_rv_nearby', { dir: t('dir_' + trend.rvNearbyDir) })
+    } else if (trend.dryEndsOpen && trend.traceAheadMin != null && !night) {
+      // Trace-ahead (v2.5): the radar timeline never crosses the reporting cutoff
+      // (dryEndsOpen) but shows a RUN of sub-threshold echo starting in ~N min —
+      // drizzle the "clear for hours" line used to hide. Radar's own trace beats
+      // the model hint below; observed echo NOW (trace/nearby/approach) beats it.
+      sub = trend.traceAheadMin >= FAR_RAIN_MIN
+        ? t('s_trace_ahead_far', { h: hoursLabel(trend.traceAheadMin) })
+        : t('s_trace_ahead', { min: Math.max(5, Math.round(trend.traceAheadMin / 5) * 5) })
     } else if (trend.dryEndsOpen && trend.modelRainAt) {
       // Radar sees NOTHING in 3 h but the MODEL's own timeline shows rain — the
       // frontal/stratiform case where the model leads the radar by hours. Never

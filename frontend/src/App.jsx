@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, hasTraceEcho, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, hasTraceEcho, traceAheadMin, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -420,6 +420,8 @@ export default function App() {
       for (let i = 0; i < nowcast.times.length; i++) { const dd = Math.abs(nowcast.times[i] - nowSec); if (dd < bd) { bd = dd; bi = i } }
       rawNowSlot = nowcast.precips[bi] ?? 0
     }
+    // Trace-ahead (v2.5): sub-threshold drizzle starting later on the radar timeline.
+    const traceAheadM = nowcast ? traceAheadMin(nowcast.times, nowcast.precips, nowSec) : null
     // Same surfacing rule as loadData (v1.1 + clear-sky clutter guard, v1.1.5) so a
     // town dot matches your live verdict: gauge dry but radar sees a LIGHT drizzle →
     // GO ANYWAY (capped, never STUCK) — unless the only witness is the raw RainViewer
@@ -457,7 +459,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: hasTraceEcho(rawNowSlot) })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -615,6 +617,8 @@ export default function App() {
           }
           rawNowSlot = nowcast.precips[bi] ?? 0
         }
+        // Trace-ahead (v2.5): sub-threshold drizzle starting later on the radar timeline.
+        const traceAheadM = nowcast ? traceAheadMin(nowcast.times, nowcast.precips, nowSec) : null
         // NOW magnitude: trust the GROUND when a gauge reports — a stale/over-reading
         // radar must not force STUCK in a drizzle. BUT if the gauge reads dry while the
         // radar/RainViewer see a LIGHT drizzle at your spot the 1–3 km gauge misses
@@ -733,7 +737,7 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: hasTraceEcho(rawNowSlot) })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data?.current?.temperature_2m ?? null,

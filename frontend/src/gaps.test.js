@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
-  modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho, ringDirection,
+  modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho, traceAheadMin, ringDirection,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
 } from './gaps'
@@ -739,6 +739,104 @@ describe('getStatus — trace echo acknowledgment (wording only, GEMMA RAUS stay
     const s = getStatus(0, [], null, makeT(), NOON,
       { dryEndsOpen: true, traceEcho: true, rvApproachMin: 15 })
     expect(s.sub).toBe('s_rv_approach')
+  })
+})
+
+// ---- traceAheadMin — future sub-threshold drizzle on the radar's own timeline ----
+
+describe('traceAheadMin — foresee the drizzle the reporting cutoff used to hide (v2.5)', () => {
+  const mk = (vals, step = 900) => ({
+    times: vals.map((_, i) => NOON + i * step),
+    precips: vals,
+  })
+
+  it('THE FORESIGHT MISS (2026-07-17): 0.01 run starting ~53min out → countdown, not silence', () => {
+    // Live data: INCA showed the drizzle field arriving as 0.01mm slots at
+    // +53/+68/+83min while the ribbon and verdict claimed a clear 3h.
+    const { times, precips } = mk([0, 0, 0, 0.01, 0.01, 0.01, 0.01])
+    expect(traceAheadMin(times, precips, NOON)).toBe(45)   // 4th slot = +45 min
+  })
+
+  it('trace starting NOW (slot 0) → 0 min', () => {
+    const { times, precips } = mk([0.01, 0.02, 0.03])
+    expect(traceAheadMin(times, precips, NOON)).toBe(0)
+  })
+
+  it('a single isolated 0.01 blip → null (noise, not drizzle)', () => {
+    const { times, precips } = mk([0, 0, 0.01, 0, 0, 0])
+    expect(traceAheadMin(times, precips, NOON)).toBeNull()
+  })
+
+  it('two separate single blips → still null; a later real RUN is found past them', () => {
+    const { times, precips } = mk([0, 0.01, 0, 0.01, 0, 0.02, 0.03, 0.02])
+    expect(traceAheadMin(times, precips, NOON)).toBe(75)   // the ≥2-slot run at slot 5
+  })
+
+  it('fully dry timeline → null', () => {
+    const { times, precips } = mk([0, 0, 0, 0, 0, 0])
+    expect(traceAheadMin(times, precips, NOON)).toBeNull()
+  })
+
+  it('values at/above DRY_THRESHOLD are NOT trace (they are real rain, other tiers own them)', () => {
+    const { times, precips } = mk([0, 0, 0.1, 0.2, 0.3])
+    expect(traceAheadMin(times, precips, NOON)).toBeNull()
+  })
+
+  it('trace beyond the 3h look-ahead is ignored', () => {
+    const times = [NOON + 4 * 3600, NOON + 4 * 3600 + 900]
+    expect(traceAheadMin(times, [0.02, 0.02], NOON)).toBeNull()
+  })
+
+  it('empty/missing input → null', () => {
+    expect(traceAheadMin([], [], NOON)).toBeNull()
+    expect(traceAheadMin(null, null, NOON)).toBeNull()
+  })
+})
+
+describe('getStatus — trace-ahead tier (wording only, v2.5)', () => {
+  it('radar 3h "dry" but trace run starting in ~50min → drizzle-possible countdown', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON, { dryEndsOpen: true, traceAheadMin: 50 })
+    expect(s.type).toBe('go')                              // state untouched
+    expect(s.sub).toBe('s_trace_ahead')
+    expect(t.varsFor('s_trace_ahead').min).toBe(50)
+    expect(s.notice.sub).toBe('n_trace_ahead')
+  })
+
+  it('far trace (≥90min) → hours wording', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON, { dryEndsOpen: true, traceAheadMin: 150 })
+    expect(s.sub).toBe('s_trace_ahead_far')
+    expect(t.varsFor('s_trace_ahead_far').h).toBe('2½')
+  })
+
+  it('trace at the pixel NOW (traceEcho) outranks trace-ahead', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, traceEcho: true, traceAheadMin: 30 })
+    expect(s.sub).toBe('s_trace_now')
+  })
+
+  it('nearby-watch (observed echo now) outranks trace-ahead', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, rvNearbyDir: 'w', traceAheadMin: 30 })
+    expect(s.sub).toBe('s_rv_nearby')
+  })
+
+  it('trace-ahead outranks the model second-opinion (radar trace beats a model guess)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, traceAheadMin: 40, modelRainAt: NOON + 150 * 60 })
+    expect(s.sub).toBe('s_trace_ahead')
+  })
+
+  it('a real radar countdown (nextRainAt, not dryEndsOpen) is unaffected by trace-ahead', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: false, nextRainAt: NOON + 30 * 60, traceAheadMin: 15 })
+    expect(s.sub).toBe('s_rain_soon')
+  })
+
+  it('night → stays cosy, no trace-ahead alarm', () => {
+    const s = getStatus(0, [], null, makeT(), NIGHT, { dryEndsOpen: true, traceAheadMin: 30 })
+    expect(s.sub).toBe('s_night_clear')
   })
 })
 

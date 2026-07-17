@@ -157,6 +157,19 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         }
       }
 
+      // Trace tier (v2.5): sub-threshold echo (0 < p < 0.1) — the "drops on your
+      // face" band. Drawn as a low translucent stub in the drizzle colour, on top of
+      // the dry base bar, so a trace future is VISIBLE instead of rendering as flat
+      // dry (live incident: the nowcast showed the drizzle field an hour ahead as
+      // 0.01 slots and the ribbon claimed nothing was coming).
+      if (slot.p > 0 && slot.p < DRY_THRESHOLD) {
+        ctx.save()
+        ctx.globalAlpha = beyondRadar ? 0.25 : 0.45
+        ctx.fillStyle = pal.light
+        ctx.fillRect(x, SLOT_H - 10, SLOT_W - 1, 10)
+        ctx.restore()
+      }
+
       // label at :00 and :30 boundaries
       const d = new Date(slot.t * 1000)
       const m = d.getMinutes()
@@ -263,6 +276,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     .slice(0, MAX_SLOTS)
   const hasData = rslots.length > 0
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
+  // Trace slots only (all sub-threshold, at least one non-zero): the overlay must
+  // not claim "no rain in 3h" over visible drizzle stubs — name what's there.
+  const traceOnly = allDry && rslots.some(s => s.p > 0)
 
   return (
     <div className="border-t border-b border-border shrink-0">
@@ -278,13 +294,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
                   radar all-clear beats everything (frontal rain the radar can't see
                   yet — the missed-evening-rain case); then CAPE instability; then the
                   plain radar-attributed dry line. Never an unqualified promise. */}
-              {dryLabel(t, hasData, unstable, modelRainMin)}
+              {traceOnly ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin)}
             </span>
           </div>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
         <Legend color={pal.dry}   label={t('dry')} />
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 shrink-0" style={{ background: pal.light, opacity: 0.45 }} />
+          <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_trace')}</span>
+        </div>
         <Legend color={pal.light} label={t('light_rain')} />
         <div className="flex items-center gap-1.5">
           <div className="w-2.5 h-2.5 shrink-0 border border-dashed" style={{ borderColor: pal.light }} />
