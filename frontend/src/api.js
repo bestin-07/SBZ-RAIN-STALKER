@@ -1,3 +1,5 @@
+import { ringDirection } from './gaps'
+
 const OPEN_METEO     = 'https://api.open-meteo.com/v1/forecast'
 const GEOSPHERE_TAWES = 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min'
 // GeoSphere nowcast: radar-extrapolation forecast at 1 km / 15-min steps,
@@ -58,7 +60,7 @@ export const AREAS = [
 // One shared server call for the whole grid; clients pick the nearest point (GPS
 // stays in the browser). Prevents every user hitting Open-Meteo directly (rate
 // limits / shared NAT). Cached ~90s. Returns points[] or null.
-let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null
+let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null, _ambientAreaWatch = null
 async function fetchAmbient() {
   const now = Date.now()
   if (_ambientPoints && now - _ambientPointsTs < 90 * 1000) return _ambientPoints
@@ -70,6 +72,8 @@ async function fetchAmbient() {
     // several grid points flip dry→wet in one cycle under real CAPE. Drives the
     // "showers forming right now" banner (App checks freshness).
     if (typeof j?.forming_ts === 'number') _ambientFormingTs = j.forming_ts
+    // City-scale wet/dry direction + trend (v2.4) — {sector, count, trend, ts} or absent.
+    _ambientAreaWatch = j?.area_watch ?? null
     if (Array.isArray(j?.points) && j.points.length) { _ambientPoints = j.points; _ambientPointsTs = now; return j.points }
     return _ambientPoints   // empty before first cycle → let caller fall back to direct OM
   } catch { return _ambientPoints }
@@ -77,6 +81,9 @@ async function fetchAmbient() {
 
 // Latest convective-initiation timestamp seen on /api/ambient (unix s), or null.
 export function ambientFormingTs() { return _ambientFormingTs }
+
+// Latest area-watch reading ({sector,count,trend,ts}) seen on /api/ambient, or null.
+export function ambientAreaWatch() { return _ambientAreaWatch }
 function nearestAmbientPoint(points, lat, lon) {
   let best = null, bd = Infinity
   for (const p of points) {
@@ -304,9 +311,10 @@ function getRainViewerMaps() {
   return p
 }
 
-// Sample ONE RainViewer frame's tile at a pixel. Resolves 0.3 (echo), 0 (clear) or
-// null (CORS/tile failure). Shared by the "now" and "approaching" reads below.
-function sampleRvFrame(host, framePath, z, tileX, tileY, px, py) {
+// Sample ONE RainViewer frame's tile at one or more pixel blocks. Resolves an array
+// of 0.3 (echo) / 0 (clear) — one per requested block — or null (CORS/tile failure).
+// Reading extra blocks off the SAME canvas costs zero additional network.
+function sampleRvFrameBlocks(host, framePath, z, tileX, tileY, blocks) {
   const tileUrl = `${host}${framePath}/256/${z}/${tileX}/${tileY}/2/1_1.png`
   const imgPromise = new Promise(resolve => {
     const img = new Image()
@@ -320,19 +328,21 @@ function sampleRvFrame(host, framePath, z, tileX, tileY, px, py) {
       const ctx = canvas.getContext('2d')
       ctx.drawImage(img, 0, 0)
       try {
-        // Sample a 5×5 pixel block (~700 m box at z7) centred on the target
-        // pixel and take the max echo — catches a small cell sitting a pixel
-        // or two off the exact GPS point. Zero extra network cost (same tile).
-        const x0 = Math.max(0, px - 2), y0 = Math.max(0, py - 2)
-        const w = Math.min(256 - x0, 5), h = Math.min(256 - y0, 5)
-        const block = ctx.getImageData(x0, y0, w, h).data
-        // RainViewer Universal Blue scheme: transparent = no rain.
-        // alpha > 30 = meaningful radar echo above noise floor.
-        let maxAlpha = 0
-        for (let i = 3; i < block.length; i += 4) {
-          if (block[i] > maxAlpha) maxAlpha = block[i]
-        }
-        resolve(maxAlpha > 30 ? 0.3 : 0)
+        const out = blocks.map(({ px, py }) => {
+          // Each block: 5×5 px (~700 m at z7) centred on the target, max echo —
+          // catches a small cell sitting a pixel or two off the exact point.
+          const x0 = Math.min(251, Math.max(0, px - 2))
+          const y0 = Math.min(251, Math.max(0, py - 2))
+          const block = ctx.getImageData(x0, y0, 5, 5).data
+          // RainViewer Universal Blue scheme: transparent = no rain.
+          // alpha > 30 = meaningful radar echo above noise floor.
+          let maxAlpha = 0
+          for (let i = 3; i < block.length; i += 4) {
+            if (block[i] > maxAlpha) maxAlpha = block[i]
+          }
+          return maxAlpha > 30 ? 0.3 : 0
+        })
+        resolve(out)
       } catch {
         resolve(null)  // tainted canvas — CORS headers not present
       }
@@ -342,6 +352,15 @@ function sampleRvFrame(host, framePath, z, tileX, tileY, px, py) {
   })
   return Promise.race([imgPromise, new Promise(r => setTimeout(() => r(null), 5000))])
 }
+
+// Compass ring around the user's pixel, ~15 km out at z7 (1 px ≈ 1.2 km): the
+// "approach watch". Diagonals use 9px legs so all 8 points sit at a similar radius.
+const RING_DIRS = [
+  { d: 'n',  dx: 0,   dy: -13 }, { d: 'ne', dx: 9,  dy: -9 },
+  { d: 'e',  dx: 13,  dy: 0 },   { d: 'se', dx: 9,  dy: 9 },
+  { d: 's',  dx: 0,   dy: 13 },  { d: 'sw', dx: -9, dy: 9 },
+  { d: 'w',  dx: -13, dy: 0 },   { d: 'nw', dx: -9, dy: -9 },
+]
 
 // Read RainViewer at the user's exact lat/lon:
 //  • now         — the latest PAST frame (real radar, ~5 min latency: the freshest
@@ -375,13 +394,22 @@ export function fetchRainViewerPrecip(lat, lon) {
       const px = Math.floor(((lon + 180) / 360 * n - tileX) * 256)
       const py = Math.floor((mercY * n - tileY) * 256)
 
-      const nowP  = sampleRvFrame(host, past[past.length - 1].path, z, tileX, tileY, px, py)
-      // Sample EVERY forecast frame (usually 2–3; same tile x/y, so the browser
-      // caches per frame path — dots and the live location share the downloads).
+      // Latest past frame: centre + the 8-point ~15 km ring, all read off ONE tile.
+      // The ring gives the approach DIRECTION (v2.4): echo sitting to the west of a
+      // dry centre = rain nearby to the west — the lead signal users see as "blue on
+      // the map" before anything reaches their pixel.
+      const ringBlocks = [{ px, py }, ...RING_DIRS.map(r => ({ px: px + r.dx, py: py + r.dy }))]
+      const nowP = sampleRvFrameBlocks(host, past[past.length - 1].path, z, tileX, tileY, ringBlocks)
+      // Sample EVERY forecast frame at the centre (usually 2–3; same tile x/y, so
+      // the browser caches per frame path — dots and the live location share them).
       const soonPs = fcst.map(f =>
-        sampleRvFrame(host, f.path, z, tileX, tileY, px, py).then(v => ({ time: f.time, v })))
-      return Promise.all([nowP, Promise.all(soonPs)]).then(([now, soons]) => {
-        if (now === null && soons.every(s => s.v === null)) return null
+        sampleRvFrameBlocks(host, f.path, z, tileX, tileY, [{ px, py }])
+          .then(v => ({ time: f.time, v: v === null ? null : v[0] })))
+      return Promise.all([nowP, Promise.all(soonPs)]).then(([nowArr, soons]) => {
+        if (nowArr === null && soons.every(s => s.v === null)) return null
+        const now = nowArr === null ? null : nowArr[0]
+        const wetDirs = nowArr === null ? [] :
+          RING_DIRS.filter((r, i) => nowArr[i + 1] === 0.3).map(r => r.d)
         const nowSec = Date.now() / 1000
         let approachMin = null
         for (const s of soons) {                    // frames are chronological
@@ -390,7 +418,9 @@ export function fetchRainViewerPrecip(lat, lon) {
             break                                    // first arrival = the ETA
           }
         }
-        return { now, approachMin }
+        // Direction only means "approach/nearby" when the centre itself is dry.
+        const fromDir = (now !== null && now < 0.1) ? ringDirection(wetDirs) : null
+        return { now, approachMin, fromDir }
       })
     })
     .catch(() => null)

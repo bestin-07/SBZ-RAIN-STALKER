@@ -12,6 +12,33 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.4.0] — 2026-07-17 — Gemma Raus just got better: it now sees which way the rain moves 🧭
+*Thank you for being an early user and sharing feedback — that's exactly what makes this app better.*
+
+**What's new for you**
+- **Rain direction:** when rain is nearby, Gemma Raus now tells you *where* it is —
+  "rain on the radar to the **west** — keeping an eye on it" — and when it's headed
+  your way: "rain moving in **from the west** — about 20 min out".
+- **City-scale picture:** a quiet new line shows where over Salzburg it's raining and
+  which way it's going — "rain over the west of Salzburg — spreading" / "pulling back".
+- All of this uses radar we already display — **observed** echo, not guesses.
+
+**Under the hood (for the curious)**
+- The RainViewer pixel sampler now reads an 8-point compass ring ~15 km around your
+  spot **off the same tile** (zero extra network) → approach/nearby direction via a
+  vector-summed dominant sector (`ringDirection`, opposite sectors cancel to "no
+  coherent direction"). Direction enriches the existing approach ETA; a new
+  "nearby, watching" tier fires when echo sits in a coherent sector with no arrival
+  ETA yet — observed echo outranks the forecast hint, yields to trace drizzle at the
+  pixel and to any arrival ETA, and stays quiet at night.
+- The backend compares wet vs dry centroids across its 11 grid points each cycle
+  (cos-corrected bearing) + wet-count trend → `area_watch {sector, trend}` on
+  `/api/ambient`, shown as a muted banner when the grid is partially wet (fresh ≤10 min).
+- 27 new contract tests (122 total: 106 frontend + 16 backend). No existing verdict
+  logic changed — the new tiers only *add* information where the app used to be silent.
+
+---
+
 ## [2.3.1] — 2026-07-17 — Human wording (confidence, not instruments) + visible forecast bars
 ### Changed (copy + ribbon visuals, no logic change)
 - All "model" jargon replaced with plain confidence language: *"first signs: rain

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, AREAS } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, AREAS } from './api'
 import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, hasTraceEcho, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
@@ -110,6 +110,7 @@ export default function App() {
   const [capeUnstable, setCapeUnstable] = useState(false) // CAPE ≥ 300 → ribbon dry-label says "can change fast"
   const [modelRainMin, setModelRainMin] = useState(null)  // model's first wet slot (min from now) — ribbon dry-label second opinion
   const [formingTs, setFormingTs] = useState(null)    // convective-watch Layer 2 (radar-confirmed)
+  const [areaWatch, setAreaWatch] = useState(null)    // city-scale wet/dry direction + trend (v2.4)
   const [uvIndex, setUvIndex] = useState(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
@@ -387,6 +388,11 @@ export default function App() {
     // Approaching: pixel clear NOW but a RainViewer forecast frame (observed echo
     // motion, 10-min steps) shows rain arriving in ~N min. Moving echo ≠ clutter.
     const rvApproachMin = rvPrecip < DRY_THRESHOLD ? (rv?.approachMin ?? null) : null
+    // Ring watch (v2.4): echo sitting ~15km out in some compass sector while the
+    // pixel is dry — direction for the approach line, or a "nearby, watching" lead
+    // when there's no arrival ETA yet.
+    const rvApproachDir = rvApproachMin != null ? (rv?.fromDir ?? null) : null
+    const rvNearbyDir   = rvApproachMin == null ? (rv?.fromDir ?? null) : null
     if (!data && !nowcast && stationData === null) return null
     const omTimes   = data?.minutely_15?.time ?? []
     const omPrecips = data?.minutely_15?.precipitation ?? []
@@ -451,7 +457,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin, traceEcho: hasTraceEcho(rawNowSlot) })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: hasTraceEcho(rawNowSlot) })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -551,6 +557,8 @@ export default function App() {
           ? rvResult.value : null
         const rvPrecip = rv?.now ?? 0
         const rvApproachMin = rvPrecip < DRY_THRESHOLD ? (rv?.approachMin ?? null) : null
+        const rvApproachDir = rvApproachMin != null ? (rv?.fromDir ?? null) : null
+        const rvNearbyDir   = rvApproachMin == null ? (rv?.fromDir ?? null) : null
         const nowPrecip = Math.max(omForNow, stationPrecip, rvPrecip)
         // Ground truth = physical stations + model current (no radar). When these
         // are available and read dry they are authoritative for "is it raining on
@@ -724,7 +732,7 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin, traceEcho: hasTraceEcho(rawNowSlot) })
+        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: hasTraceEcho(rawNowSlot) })
         setTickNow(Math.floor(Date.now() / 1000))
         setCurrentWeather({
           temp: stationTemp ?? data?.current?.temperature_2m ?? null,
@@ -750,6 +758,9 @@ export default function App() {
         setCapeUnstable(cape != null && cape >= UNSETTLED_CAPE)
         // Layer 2: radar-confirmed initiation stamped by the backend.
         setFormingTs(ambientFormingTs())
+        // Layer 3 (v2.4): city-scale wet/dry direction + trend, fresh within 10 min.
+        const aw = ambientAreaWatch()
+        setAreaWatch(aw && typeof aw.ts === 'number' && (Date.now() / 1000 - aw.ts) < 10 * 60 ? aw : null)
         const uv = data?.current?.uv_index ?? null
         setUvIndex(uv !== null && uv >= 6 && localHour >= 7 && localHour < 20 ? uv : null)
         setLastUpdated(Date.now())
@@ -955,6 +966,13 @@ export default function App() {
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs leading-relaxed" style={{ color: 'var(--c-warn)' }}>
                 🌤 {t('unsettled_note')}
+              </span>
+            </div>
+          )}
+          {areaWatch && !formingActive && (
+            <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
+              <span className="font-mono text-xs leading-relaxed text-muted">
+                🌧 {t('aw_' + areaWatch.trend, { dir: t('dir_' + areaWatch.sector) })}
               </span>
             </div>
           )}

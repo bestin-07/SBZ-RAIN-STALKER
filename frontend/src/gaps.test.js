@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
-  modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho,
+  modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho, ringDirection,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB,
 } from './gaps'
@@ -564,6 +564,74 @@ describe('modelEaseAt + STUCK second-opinion — never a bare "no break" the mod
   it('no model ease → plain STUCK unchanged', () => {
     const s = getStatus(1.8, [], null, makeT(), NOON, {})
     expect(s.sub).toBe('s_stuck')
+  })
+})
+
+// ---- ring watch (v2.4) — approach direction from observed echo ---------------------
+
+describe('ringDirection — dominant compass sector from wet ring points', () => {
+  it('single wet sector → that direction', () => {
+    expect(ringDirection(['w'])).toBe('w')
+    expect(ringDirection(['ne'])).toBe('ne')
+  })
+  it('adjacent wet sectors resolve to their middle', () => {
+    expect(ringDirection(['w', 'nw', 'n'])).toBe('nw')
+    expect(['s', 'sw']).toContain(ringDirection(['s', 'sw']))
+  })
+  it('OPPOSITE sectors cancel → null (scattered cells, not an approach)', () => {
+    expect(ringDirection(['n', 's'])).toBeNull()
+    expect(ringDirection(['e', 'w'])).toBeNull()
+    expect(ringDirection(['n', 'e', 's', 'w'])).toBeNull()
+  })
+  it('empty / no data → null', () => {
+    expect(ringDirection([])).toBeNull()
+    expect(ringDirection(null)).toBeNull()
+  })
+})
+
+describe('getStatus — directional approach + nearby watch (v2.4)', () => {
+  it('approach WITH direction → "rain moving in from the west — about 20 min out"', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, rvApproachMin: 20, rvApproachDir: 'w' })
+    expect(s.sub).toBe('s_rv_approach_dir')
+    expect(t.varsFor('s_rv_approach_dir').min).toBe(20)
+    expect(t.varsFor('s_rv_approach_dir').dir).toBe('dir_w')   // translated direction word
+    expect(s.notice.sub).toBe('n_rv_approach_dir')
+  })
+  it('approach WITHOUT a coherent direction → plain approach wording (unchanged)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, rvApproachMin: 20 })
+    expect(s.sub).toBe('s_rv_approach')
+  })
+  it('NEARBY (echo ~15km out, no arrival ETA) → "keeping an eye on it" lead', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, rvNearbyDir: 'sw' })
+    expect(s.type).toBe('go')                          // state untouched — it's a lead
+    expect(s.sub).toBe('s_rv_nearby')
+    expect(t.varsFor('s_rv_nearby').dir).toBe('dir_sw')
+    expect(s.notice.sub).toBe('n_rv_nearby')
+  })
+  it('nearby OUTRANKS the forecast hint (observed echo beats expectation)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, rvNearbyDir: 'w', modelRainAt: NOON + 60 * 60 })
+    expect(s.sub).toBe('s_rv_nearby')
+  })
+  it('trace drizzle at the pixel OUTRANKS nearby (here-and-now beats 15km away)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, rvNearbyDir: 'w', traceEcho: true })
+    expect(s.sub).toBe('s_trace_now')
+  })
+  it('an arrival ETA OUTRANKS nearby (approach is the stronger claim)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, rvApproachMin: 25, rvApproachDir: 'w', rvNearbyDir: 'w' })
+    expect(s.sub).toBe('s_rv_approach_dir')
+  })
+  it('nearby suppressed at night (no "keep an eye on it" at 3am)', () => {
+    const s = getStatus(0, [], null, makeT(), NIGHT,
+      { dryEndsOpen: true, rvNearbyDir: 'w' })
+    expect(s.sub).toBe('s_night_clear')
   })
 })
 

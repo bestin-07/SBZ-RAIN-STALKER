@@ -105,6 +105,27 @@ export function modelEaseAt(omTimes, omPrecips, nowSec) {
   return wetSeen ? ease : null
 }
 
+// Approach direction from the RainViewer ring watch (v2.4.0). Given the list of
+// compass sectors (~15 km out) currently showing echo while the user's own pixel is
+// dry, return the dominant direction the rain sits in — vector-summed so adjacent wet
+// sectors resolve to their middle, and OPPOSITE sectors cancel to null (echo on both
+// sides isn't an approach direction, it's scattered cells). Pure + contract-tested.
+const SECTOR_ANGLES = { n: 0, ne: 45, e: 90, se: 135, s: 180, sw: 225, w: 270, nw: 315 }
+const SECTOR_ORDER = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
+export function ringDirection(wetDirs) {
+  if (!wetDirs?.length) return null
+  let x = 0, y = 0
+  for (const d of wetDirs) {
+    const a = SECTOR_ANGLES[d]
+    if (a == null) continue
+    x += Math.sin(a * Math.PI / 180)
+    y += Math.cos(a * Math.PI / 180)
+  }
+  if (Math.hypot(x, y) < 0.5) return null      // cancelled out → no coherent direction
+  const ang = (Math.atan2(x, y) * 180 / Math.PI + 360) % 360
+  return SECTOR_ORDER[Math.round(ang / 45) % 8]
+}
+
 // Trace-echo acknowledgment (v2.3.0). DRY_THRESHOLD (0.1mm/15min) is a REPORTING
 // cutoff, not a physical one — real, patchy light drizzle can sit just below it
 // (e.g. 0.01–0.06mm, widespread across several grid points) while genuinely wetting
@@ -305,7 +326,9 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
     sub = t('n_downpour_soon', { min: trend.downpourSoonMin })
   } else if (type === 'go') {
     if (trend.rvApproachMin != null && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
-      sub = t('n_rv_approach', { min: trend.rvApproachMin })
+      sub = trend.rvApproachDir
+        ? t('n_rv_approach_dir', { min: trend.rvApproachMin, dir: t('dir_' + trend.rvApproachDir) })
+        : t('n_rv_approach', { min: trend.rvApproachMin })
     } else if (trend.dryEndsOpen && trend.traceEcho) {
       if (trend.modelRainAt) {
         const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
@@ -314,6 +337,8 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
       } else {
         sub = t('n_trace_now')
       }
+    } else if (trend.dryEndsOpen && trend.rvNearbyDir) {
+      sub = t('n_rv_nearby', { dir: t('dir_' + trend.rvNearbyDir) })
     } else if (trend.dryEndsOpen && trend.modelRainAt) {
       const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
       sub = m >= FAR_RAIN_MIN ? t('n_model_rain_far', { h: hoursLabel(m) })
@@ -403,7 +428,9 @@ export function getStatus(
       // near. Freshest radar wins, WITH a real ETA (all frames sampled): the "rain
       // was visibly blue on the map while the app said dry" case. Yields to a
       // nearer GeoSphere countdown.
-      sub = t('s_rv_approach', { min: trend.rvApproachMin })
+      sub = trend.rvApproachDir
+        ? t('s_rv_approach_dir', { min: trend.rvApproachMin, dir: t('dir_' + trend.rvApproachDir) })
+        : t('s_rv_approach', { min: trend.rvApproachMin })
     } else if (trend.dryEndsOpen && trend.traceEcho) {
       // Real, patchy light echo below our reporting cutoff (hasTraceEcho) — DRY_
       // THRESHOLD is a reporting line, not a physical one. Radar's own 3h timeline
@@ -421,6 +448,11 @@ export function getStatus(
       } else {
         sub = t('s_trace_now')
       }
+    } else if (trend.dryEndsOpen && trend.rvNearbyDir && !night) {
+      // Ring watch (v2.4): real radar echo ~15 km out in a coherent direction while
+      // the pixel and its whole 3h timeline are dry, and no arrival ETA yet — the
+      // honest "keep an eye on it" lead. Observed echo outranks a forecast hint.
+      sub = t('s_rv_nearby', { dir: t('dir_' + trend.rvNearbyDir) })
     } else if (trend.dryEndsOpen && trend.modelRainAt) {
       // Radar sees NOTHING in 3 h but the MODEL's own timeline shows rain — the
       // frontal/stratiform case where the model leads the radar by hours. Never

@@ -1,10 +1,9 @@
 import { useState } from 'react'
 
-// One-time, closable trust note after the July 15 missed-evening-rain incident.
-// Owning the miss publicly + saying exactly what changed. Shown once per device
-// (localStorage), dismissible, never again after close. Bump the KEY for any
-// future one-time announcement (old dismissals stay dismissed).
-const KEY = 'update_note_20260716'
+// One-time, closable "Gemma Raus just got better" release note. Shown once per
+// device (localStorage), dismissible, never again after close. Bump the KEY for any
+// future announcement (old dismissals stay dismissed).
+const KEY = 'update_note_20260717'
 
 export default function UpdateNote({ t }) {
   const [seen, setSeen] = useState(() => {

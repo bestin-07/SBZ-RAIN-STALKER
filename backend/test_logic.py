@@ -38,6 +38,7 @@ NS = _extract({
     "_filter_virga", "VIRGA_PROB_MIN", "VIRGA_CAP_TO", "VIRGA_HEAVY_PASS",
     "DRY_THRESHOLD", "MIN_PUSH_AGREEMENT",
     "_detect_forming", "FORMING_MIN_POINTS", "FORMING_CAPE_MIN",
+    "_area_watch", "_AW_SECTORS",
 })
 
 
@@ -133,6 +134,40 @@ class TestFormingDetector(unittest.TestCase):
         prev = {"a": True, "b": True, "c": False}
         cur  = {"a": True, "b": True, "c": True}
         self.assertEqual(self.f(prev, cur, 400), 1)
+
+
+class TestAreaWatch(unittest.TestCase):
+    """v2.4 city-scale wet/dry direction + trend — the 'which way is it moving' layer."""
+
+    def setUp(self):
+        self.f = NS["_area_watch"]
+        # Simplified Salzburg-like grid: two west points, two east points, one centre.
+        self.coords = {
+            "w1": (47.80, 12.98), "w2": (47.79, 12.99),
+            "c":  (47.80, 13.04),
+            "e1": (47.80, 13.09), "e2": (47.81, 13.10),
+        }
+
+    def test_west_wet_east_dry_reports_west(self):
+        wet = {"w1": True, "w2": True, "c": False, "e1": False, "e2": False}
+        aw = self.f(None, wet, self.coords)
+        self.assertEqual(aw["sector"], "w")
+        self.assertEqual(aw["count"], 2)
+
+    def test_east_wet_reports_east(self):
+        wet = {"w1": False, "w2": False, "c": False, "e1": True, "e2": True}
+        self.assertEqual(self.f(None, wet, self.coords)["sector"], "e")
+
+    def test_all_dry_or_all_wet_reports_nothing(self):
+        self.assertIsNone(self.f(None, {k: False for k in self.coords}, self.coords))
+        self.assertIsNone(self.f(None, {k: True for k in self.coords}, self.coords))
+
+    def test_trend_spreading_and_clearing(self):
+        wet = {"w1": True, "w2": True, "c": True, "e1": False, "e2": False}
+        self.assertEqual(self.f(2, wet, self.coords)["trend"], "spreading")  # 2 → 3
+        self.assertEqual(self.f(4, wet, self.coords)["trend"], "clearing")   # 4 → 3
+        self.assertEqual(self.f(3, wet, self.coords)["trend"], "steady")
+        self.assertEqual(self.f(None, wet, self.coords)["trend"], "steady")  # first cycle
 
 
 if __name__ == "__main__":

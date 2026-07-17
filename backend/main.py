@@ -962,6 +962,40 @@ def _detect_forming(prev_wet, wet_now, max_cape):
 _prev_wet = {}      # point name → was wet last cycle
 _forming_ts = 0     # unix ts of the last detected initiation event
 
+# ---- Area watch (v2.4.0, "Layer 3") ---------------------------------------------
+# When PART of the 11-point grid is wet, the wet/dry split has a direction: rain
+# sitting over the west of the city, clearing in from the north, etc. Comparing the
+# wet count against the previous cycle gives the trend (spreading / clearing /
+# steady). Radar-observed across the whole basin — the city-scale "which way is it
+# moving" signal that per-pixel views can't give.
+_AW_SECTORS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
+
+def _area_watch(prev_count, wet_now, coords):
+    """wet_now: {name: bool}; coords: {name: (lat, lon)}. Returns
+    {'sector','count','trend'} when the grid is PARTIALLY wet, else None (all-dry has
+    nothing to report; all-wet has no direction — it's just raining everywhere)."""
+    import math
+    wet = [n for n, v in wet_now.items() if v]
+    total = len(wet_now)
+    if not wet or len(wet) == total or total < 2:
+        return None
+    dry = [n for n in wet_now if n not in wet]
+    wlat = sum(coords[n][0] for n in wet) / len(wet)
+    wlon = sum(coords[n][1] for n in wet) / len(wet)
+    dlat = sum(coords[n][0] for n in dry) / len(dry)
+    dlon = sum(coords[n][1] for n in dry) / len(dry)
+    # Bearing from the dry centroid toward the wet centroid (N=0°, E=90°); the
+    # cos(lat) factor keeps E-W distances honest at Salzburg's latitude.
+    dx = (wlon - dlon) * math.cos(math.radians(47.8))
+    dy = wlat - dlat
+    ang = (math.degrees(math.atan2(dx, dy)) + 360) % 360
+    sector = _AW_SECTORS[int(((ang + 22.5) % 360) // 45)]
+    trend = ('spreading' if len(wet) > prev_count else
+             'clearing' if len(wet) < prev_count else 'steady') if prev_count is not None else 'steady'
+    return {'sector': sector, 'count': len(wet), 'trend': trend}
+
+_prev_wet_count = None   # wet-point count last cycle (for the area-watch trend)
+
 def _filter_virga(times, precips, ptime, pprob):
     """Low-confidence echo (model probability < 50%) is CAPPED to ~light, not zeroed —
     EXCEPT heavy echo, which always passes through.
@@ -1066,7 +1100,7 @@ async def run_cycle():
         # last cycle. Several dry→wet flips + real CAPE = cells forming over the basin
         # RIGHT NOW → stamp forming_ts (served via /api/ambient → frontend banner) and
         # let check_and_push fire the once-a-day "forming" notification.
-        global _prev_wet, _forming_ts
+        global _prev_wet, _forming_ts, _prev_wet_count
         if nowcasts:
             wet_now = {}
             for name, nc in nowcasts.items():
@@ -1081,6 +1115,14 @@ async def run_cycle():
                 _ambient["forming_ts"] = now_ts
                 print(f"[forming] convective initiation detected (CAPE {max_cape} J/kg)")
             _prev_wet = wet_now
+            # Area watch (v2.4): city-scale wet/dry direction + spreading/clearing trend.
+            aw = _area_watch(_prev_wet_count, wet_now,
+                             {p["name"]: (p["lat"], p["lon"]) for p in POINTS})
+            if aw:
+                _ambient["area_watch"] = {**aw, "ts": now_ts}
+            else:
+                _ambient.pop("area_watch", None)
+            _prev_wet_count = sum(1 for v in wet_now.values() if v)
 
         if forecast_rows:
             with get_db() as (_, cur):
