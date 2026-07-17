@@ -115,12 +115,18 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.fillRect(x, 0, SLOT_W - 1, SLOT_H)
 
       if (beyondRadar) {
-        // Model-only bar: dashed outline at the model's own intensity (or nothing if
-        // dry — a dry read this far out isn't worth flagging as a special estimate).
+        // Model-only bar: faint translucent fill + dashed outline at the model's own
+        // intensity — visible as a real bar at a glance (v2.3.1), but still clearly
+        // "estimate" next to the solid radar bars. Nothing drawn when dry.
         if (slot.p >= DRY_THRESHOLD) {
           const gh = precipToHeight(slot.p)
+          const c  = precipToColor(slot.p, pal)
           ctx.save()
-          ctx.strokeStyle = precipToColor(slot.p, pal)
+          ctx.globalAlpha = 0.28
+          ctx.fillStyle = c
+          ctx.fillRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
+          ctx.globalAlpha = 1
+          ctx.strokeStyle = c
           ctx.setLineDash([3, 2])
           ctx.lineWidth = 1.5
           ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
@@ -133,11 +139,16 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         ctx.fillStyle = color
         ctx.fillRect(x, SLOT_H - barH, SLOT_W - 1, barH)
 
-        // GHOST bar (v2.1): radar says dry here but the MODEL expects rain.
+        // GHOST bar (v2.1): radar says dry here but the FORECAST expects rain —
+        // faint fill + dashed outline (v2.3.1) so it's visible at a glance.
         const mp = modelAt(slot.t)
         if (slot.p < DRY_THRESHOLD && mp != null && mp >= DRY_THRESHOLD) {
           const gh = precipToHeight(mp)
           ctx.save()
+          ctx.globalAlpha = 0.28
+          ctx.fillStyle = pal.light
+          ctx.fillRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
+          ctx.globalAlpha = 1
           ctx.strokeStyle = pal.light
           ctx.setLineDash([3, 2])
           ctx.lineWidth = 1.5

@@ -12,6 +12,20 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.3.1] — 2026-07-17 — Human wording (confidence, not instruments) + visible forecast bars
+### Changed (copy + ribbon visuals, no logic change)
+- All "model" jargon replaced with plain confidence language: *"first signs: rain
+  possible in about 1½ h — nothing on radar yet"* (was "model expects rain…"),
+  *"should ease in about 2 h"* (was "model expects easing…"), forecast/Prognose in the
+  legend and labels. Certainty is now carried by the words themselves — "first signs /
+  possible / could / should" for forecast-only claims, firm phrasing for
+  radar-confirmed ones — instead of asking users to know what a "model" is.
+- Ghost/forecast bars in the ribbon now have a faint translucent fill (not just a
+  dashed outline) — visible as real bars at a glance while staying clearly distinct
+  from solid radar bars.
+
+---
+
 ## [2.3.0] — 2026-07-17 — Acknowledge trace drizzle below our reporting cutoff
 ### Added (rain logic — wording only, GEMMA RAUS stays GEMMA RAUS)
 - Live incident, Nonntal: it was genuinely (lightly) drizzling — every nearby grid
