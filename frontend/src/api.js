@@ -1,4 +1,4 @@
-import { ringDirection } from './gaps'
+import { ringDirection, RV_SOLID_COVERAGE } from './gaps'
 
 const OPEN_METEO     = 'https://api.open-meteo.com/v1/forecast'
 const GEOSPHERE_TAWES = 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min'
@@ -312,7 +312,9 @@ function getRainViewerMaps() {
 }
 
 // Sample ONE RainViewer frame's tile at one or more pixel blocks. Resolves an array
-// of 0.3 (echo) / 0 (clear) — one per requested block — or null (CORS/tile failure).
+// of wet-pixel COUNTS (0–25 per 5×5 block) — one per requested block — or null
+// (CORS/tile failure). The count is the spatial-extent signal (v2.4.1): a stuck
+// clutter pixel lights 1–3 px, a real drizzle field blankets the block.
 // Reading extra blocks off the SAME canvas costs zero additional network.
 function sampleRvFrameBlocks(host, framePath, z, tileX, tileY, blocks) {
   const tileUrl = `${host}${framePath}/256/${z}/${tileX}/${tileY}/2/1_1.png`
@@ -336,11 +338,11 @@ function sampleRvFrameBlocks(host, framePath, z, tileX, tileY, blocks) {
           const block = ctx.getImageData(x0, y0, 5, 5).data
           // RainViewer Universal Blue scheme: transparent = no rain.
           // alpha > 30 = meaningful radar echo above noise floor.
-          let maxAlpha = 0
+          let wet = 0
           for (let i = 3; i < block.length; i += 4) {
-            if (block[i] > maxAlpha) maxAlpha = block[i]
+            if (block[i] > 30) wet++
           }
-          return maxAlpha > 30 ? 0.3 : 0
+          return wet
         })
         resolve(out)
       } catch {
@@ -407,20 +409,26 @@ export function fetchRainViewerPrecip(lat, lon) {
           .then(v => ({ time: f.time, v: v === null ? null : v[0] })))
       return Promise.all([nowP, Promise.all(soonPs)]).then(([nowArr, soons]) => {
         if (nowArr === null && soons.every(s => s.v === null)) return null
-        const now = nowArr === null ? null : nowArr[0]
+        // Blocks resolve as wet-pixel counts (0–25). Centre count → binary echo value
+        // (compat with the mm-ish contract) + coverage fraction for the solid check.
+        const nowCount = nowArr === null ? null : nowArr[0]
+        const now = nowCount === null ? null : (nowCount > 0 ? 0.3 : 0)
+        // v2.4.1: wide echo across the ~6×6 km centre block = a FIELD, not a stuck
+        // clutter pixel — lets RainViewer corroborate itself in gaps.surfaceDrizzle.
+        const rvSolid = nowCount !== null && nowCount / 25 >= RV_SOLID_COVERAGE
         const wetDirs = nowArr === null ? [] :
-          RING_DIRS.filter((r, i) => nowArr[i + 1] === 0.3).map(r => r.d)
+          RING_DIRS.filter((r, i) => nowArr[i + 1] > 0).map(r => r.d)
         const nowSec = Date.now() / 1000
         let approachMin = null
         for (const s of soons) {                    // frames are chronological
-          if (s.v !== null && s.v >= 0.1) {
+          if (s.v !== null && s.v >= 1) {            // ≥1 wet px in the block
             approachMin = Math.max(1, Math.round((s.time - nowSec) / 60))
             break                                    // first arrival = the ETA
           }
         }
         // Direction only means "approach/nearby" when the centre itself is dry.
         const fromDir = (now !== null && now < 0.1) ? ringDirection(wetDirs) : null
-        return { now, approachMin, fromDir }
+        return { now, approachMin, fromDir, rvSolid }
       })
     })
     .catch(() => null)

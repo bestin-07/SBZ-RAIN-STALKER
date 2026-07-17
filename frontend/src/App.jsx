@@ -429,7 +429,7 @@ export default function App() {
       effectivePrecip = null
     } else if (stationData !== null) {
       effectivePrecip = groundPrecip
-      const surfaced = surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, data?.current?.weather_code)
+      const surfaced = surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, data?.current?.weather_code, rv?.rvSolid ?? false)
       if (surfaced !== null) { effectivePrecip = surfaced; drizzleSurfaced = true }
     } else {
       effectivePrecip = Math.max(cp, groundPrecip, rvPrecip)
@@ -627,8 +627,9 @@ export default function App() {
           effectivePrecip = null
         } else if (stationData !== null) {
           effectivePrecip = groundPrecip
-          // v1.1 surfacing + v1.1.5 clear-sky clutter guard (see gaps.surfaceDrizzle)
-          const surfaced = surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, data?.current?.weather_code)
+          // v1.1 surfacing + v1.1.5 clear-sky clutter guard + v2.4.1 solid-field
+          // self-corroboration (see gaps.surfaceDrizzle)
+          const surfaced = surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, data?.current?.weather_code, rv?.rvSolid ?? false)
           if (surfaced !== null) { effectivePrecip = surfaced; drizzleSurfaced = true }
         } else {
           effectivePrecip = Math.max(cp, nowPrecip)

@@ -11,7 +11,7 @@ import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho, ringDirection,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
-  UNSETTLED_CAPE, UNSETTLED_PROB,
+  UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
 } from './gaps'
 
 // ---- helpers ---------------------------------------------------------------
@@ -421,6 +421,48 @@ describe('surfaceDrizzle — catch what the gauges miss, reject unsupported RV-o
     const v = surfaceDrizzle(0, 0.12, 0, 3)
     expect(v).toBeGreaterThanOrEqual(LIGHT_MIN)
     expect(v).toBeLessThan(LIGHT_MAX)
+  })
+
+  // ---- v2.4.1: RainViewer self-corroboration by spatial extent (rvSolid) ----
+  // args: (groundPrecip, rawNowSlot, rvPrecip, weather_code, rvSolid)
+
+  it('THE DRIZZLE MISS (2026-07-17): solid RV field + overcast + everything else zero → surfaced', () => {
+    // Real incident: live drizzle over the whole city. Gauge 0.0 (accumulates too
+    // slowly per interval), INCA current slot exact 0.0 (lagging ~1h behind), model
+    // flat 0.00 for 12h, code 3 (overcast). RainViewer was the ONLY witness — echo
+    // blooming over the centre block, 24/25 wet pixels — and the v2.2.1 guard vetoed
+    // it. A drizzle FIELD is not a clutter pixel: wide coverage is corroboration.
+    expect(surfaceDrizzle(0, 0, 0.3, 3, true)).toBe(0.3)
+    // exact-zero rawNowSlot passed as null (source down) behaves the same
+    expect(surfaceDrizzle(0, null, 0.3, 3, true)).toBe(0.3)
+  })
+
+  it('solid RV field under a CLEAR sky → still vetoed (sunny clutter/anaprop can be broad)', () => {
+    expect(surfaceDrizzle(0, 0, 0.3, 0, true)).toBeNull()
+    expect(surfaceDrizzle(0, 0, 0.3, 1, true)).toBeNull()
+    expect(surfaceDrizzle(0, 0, 0.3, 2, true)).toBeNull()
+  })
+
+  it('NON-solid RV echo + zero radar + overcast → still vetoed (Nonntal clutter regression stays dead)', () => {
+    // The v2.2.1 incident replayed with the new arg explicit: a lone stuck pixel
+    // (rvSolid false) must never surface without an independent radar trace.
+    expect(surfaceDrizzle(0, 0, 0.3, 3, false)).toBeNull()
+    expect(surfaceDrizzle(0, 0, 0.3, null, false)).toBeNull()
+  })
+
+  it('rvSolid omitted defaults to false — all pre-2.4.1 behavior unchanged', () => {
+    expect(surfaceDrizzle(0, 0, 0.3, 3)).toBeNull()      // overcast-clutter veto holds
+    expect(surfaceDrizzle(0, 0.03, 0.3, 3)).toBe(0.3)    // trace corroboration still works
+  })
+
+  it('rvSolid never overrides the other guards (wet gauge / heavy cell / nothing)', () => {
+    expect(surfaceDrizzle(0.3, 0.4, 0.3, 3, true)).toBeNull()  // gauge already wet
+    expect(surfaceDrizzle(0, 0.8, 0, 3, true)).toBeNull()      // heavier cell → dry call stands
+    expect(surfaceDrizzle(0, 0, 0, 3, true)).toBeNull()        // no echo value at all
+  })
+
+  it('RV_SOLID_COVERAGE contract: 0.4 of the block (change only with a CLAUDE.md log entry)', () => {
+    expect(RV_SOLID_COVERAGE).toBe(0.4)
   })
 })
 

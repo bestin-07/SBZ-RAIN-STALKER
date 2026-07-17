@@ -15,7 +15,13 @@ export const DOWNPOUR_WINDOW_MIN = 30    // only warn about downpours arriving w
 // clutter-filtered, RainViewer tiles are not. One binary pixel must not overrule
 // gauge + model-sky + filtered nowcast all reading dry ("sunny but PASST SCHON" bug).
 // Returns the surfaced precip (≥ LIGHT_MIN) or null (keep the ground's dry call).
-export function surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, code) {
+// v2.4.1: fraction of the 5×5 RainViewer block (~6×6 km) that must show echo for
+// RainViewer to corroborate ITSELF by spatial extent. Clutter (a stuck terrain pixel)
+// lights 1–3 px; a real drizzle field blankets the block (live incident 2026-07-17:
+// 24/25 px while gauge, INCA slot and model all read exact zero).
+export const RV_SOLID_COVERAGE = 0.4
+
+export function surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, code, rvSolid = false) {
   if (groundPrecip >= DRY_THRESHOLD) return null       // gauge already wet — not our case
   const drizzle = Math.max(rawNowSlot ?? 0, rvPrecip ?? 0)
   if (drizzle < DRY_THRESHOLD || drizzle >= LIGHT_MAX) return null  // nothing, or a heavier
@@ -29,8 +35,16 @@ export function surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, code) {
   // terrain clutter (Untersberg/Gaisberg) or tile noise, not weather, regardless of
   // cloud cover. "Sky unknown" (code null) no longer gets a free pass either; zero
   // corroboration from anywhere is the same evidence whether or not we know the sky.
+  //
+  // v2.4.1: …but that guard caused the mirror-image miss (drizzle 2026-07-17): fresh
+  // stratus drizzle is invisible to the gauge (<0.1mm/interval), lagged out of the
+  // INCA slot, absent from the model — RainViewer was the ONLY witness and we vetoed
+  // it. A lone clutter pixel and a drizzle FIELD look nothing alike on the tile, so
+  // wide coverage (rvSolid, ≥ RV_SOLID_COVERAGE of the block) now counts as
+  // corroboration too. Clear sky remains an absolute veto: sunny-day clutter/anaprop
+  // can also be broad, and the v1.1.5 "sunny but PASST SCHON" bug must stay dead.
   const anyRadarTrace = (rawNowSlot ?? 0) > 0
-  if (!nowcastEcho && (clearSky || !anyRadarTrace)) return null
+  if (!nowcastEcho && (clearSky || (!anyRadarTrace && !rvSolid))) return null
   return Math.max(drizzle, LIGHT_MIN)
 }
 

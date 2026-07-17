@@ -12,6 +12,34 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.4.1] — 2026-07-17 — Gemma Raus just got better: drizzle can't hide anymore 🌦
+*Thank you for the live report — a real drizzle the app called "dry" is exactly the bug we care most about.*
+
+**What happened**
+- It was drizzling over Salzburg while every one of our usual sources read zero: the
+  gauge (drizzle accumulates too slowly per interval), the radar nowcast's current
+  slot (it lagged the fresh field by ~1 h), the model (flat 0.00 for 12 h) and the
+  sky code (plain "overcast"). RainViewer's live radar tile was the **only witness**
+  — echo blooming right over the city — and the v2.2.1 clutter guard vetoed it,
+  because that guard required a nowcast trace as corroboration. Result: "totally
+  dry" during real drizzle — the exact direction of mistake we promised to avoid.
+
+**The fix**
+- A lone stuck clutter pixel and a drizzle *field* look nothing alike on the radar
+  tile. The sampler now counts wet pixels across the ~6×6 km block around your spot
+  (the live incident: 24 of 25 wet; the old Nonntal clutter pixel: 1–2). Wide
+  coverage (≥ 40 % of the block) now counts as corroboration on its own — RainViewer
+  vouching for itself with spatial extent, under a non-clear sky.
+- **All previous protections stay:** a clear sky still vetoes RV-only claims
+  absolutely (sunny clutter/anaprop), a lone pixel with zero radar trace stays
+  suppressed (the v2.2.1 incident replayed in tests, still dead), and the surfaced
+  value stays capped to the light "GO ANYWAY — jacket" band — this can never
+  manufacture a WAIT/STUCK.
+- 6 new contract tests (128 total: 112 frontend + 16 backend), including a replay of
+  today's exact incident. Zero extra network cost — same tile, more pixels read.
+
+---
+
 ## [2.4.0] — 2026-07-17 — Gemma Raus just got better: it now sees which way the rain moves 🧭
 *Thank you for being an early user and sharing feedback — that's exactly what makes this app better.*
 
