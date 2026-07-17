@@ -106,6 +106,9 @@ function ambientToData(pt) {
     hourly: { time: pt.ptime ?? [], precipitation_probability: pt.pprob ?? [] },
     // 15-min series so the ribbon still draws when the GeoSphere nowcast is down.
     minutely_15: { time: pt.mtime ?? [], precipitation: pt.mprecip ?? [] },
+    // AROME hourly tail (v2.7, backend-fetched, mm/h) — unioned with the 15-min
+    // series client-side (combineModelSeries). Absent on the direct-OM fallback.
+    arome: pt.arome ?? null,
   }
 }
 

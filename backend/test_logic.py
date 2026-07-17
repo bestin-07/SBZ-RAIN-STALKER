@@ -39,6 +39,7 @@ NS = _extract({
     "DRY_THRESHOLD", "MIN_PUSH_AGREEMENT",
     "_detect_forming", "FORMING_MIN_POINTS", "FORMING_CAPE_MIN",
     "_area_watch", "_AW_SECTORS",
+    "_deaccumulate",
 })
 
 
@@ -168,6 +169,28 @@ class TestAreaWatch(unittest.TestCase):
         self.assertEqual(self.f(4, wet, self.coords)["trend"], "clearing")   # 4 → 3
         self.assertEqual(self.f(3, wet, self.coords)["trend"], "steady")
         self.assertEqual(self.f(None, wet, self.coords)["trend"], "steady")  # first cycle
+
+
+class TestDeaccumulate(unittest.TestCase):
+    """v2.7 AROME support: accumulated rr_acc series → per-interval amounts.
+    Negatives clamp to 0 (a new model base time can reset the accumulator)."""
+
+    def setUp(self):
+        self.f = NS["_deaccumulate"]
+
+    def test_basic_diff(self):
+        self.assertEqual(self.f([0.0, 0.5, 0.5, 2.0]), [0.0, 0.5, 0.0, 1.5])
+
+    def test_accumulator_reset_clamps_to_zero(self):
+        # 3.0 → 0.2 would diff to -2.8; per-interval rain can't be negative.
+        self.assertEqual(self.f([1.0, 3.0, 0.2, 0.4]),
+                         [1.0, 2.0, 0.0, 0.2])
+
+    def test_non_numeric_values_are_dry(self):
+        self.assertEqual(self.f([None, 1.0, "x", 1.5]), [0.0, 1.0, 0.0, 1.5])
+
+    def test_empty(self):
+        self.assertEqual(self.f([]), [])
 
 
 if __name__ == "__main__":

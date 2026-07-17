@@ -12,6 +12,41 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.7.0] — 2026-07-17 — Gemma Raus just got better: two forecasts, one honest answer 🌧🌧
+*You asked whether radar can see past 3 hours. It can't — nobody's can — but this is the next best thing.*
+
+**What's new for you**
+- **The forecast zone now runs on TWO models, not one.** Alongside the global
+  Open-Meteo blend, we now pull GeoSphere's own AROME model — the 2.5 km Alpine
+  model that **assimilates the Austrian radar network**, re-run every 3 hours.
+  The rule is simple and safe: **whichever model shows rain is displayed, and the
+  stronger value wins**, slot by slot. Two forecasts have to BOTH miss for the
+  ribbon's forecast zone to stay wrongly blank.
+- This feeds everything, not just the picture: the "radar clear so far — model
+  expects rain in ~X h" second opinion, the ghost bars inside the radar zone, and
+  the STUCK-side "model expects easing" line all read the combined lane, so the
+  wording always matches what the ribbon paints.
+
+**Why this direction**
+- Our standing rule: you'll forgive us for painting rain that fizzles, not for a
+  blank ribbon before real rain. A union of two independent models can only add
+  warnings, never hide one.
+
+**Under the hood (for the curious)**
+- Backend fetches AROME (`nwp-v1-1h-2500m`) per grid point, cached 30 min (the
+  model only re-runs 3-hourly) — about 22 extra GeoSphere calls/hour against the
+  ~130 the nowcast already makes, far from the rate-limit incident territory. The
+  precip parameter is discovered at runtime from the dataset's own metadata
+  (per-interval `rr`, else accumulated `rr_acc` + de-accumulation) so a schema
+  surprise degrades to "no AROME" instead of an outage.
+- New pure `combineModelSeries`: per-slot max, AROME hourly totals scaled to slot
+  width; an AROME timestamp is treated as the END of its accumulation hour — if
+  that convention is ever wrong, rain paints an hour EARLY (a lead), never late.
+- 6 + 4 new contract tests (162 total: 142 frontend + 20 backend). Fails soft
+  everywhere: no AROME on the snapshot → exactly yesterday's behaviour.
+
+---
+
 ## [2.6.0] — 2026-07-17 — Gemma Raus just got better: no more mixed messages 🧭
 *Thank you for the sharp-eyed feedback on readability — three small things that each made the app say one clear thing instead of two conflicting ones.*
 

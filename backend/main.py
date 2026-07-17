@@ -14,6 +14,7 @@ import json
 import base64
 import os
 import re
+import time
 import uuid
 import secrets
 from datetime import datetime, timezone
@@ -365,6 +366,100 @@ async def fetch_nowcast_timeline(client: httpx.AsyncClient, point: dict):
     times   = [int(datetime.fromisoformat(s).timestamp()) for s in ts]
     precips = [float(v) if isinstance(v, (int, float)) else 0.0 for v in rr]
     return times, precips
+
+
+def _deaccumulate(vals):
+    """Accumulated series → per-interval amounts. Clamps negatives to 0 (model
+    runs can reset the accumulator mid-series at a new forecast base time)."""
+    out, prev = [], 0.0
+    for v in vals:
+        v = float(v) if isinstance(v, (int, float)) else 0.0
+        out.append(max(0.0, v - prev))
+        prev = v
+    return out
+
+
+# ---- AROME second model (v2.7) ------------------------------------------------
+# GeoSphere's AROME (nwp-v1-1h-2500m: 2.5 km, hourly steps, 60 h, re-run every
+# 3 h) assimilates the Austrian radar network — the closest thing to "radar
+# beyond 3 h" that exists. The forecast tail is served as the UNION of both
+# models (client takes the per-slot max): whichever shows rain is displayed.
+# The precip parameter name is discovered at runtime from the dataset metadata
+# (prefer per-interval "rr", else accumulated "rr_acc" + de-accumulation) so a
+# wrong guess degrades to "no AROME" instead of a crash.
+AROME_DATASET = "nwp-v1-1h-2500m"
+_arome_param = None   # discovered once per process; False = discovery failed
+
+
+async def _discover_arome_param(client: httpx.AsyncClient):
+    global _arome_param
+    if _arome_param is not None:
+        return _arome_param or None
+    try:
+        r = await client.get(
+            f"{GEOSPHERE}/timeseries/forecast/{AROME_DATASET}/metadata", timeout=10)
+        r.raise_for_status()
+        meta = r.json()
+        raw = meta.get("parameters", [])
+        names = set()
+        for p in raw if isinstance(raw, list) else raw.values():
+            names.add(p.get("name") if isinstance(p, dict) else str(p))
+        _arome_param = "rr" if "rr" in names else ("rr_acc" if "rr_acc" in names else False)
+        print(f"[arome] precip parameter: {_arome_param or 'NONE FOUND'} (of {sorted(names)[:12]}…)")
+    except Exception as e:
+        print(f"[arome] metadata discovery failed (will retry next cycle): {e}")
+        return None   # leave _arome_param None → retried next call
+    return _arome_param or None
+
+
+async def fetch_arome_timeline(client: httpx.AsyncClient, point: dict):
+    """AROME hourly precip for one point, sliced to now-1h … now+13h.
+    Values stay mm-per-HOUR — the client scales them to its slot width."""
+    param = await _discover_arome_param(client)
+    if not param:
+        return None
+    r = await client.get(
+        f"{GEOSPHERE}/timeseries/forecast/{AROME_DATASET}",
+        params={"parameters": param, "lat_lon": f"{point['lat']},{point['lon']}"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    data = r.json()
+    ts   = data.get("timestamps", [])
+    vals = data["features"][0]["properties"]["parameters"][param]["data"]
+    if not ts or len(ts) != len(vals):
+        raise ValueError("unexpected arome response")
+    vals = [float(v) if isinstance(v, (int, float)) else 0.0 for v in vals]
+    if param == "rr_acc":
+        vals = _deaccumulate(vals)
+    times = [int(datetime.fromisoformat(s).timestamp()) for s in ts]
+    nowt = time.time()
+    keep = [(t, v) for t, v in zip(times, vals) if nowt - 3600 <= t <= nowt + 13 * 3600]
+    if not keep:
+        return None
+    return [t for t, _ in keep], [v for _, v in keep]
+
+
+# AROME re-runs only every 3 h, so a 30-min per-point cache keeps the added
+# GeoSphere load tiny (~22 calls/h on top of the nowcast's ~130) — the rate
+# limit that caused the 429 starvation incident stays comfortably clear.
+_arome_cache = {}
+_AROME_TTL = 1800
+
+
+async def _arome_cached(client: httpx.AsyncClient, point: dict):
+    name, nowt = point["name"], time.time()
+    hit = _arome_cache.get(name)
+    if hit and nowt - hit[0] < _AROME_TTL:
+        return hit[1]
+    try:
+        res = await fetch_arome_timeline(client, point)
+    except Exception as e:
+        print(f"[arome] {name}: {e}")
+        # Serve the stale copy through upstream hiccups; only a hard None ages out.
+        return hit[1] if hit else None
+    _arome_cache[name] = (nowt, res)
+    return res
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
@@ -1056,7 +1151,15 @@ async def run_cycle():
         # Store new forecasts for all points × horizons
         forecast_rows = []
         nowcasts = {}   # point name → full timeline, reused to enrich the ambient snapshot
+        aromes   = {}   # point name → AROME hourly tail (v2.7), cached 30 min per point
         for point in POINTS:
+            # AROME second model — separate try so its failure can't cost the nowcast row.
+            try:
+                ar = await _arome_cached(client, point)
+                if ar:
+                    aromes[point["name"]] = {"times": ar[0], "precips": ar[1]}
+            except Exception as e:
+                print(f"[arome] cycle {point['name']}: {e}")
             try:
                 times, precips, source = await _fetch_timeline_sourced(client, point)
                 nowcasts[point["name"]] = {"times": times, "precips": precips}
@@ -1095,6 +1198,11 @@ async def run_cycle():
             if nc:
                 precips = _filter_virga(nc["times"], nc["precips"], pt.get("ptime"), pt.get("pprob"))
                 pt["nowcast"] = {"times": nc["times"], "precips": precips}
+            # AROME hourly tail (v2.7): served raw (mm/h, radar-assimilating model) —
+            # the client unions it with the Open-Meteo 15-min tail, max per slot.
+            ar = aromes.get(pt["name"])
+            if ar:
+                pt["arome"] = ar
 
         # Convective-initiation watch: compare each point's "wet around now" against
         # last cycle. Several dry→wet flips + real CAPE = cells forming over the basin

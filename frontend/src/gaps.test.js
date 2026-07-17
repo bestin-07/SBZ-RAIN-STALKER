@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho, traceAheadMin, ringDirection,
+  combineModelSeries,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
 } from './gaps'
@@ -938,5 +939,56 @@ describe('firstDownpourMin — radar downpour lookout', () => {
   })
   it('no nowcast → null (no data, no claim)', () => {
     expect(firstDownpourMin(null, NOON)).toBeNull()
+  })
+})
+
+describe('combineModelSeries — forecast lane is the UNION of both models (v2.7)', () => {
+  // Contract: whichever model shows rain is displayed; the stronger value wins
+  // per slot. AROME values are mm-per-HOUR and scale to the slot width (15 min
+  // slots -> x0.25). An AROME timestamp is the END of its accumulation hour.
+  const t15 = (n) => Array.from({ length: n }, (_, i) => NOON + 900 * i)
+
+  it('no AROME -> Open-Meteo series unchanged', () => {
+    const times = t15(4), om = [0, 0.2, 0, 0.4]
+    expect(combineModelSeries(times, om, null, null)).toEqual(om)
+    expect(combineModelSeries(times, om, [], [])).toEqual(om)
+  })
+
+  it('AROME rain where Open-Meteo is dry -> displayed (scaled to 15-min slots)', () => {
+    const times = t15(4)                       // NOON .. NOON+45
+    const aT = [NOON + 3600], aP = [2.0]       // 2 mm in the hour ENDING at NOON+1h
+    const out = combineModelSeries(times, [0, 0, 0, 0], aT, aP)
+    // slots NOON+15/+30/+45 fall inside (NOON, NOON+1h] ... slot at NOON is the hour boundary of the PREVIOUS hour
+    expect(out[1]).toBeCloseTo(0.5)
+    expect(out[2]).toBeCloseTo(0.5)
+    expect(out[3]).toBeCloseTo(0.5)
+  })
+
+  it('stronger wins per slot, both directions', () => {
+    const times = t15(2)
+    // om 0.3 vs arome 0.8mm/h -> 0.2 per slot: om wins
+    expect(combineModelSeries(times, [0.3, 0.3], [NOON + 3600], [0.8])[1]).toBeCloseTo(0.3)
+    // om 0.1 vs arome 4.0mm/h -> 1.0 per slot: arome wins
+    expect(combineModelSeries(times, [0.1, 0.1], [NOON + 3600], [4.0])[1]).toBeCloseTo(1.0)
+  })
+
+  it('an AROME hour only covers its own slots — no smearing into other hours', () => {
+    const times = t15(8)                       // 2 h of slots
+    const aT = [NOON + 3600, NOON + 7200], aP = [0, 2.0]
+    const out = combineModelSeries(times, new Array(8).fill(0), aT, aP)
+    expect(out[1]).toBe(0)                     // first hour: arome dry
+    expect(out[5]).toBeCloseTo(0.5)            // second hour: 2mm/h -> 0.5/slot
+  })
+
+  it('holes in either input are safe (missing precips -> 0)', () => {
+    const times = t15(3)
+    const out = combineModelSeries(times, [0.2], [NOON + 3600], [1.2])
+    expect(out).toHaveLength(3)
+    expect(out[0]).toBeCloseTo(0.2)
+    expect(out[1]).toBeCloseTo(0.3)            // 1.2/4 beats missing om (0)
+  })
+
+  it('empty base timeline -> empty result (nothing invented)', () => {
+    expect(combineModelSeries([], [], [NOON], [3])).toEqual([])
   })
 })

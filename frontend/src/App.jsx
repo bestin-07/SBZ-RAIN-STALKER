@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, hasTraceEcho, traceAheadMin, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, hasTraceEcho, traceAheadMin, combineModelSeries, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -395,7 +395,11 @@ export default function App() {
     const rvNearbyDir   = rvApproachMin == null ? (rv?.fromDir ?? null) : null
     if (!data && !nowcast && stationData === null) return null
     const omTimes   = data?.minutely_15?.time ?? []
-    const omPrecips = data?.minutely_15?.precipitation ?? []
+    // Model union (v2.7) — same combined series as loadData, so a tapped dot's
+    // verdict rests on the same forecast lane the ribbon draws.
+    const omPrecips = combineModelSeries(
+      omTimes, data?.minutely_15?.precipitation ?? [],
+      data?.arome?.times, data?.arome?.precips)
     const measured  = data?.current?.precipitation ?? 0
     const stationPrecip = stationData?.precip ?? 0
     const omForNow = modelNowValue(measured, stationData !== null, stationPrecip)
@@ -537,8 +541,14 @@ export default function App() {
       const rvOk = rvResult?.status === 'fulfilled' && rvResult.value !== null
       if (data || nowcast || stationData !== null || rvOk) {
         // 12 h Open-Meteo series — drives the RainRibbon overview chart.
+        // v2.7: unioned with the backend-fetched AROME tail (radar-assimilating,
+        // hourly) — whichever model shows rain is displayed, stronger wins per
+        // slot. Everything downstream (gap fallback, second-opinions, ribbon
+        // tail, ghost bars) reads the combined series.
         const omTimes   = data?.minutely_15?.time ?? []
-        const omPrecips = data?.minutely_15?.precipitation ?? []
+        const omPrecips = combineModelSeries(
+          omTimes, data?.minutely_15?.precipitation ?? [],
+          data?.arome?.times, data?.arome?.precips)
 
         // Current "now" measurements — any signal seeing rain wins:
         // - Open-Meteo current.precip   — model-measured last hour (can lag)

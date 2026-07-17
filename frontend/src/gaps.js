@@ -89,6 +89,29 @@ export function modelNowValue(measured, stationPresent, stationPrecip) {
 // returns the model's own first wet slot so the verdict can say "radar clear so far —
 // model expects rain in ~X" instead of a confident all-clear. Radar still wins when it
 // sees rain (it's more precise); the model is the safety net, never the override.
+// Model union (v2.7): the forecast lane is the COMBINATION of both models —
+// whichever shows rain is displayed, the stronger value wins per slot. Open-Meteo
+// gives the 15-min base series; GeoSphere AROME (radar-assimilating, hourly
+// totals in mm/h) is overlaid by scaling each hour onto the slots it covers
+// (slot width ÷ 3600). An AROME timestamp is treated as the END of its
+// accumulation hour (the meteorological convention for accumulated params);
+// if the product actually stamps the START, rain paints one hour EARLY — a
+// lead, our forgiven direction — never an hour late.
+export function combineModelSeries(times, precips, aTimes, aPrecips) {
+  const base = times?.map((_, i) => precips?.[i] ?? 0) ?? []
+  if (!times?.length || !aTimes?.length) return base
+  const dt = times.length > 1 ? Math.max(60, times[1] - times[0]) : 900
+  const scale = Math.min(1, dt / 3600)
+  return base.map((own, i) => {
+    const tt = times[i]
+    let a = 0
+    for (let j = 0; j < aTimes.length; j++) {
+      if (tt > aTimes[j] - 3600 && tt <= aTimes[j]) { a = (aPrecips?.[j] ?? 0) * scale; break }
+    }
+    return Math.max(own, a)
+  })
+}
+
 export function modelNextRainAt(omTimes, omPrecips, nowSec) {
   if (!omTimes?.length || !omPrecips?.length) return null
   const lim = nowSec + 3 * 3600
