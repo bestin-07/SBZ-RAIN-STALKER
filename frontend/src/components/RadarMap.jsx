@@ -464,6 +464,31 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
           {radarFrame.forecast ? (t ? t('lbl_nowcast') : 'nowcast') : (t ? t('lbl_radar') : 'radar')} {fmtClock(radarFrame.time)}
         </div>
       )}
+      {/* Compass (v2.6): the wording says things like "rain to the northeast" —
+          this anchors those words to the map. Leaflet never rotates (north-up
+          always), so a static rose is truthful. DE uses N/O/S/W via i18n. */}
+      <div
+        aria-hidden="true"
+        className="absolute top-3 right-3 z-30 pointer-events-none select-none w-11 h-11
+                   rounded-full bg-surface/90 backdrop-blur border border-border
+                   font-mono text-[9px] text-muted"
+      >
+        <span className="absolute top-[2px] left-1/2 -translate-x-1/2 font-bold text-primary">
+          {t ? t('compass_n') : 'N'}
+        </span>
+        <span className="absolute bottom-[2px] left-1/2 -translate-x-1/2">
+          {t ? t('compass_s') : 'S'}
+        </span>
+        <span className="absolute right-[4px] top-1/2 -translate-y-1/2">
+          {t ? t('compass_e') : 'E'}
+        </span>
+        <span className="absolute left-[4px] top-1/2 -translate-y-1/2">
+          {t ? t('compass_w') : 'W'}
+        </span>
+        <svg className="absolute inset-0 m-auto" width="12" height="12" viewBox="0 0 12 12">
+          <path d="M6 1 L8 8.5 L6 7.2 L4 8.5 Z" fill="var(--c-primary)" opacity="0.85" />
+        </svg>
+      </div>
       {location && (
         <button
           onClick={handleRelocate}

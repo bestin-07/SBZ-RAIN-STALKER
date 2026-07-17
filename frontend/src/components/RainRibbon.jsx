@@ -2,6 +2,11 @@ import { useEffect, useRef } from 'react'
 
 const SLOT_W = 46
 const SLOT_H = 52
+// v2.6 zone band: thin labelled strip above the bars naming which instrument each
+// zone comes from — "radar · next 3h" (observed look-ahead) vs "forecast · model"
+// (estimate). The solid→dashed bar switch alone read as confusing; the band makes
+// the handoff explicit without overlapping the two zones.
+const BAND_H = 14
 // 1 "now" anchor + 48 × 15-min steps = 12 h (v2.2: extended from 3h so the model tail
 // is visible, not just implied by a text label). Mobile can't see all 49 slots at
 // once — that's what the auto-scroll below is for.
@@ -69,14 +74,15 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // blurry) on retina/mobile screens, then draw in CSS-pixel coordinates.
     const dpr  = window.devicePixelRatio || 1
     const cssW = slots.length * SLOT_W
+    const cssH = BAND_H + SLOT_H
     canvas.width  = Math.round(cssW * dpr)
-    canvas.height = Math.round(SLOT_H * dpr)
+    canvas.height = Math.round(cssH * dpr)
     canvas.style.width  = cssW + 'px'
-    canvas.style.height = SLOT_H + 'px'
+    canvas.style.height = cssH + 'px'
 
     const ctx = canvas.getContext('2d')
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, cssW, SLOT_H)
+    ctx.clearRect(0, 0, cssW, cssH)
 
     const pal      = palOf(theme)
     const slotBg   = theme === 'light' ? '#E8E6E1' : '#111318'
@@ -101,13 +107,37 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // v2.2: radar only covers ~3h; beyond radarUntil the bars ARE the model (no radar
     // to compare against), so they're drawn as dashed/lighter to stay honest about
     // being an estimate rather than a radar-precise reading.
-    const radarUntil = forecast.radarUntil ?? Infinity
-    let boundaryX = null
+    // Fallback timelines (isNowcast === false) are model end-to-end — the whole
+    // band must say "forecast", never claim a radar zone that doesn't exist.
+    const modelOnly  = forecast.isNowcast === false
+    const radarUntil = modelOnly ? -Infinity : (forecast.radarUntil ?? Infinity)
+    const splitIdx   = slots.findIndex(s => s.t > radarUntil)
+    const boundaryX  = splitIdx <= 0 ? null : splitIdx * SLOT_W
+
+    // Zone band (v2.6): radar zone tinted in the dry-gold family, forecast zone in
+    // neutral grey — matching the "dimmer = estimate" language of the bars below.
+    const bandRadar = theme === 'light' ? 'rgba(122,94,0,0.22)'    : 'rgba(212,160,23,0.22)'
+    const bandFcst  = theme === 'light' ? 'rgba(87,84,77,0.14)'    : 'rgba(156,163,175,0.12)'
+    const radarEnd  = splitIdx === -1 ? cssW : splitIdx * SLOT_W
+    ctx.font = 'bold 9px "JetBrains Mono", monospace'
+    if (!modelOnly && radarEnd > 0) {
+      ctx.fillStyle = bandRadar
+      ctx.fillRect(0, 0, radarEnd, BAND_H - 2)
+      ctx.fillStyle = labelCol
+      ctx.fillText(t ? t('zone_radar') : 'radar · next 3h', 6, BAND_H - 4)
+    }
+    if (radarEnd < cssW) {
+      ctx.fillStyle = bandFcst
+      ctx.fillRect(radarEnd, 0, cssW - radarEnd, BAND_H - 2)
+      ctx.fillStyle = labelCol
+      ctx.fillText(t ? t('zone_forecast') : 'forecast · model', radarEnd + (modelOnly ? 6 : 4), BAND_H - 4)
+    }
+    // Bars keep their own SLOT_H coordinate system — shift the origin below the band.
+    ctx.translate(0, BAND_H)
 
     slots.forEach((slot, i) => {
       const x = i * SLOT_W
       const beyondRadar = slot.t > radarUntil
-      if (beyondRadar && boundaryX === null) boundaryX = x
 
       ctx.fillStyle = beyondRadar
         ? (theme === 'light' ? '#DEDBD3' : '#0B0D11')   // subtly dimmer — "estimate" zone
@@ -181,8 +211,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       }
     })
 
-    // Radar → model handoff marker: a dashed vertical line + small tag so the switch
-    // in bar style (solid → dashed) has an obvious reason.
+    // Radar → model handoff marker: a dashed vertical line through band + bars so
+    // the zone switch has a crisp edge (the labelled band above names the zones,
+    // replacing the old floating "model →" tag).
     if (boundaryX !== null) {
       ctx.save()
       ctx.strokeStyle = labelCol
@@ -190,18 +221,16 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.setLineDash([2, 3])
       ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.moveTo(boundaryX, 0)
+      ctx.moveTo(boundaryX, -BAND_H)
       ctx.lineTo(boundaryX, SLOT_H)
       ctx.stroke()
       ctx.restore()
-      ctx.fillStyle = labelCol
-      ctx.font = '9px "JetBrains Mono", monospace'
-      ctx.fillText(t ? t('ribbon_model_from') : 'model →', boundaryX + 3, 11)
     }
 
-    // "now" marker
+    // "now" marker — through the zone band too, so "now" and "radar zone" visibly
+    // start together.
     ctx.fillStyle = nowCol
-    ctx.fillRect(0, 0, 2, SLOT_H)
+    ctx.fillRect(0, -BAND_H, 2, BAND_H + SLOT_H)
 
   }, [forecast, theme, t])
 
@@ -288,7 +317,8 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           style={{ display: 'block' }}
         />
         {(allDry || !hasData) && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
+               style={{ paddingTop: BAND_H }}>
             <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
               {/* Honest attribution, in priority order: the MODEL disagreeing with a
                   radar all-clear beats everything (frontal rain the radar can't see

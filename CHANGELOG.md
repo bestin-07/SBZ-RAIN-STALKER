@@ -12,6 +12,34 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.6.0] — 2026-07-17 — Gemma Raus just got better: no more mixed messages 🧭
+*Thank you for the sharp-eyed feedback on readability — three small things that each made the app say one clear thing instead of two conflicting ones.*
+
+**What's new for you**
+- **Zone band over the ribbon:** a thin labelled strip now sits above the rain bars —
+  **RADAR · NEXT 3 H** over the solid look-ahead zone, **FORECAST · MODEL** over the
+  dashed estimate zone. The solid→dashed switch finally explains itself; no more
+  guessing where observation ends and estimate begins. (And no, nobody's radar sees
+  further than ~3 h — beyond that, everyone's timeline is a model, including the big
+  weather sites. We just label it honestly.)
+- **No more "suspiciously perfect" under a drizzle countdown:** when ANY radar signal
+  has rain in sight — drizzle ahead, echo nearby, rain approaching — the cheerful
+  "go before the sky changes its mind" invitation notes now stay quiet instead of
+  contradicting the countdown right below them.
+- **Compass on the map:** a small N/E/S/W rose (N/O/S/W auf Deutsch) in the corner,
+  so "rain approaching from the northwest" finally points somewhere you can see.
+
+**Under the hood (for the curious)**
+- The comfort-note gate (`rainSoon`) now includes every rain-in-sight trend signal
+  (`downpourSoonMin`, `rvApproachMin`, `rvNearbyDir`, `traceEcho`, `traceAheadMin`),
+  not just a hard `nextRainAt` within 90 min. Suppression only — it can never ADD an
+  invitation, and prep notes (wind/cold) still show. Verdicts untouched.
+- Ribbon canvas grew a 14 px zone band; the model-only fallback timeline draws the
+  whole band as FORECAST (never claims a radar zone it doesn't have). 9 new contract
+  tests (152 total: 136 + 16).
+
+---
+
 ## [2.5.0] — 2026-07-17 — Gemma Raus just got better: it now foresees drizzle, not just rain 🔮
 *Follow-up to today's drizzle incident: catching it live wasn't enough — you should have seen it coming.*
 

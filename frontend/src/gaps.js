@@ -455,7 +455,15 @@ export function getStatus(
   // Weather note needs to know if we're heading out (dry/go) or stuck in the rain,
   // so the "go outside" comfort lines don't contradict a WAIT/STUCK headline; and
   // whether rain is imminent, so "made for going out" doesn't run under a countdown.
-  const rainSoon = trend.nextRainAt != null && (trend.nextRainAt - nowSec) <= RAIN_SOON_NOTE * 60
+  // v2.6: "imminent" includes every radar rain-in-sight signal, not just a hard
+  // nextRainAt — "suspiciously perfect, go before the sky changes its mind" was
+  // showing right under "drizzle possible in 20 min". Any tier that puts rain in
+  // the sub-line must also silence the invitation notes.
+  const rainInSight = trend.downpourSoonMin != null || trend.rvApproachMin != null ||
+                      trend.rvNearbyDir != null || !!trend.traceEcho ||
+                      trend.traceAheadMin != null
+  const rainSoon = rainInSight ||
+    (trend.nextRainAt != null && (trend.nextRainAt - nowSec) <= RAIN_SOON_NOTE * 60)
   const weatherNote = getWeatherNote(weather, t, { night, evening, raining: !(isDry || gapNow), rainSoon })
 
   // ---- Dry now: narrate the incoming rain ----
