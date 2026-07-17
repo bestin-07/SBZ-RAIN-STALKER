@@ -9,8 +9,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
-  modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho, traceAheadMin, ringDirection,
-  combineModelSeries,
+  modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
+  ringDirection, combineModelSeries,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
 } from './gaps'
@@ -990,5 +990,49 @@ describe('combineModelSeries — forecast lane is the UNION of both models (v2.7
 
   it('empty base timeline -> empty result (nothing invented)', () => {
     expect(combineModelSeries([], [], [NOON], [3])).toEqual([])
+  })
+})
+
+describe('tracePhantom — dual-key phantom-trace guard (v2.8)', () => {
+  // Contract: suppress the trace TIER only when BOTH keys agree — sky clear
+  // (code <= 2, same veto band as surfaceDrizzle) AND RainViewer fully quiet
+  // (pixel dry, no approach ETA, no ring echo, no solid field). Either witness
+  // dissenting, or RainViewer unavailable -> keep the trace. Never touches real
+  // slots, downpours or countdowns (those never consult this fn).
+  const quietRV = { now: 0, approachMin: null, fromDir: null, rvSolid: false }
+
+  it('cloudless sky + fully quiet RainViewer -> phantom (the 2026-07-17 carpet)', () => {
+    expect(tracePhantom(0, quietRV)).toBe(true)
+    expect(tracePhantom(2, quietRV)).toBe(true)   // same <=2 band as surfaceDrizzle
+  })
+
+  it('THE USER SCENARIO: rain approaching while the local sky is still clear -> NOT phantom', () => {
+    // RV forecast frames see the moving echo before any cloud is overhead —
+    // the RV key releases, trace wording stays. This must never regress.
+    expect(tracePhantom(0, { ...quietRV, approachMin: 40 })).toBe(false)
+  })
+
+  it('ring echo in some sector (~15 km out) -> NOT phantom, even under clear sky', () => {
+    expect(tracePhantom(0, { ...quietRV, fromDir: 'W' })).toBe(false)
+  })
+
+  it('wet centre pixel or solid RV field -> NOT phantom', () => {
+    expect(tracePhantom(0, { ...quietRV, now: 0.3 })).toBe(false)
+    expect(tracePhantom(0, { ...quietRV, rvSolid: true })).toBe(false)
+  })
+
+  it('any cloud beyond mostly-clear (code >= 3) -> NOT phantom (pop-up cells build towers first)', () => {
+    expect(tracePhantom(3, quietRV)).toBe(false)
+    expect(tracePhantom(61, quietRV)).toBe(false)
+  })
+
+  it('sky unknown -> NOT phantom (no free pass, mirrors surfaceDrizzle v2.2.1)', () => {
+    expect(tracePhantom(null, quietRV)).toBe(false)
+    expect(tracePhantom(undefined, quietRV)).toBe(false)
+  })
+
+  it('RainViewer unavailable -> NOT phantom (cannot corroborate absence)', () => {
+    expect(tracePhantom(0, null)).toBe(false)
+    expect(tracePhantom(0, { ...quietRV, now: null })).toBe(false)   // tile read failed
   })
 })

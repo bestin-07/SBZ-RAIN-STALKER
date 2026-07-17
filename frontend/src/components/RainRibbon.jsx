@@ -192,9 +192,13 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       // the dry base bar, so a trace future is VISIBLE instead of rendering as flat
       // dry (live incident: the nowcast showed the drizzle field an hour ahead as
       // 0.01 slots and the ribbon claimed nothing was coming).
+      // v2.8: when BOTH independent witnesses contradict the radar-zone carpet
+      // (clear sky + fully quiet RainViewer → forecast.tracePhantom), dim those
+      // stubs below even the model-zone level — still drawn (we never hide data),
+      // but no longer reading as a real drizzle claim on a cloudless afternoon.
       if (slot.p > 0 && slot.p < DRY_THRESHOLD) {
         ctx.save()
-        ctx.globalAlpha = beyondRadar ? 0.25 : 0.45
+        ctx.globalAlpha = beyondRadar ? 0.25 : (forecast.tracePhantom ? 0.12 : 0.45)
         ctx.fillStyle = pal.light
         ctx.fillRect(x, SLOT_H - 10, SLOT_W - 1, 10)
         ctx.restore()
@@ -307,7 +311,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
   // Trace slots only (all sub-threshold, at least one non-zero): the overlay must
   // not claim "no rain in 3h" over visible drizzle stubs — name what's there.
-  const traceOnly = allDry && rslots.some(s => s.p > 0)
+  // v2.8: unless both instruments call the carpet phantom (clear sky + quiet
+  // RainViewer) — then the dry line is the honest headline, not "faint drizzle".
+  const traceOnly = allDry && rslots.some(s => s.p > 0) && forecast.tracePhantom !== true
 
   return (
     <div className="border-t border-b border-border shrink-0">

@@ -12,6 +12,39 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.8.0] — 2026-07-17 — Gemma Raus just got better: no phantom drizzle on a cloudless day ☀️
+*You looked at a perfect blue sky, the app said "drizzle possible" for three hours straight, and you asked us to cross-check. You were right.*
+
+**What happened**
+- On a cloudless 30° afternoon the radar timeline painted an identical whisper of
+  drizzle across **all eleven city points** — same minute, same tiny value. Real
+  drizzle never does that. We checked the live radar picture: **not a single echo
+  within ~275 km**, and the airport reported zero clouds. That whisper was the
+  nowcast model's own background noise, not weather.
+
+**What's new for you**
+- **Two witnesses now get a veto on "drizzle possible".** When the sky over you is
+  clear AND the live radar picture is completely quiet — nothing at your pixel,
+  nothing approaching, nothing in the ~15 km ring — the drizzle-possible wording
+  stands down and the ribbon's trace stubs fade to a faint watermark. Blue sky
+  overhead now means the app agrees with your eyes.
+- **Your exact worry is the built-in safety case:** rain that's genuinely coming
+  shows up on the live radar long before any cloud reaches your sky — so the veto
+  releases itself the moment anything real appears, from either witness. Pop-up
+  summer cells build visible towers first, which also releases it. And if the live
+  radar feed is unavailable, we can't corroborate — so we never suppress.
+- Nothing else changes: real rain bars, downpour warnings, approach directions and
+  every countdown are untouched. This only silences the faintest tier when both
+  independent instruments say it isn't there. Bonus: on a genuinely perfect day the
+  friendly "go out" notes come back instead of being blocked by phantom drizzle.
+
+**Why this direction**
+- Our standing rule is "better a lead than a lag" — but this wasn't a lead, it was
+  three hours of crying wolf against both instruments and your own eyes. Trust is
+  the product too.
+
+---
+
 ## [2.7.0] — 2026-07-17 — Gemma Raus just got better: two forecasts, one honest answer 🌧🌧
 *You asked whether radar can see past 3 hours. It can't — nobody's can — but this is the next best thing.*
 

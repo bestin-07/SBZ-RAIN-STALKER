@@ -201,6 +201,33 @@ export function traceAheadMin(times, precips, nowSec) {
   return null
 }
 
+// v2.8.0: dual-key phantom-trace guard. Live incident (2026-07-17): cloudless 30°
+// afternoon (METAR NCD, code 0 at every point) while the INCA timeline painted an
+// IDENTICAL trace carpet across all 11 city points — first echo the same minute,
+// same 0.01–0.02 values everywhere, and RainViewer byte-identical to an empty
+// Atlantic tile for ~275 km around. Real drizzle never arrives at eleven
+// neighbourhoods simultaneously with the same value: that's the nowcast's
+// model-blend tail leaking numeric noise, and the app answered a cloudless sky
+// with three hours of "drizzle possible". Suppress the trace TIER (traceEcho +
+// traceAheadMin wording; the ribbon dims its stubs separately) only when BOTH
+// keys agree it's phantom: the sky is clear (code ≤ 2, the same absolute-veto
+// band surfaceDrizzle uses) AND RainViewer — an independent instrument — is
+// fully quiet: pixel dry, no approach ETA, no ring echo in any sector, no solid
+// field. Why this can't create a lag: rain that is really coming shows on
+// RainViewer (approach frames / ~15 km ring) before it reaches you, releasing
+// the RV key; a pop-up cell builds visible towers first, pushing the sky code
+// past 2 and releasing the sky key. RainViewer unavailable (rv null / now not a
+// number) means we CANNOT corroborate absence → never suppress. Trace tier only:
+// real slots (≥ DRY_THRESHOLD), downpour warnings, approach lanes and countdowns
+// are untouched by design.
+export function tracePhantom(code, rv) {
+  const clearSky = code != null && code <= 2
+  if (!clearSky) return false
+  if (!rv || typeof rv.now !== 'number') return false   // no RV witness → keep the trace
+  return rv.now < DRY_THRESHOLD && rv.approachMin == null &&
+         rv.fromDir == null && !rv.rvSolid
+}
+
 // Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
 // DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
 // verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
