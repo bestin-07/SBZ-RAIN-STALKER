@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
-  modelNowValue, MODEL_NOW_CAP, modelEaseAt,
+  modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB,
 } from './gaps'
@@ -564,6 +564,71 @@ describe('modelEaseAt + STUCK second-opinion — never a bare "no break" the mod
   it('no model ease → plain STUCK unchanged', () => {
     const s = getStatus(1.8, [], null, makeT(), NOON, {})
     expect(s.sub).toBe('s_stuck')
+  })
+})
+
+// ---- trace-echo acknowledgment (v2.3.0) — the Nonntal "sub-threshold drizzle" case -
+
+describe('hasTraceEcho — DRY_THRESHOLD is a reporting cutoff, not a physical one', () => {
+  it('THE LIVE INCIDENT: 0.01–0.06mm widespread trace → acknowledged as trace echo', () => {
+    expect(hasTraceEcho(0.01)).toBe(true)
+    expect(hasTraceEcho(0.06)).toBe(true)
+  })
+  it('exact zero → no trace (nothing to acknowledge)', () => {
+    expect(hasTraceEcho(0)).toBe(false)
+    expect(hasTraceEcho(null)).toBe(false)
+  })
+  it('at/above DRY_THRESHOLD → not "trace" anymore, real dry-branch/gap logic applies', () => {
+    expect(hasTraceEcho(0.1)).toBe(false)
+    expect(hasTraceEcho(0.5)).toBe(false)
+  })
+})
+
+describe('getStatus — trace echo acknowledgment (wording only, GEMMA RAUS stays GEMMA RAUS)', () => {
+  it('dry (radar 3h clear) + trace echo + model far rain → combined message, state unchanged', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, traceEcho: true, modelRainAt: NOON + 150 * 60 })
+    expect(s.type).toBe('go')                              // NEVER flips the hard state
+    expect(s.sub).toBe('s_trace_now_far')
+    expect(t.varsFor('s_trace_now_far').h).toBe('2½')
+    expect(s.notice.sub).toBe('n_trace_now_far')
+  })
+
+  it('trace echo + NEAR model rain (<90min) → minutes form', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, traceEcho: true, modelRainAt: NOON + 45 * 60 })
+    expect(s.sub).toBe('s_trace_now_min')
+    expect(t.varsFor('s_trace_now_min').min).toBe(45)
+  })
+
+  it('trace echo with NO model rain data at all → standalone acknowledgment', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { dryEndsOpen: true, traceEcho: true })
+    expect(s.sub).toBe('s_trace_now')
+  })
+
+  it('night + trace echo → cosy drizzle wording, not an alarming trace message', () => {
+    const s = getStatus(0, [], null, makeT(), NIGHT, { dryEndsOpen: true, traceEcho: true })
+    expect(s.sub).toBe('s_night_drizzle')
+  })
+
+  it('no trace echo → falls through to the existing model second-opinion unaffected', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, traceEcho: false, modelRainAt: NOON + 150 * 60 })
+    expect(s.sub).toBe('s_model_rain_far')
+  })
+
+  it('downpour warning still outranks trace echo', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, traceEcho: true, downpourSoonMin: 12 })
+    expect(s.sub).toBe('s_downpour_soon')
+  })
+
+  it('RV approach still outranks trace echo', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, traceEcho: true, rvApproachMin: 15 })
+    expect(s.sub).toBe('s_rv_approach')
   })
 })
 

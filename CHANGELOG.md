@@ -12,6 +12,26 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.3.0] — 2026-07-17 — Acknowledge trace drizzle below our reporting cutoff
+### Added (rain logic — wording only, GEMMA RAUS stays GEMMA RAUS)
+- Live incident, Nonntal: it was genuinely (lightly) drizzling — every nearby grid
+  point showed real, widespread radar echo of **0.01–0.06 mm**, all below our
+  `DRY_THRESHOLD` (0.1 mm/15min) reporting cutoff. The app said flatly "clear for
+  hours" / "rain in about 2½ h", implying total dryness when faint, real drizzle was
+  happening right now. `DRY_THRESHOLD` is a reporting line, not a physical one.
+- New `hasTraceEcho(rawNowSlot)`: when the radar's OWN 3h timeline is fully dry
+  (`dryEndsOpen`) but its raw current-slot reading shows *any* non-zero trace below
+  the cutoff, the GO sub now says so — combined with the model's own far-rain time
+  when available: **"light drizzle on radar right now — steadier rain expected in
+  about 2½ h"**. Standalone wording when no model rain data exists. Popup notices too.
+- Policy: *better to nudge caution than stay silent about a signal we already have* —
+  but this is wording-only. It does NOT flip GEMMA RAUS to GO ANYWAY (that requires
+  `surfaceDrizzle`'s stricter, corroborated bar) and never touches WAIT/STUCK.
+  Downpour warning and RV-approach still outrank it; night keeps the cosy drizzle
+  voice instead. 10 new contract tests (95 total).
+
+---
+
 ## [2.2.1] — 2026-07-17 — Fix the overcast-clutter bug (GO ANYWAY while genuinely dry)
 ### Fixed (rain logic)
 - Live incident, Nonntal: gauge 0.0, radar nowcast an **exact 0.0 across the whole 3h

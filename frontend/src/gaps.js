@@ -105,6 +105,19 @@ export function modelEaseAt(omTimes, omPrecips, nowSec) {
   return wetSeen ? ease : null
 }
 
+// Trace-echo acknowledgment (v2.3.0). DRY_THRESHOLD (0.1mm/15min) is a REPORTING
+// cutoff, not a physical one — real, patchy light drizzle can sit just below it
+// (e.g. 0.01–0.06mm, widespread across several grid points) while genuinely wetting
+// someone outside. Policy: better to nudge caution than stay silent about a signal we
+// already have. `rawNowSlot` is the un-zeroed current radar slot (the same value the
+// ground-dry rule zeroes out before gap detection, precisely so it doesn't hide the
+// real NEXT rain) — reusing it here to ACKNOWLEDGE it in wording only. Never changes
+// isDry / effectivePrecip / WAIT / STUCK; GEMMA RAUS stays GEMMA RAUS, just says so
+// honestly instead of implying total dryness until the next real countdown.
+export function hasTraceEcho(rawNowSlot) {
+  return (rawNowSlot ?? 0) > 0 && (rawNowSlot ?? 0) < DRY_THRESHOLD
+}
+
 // Minutes to the first real DOWNPOUR (≥ DOWNPOUR_MM) the radar shows within
 // DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
 // verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
@@ -293,6 +306,14 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
   } else if (type === 'go') {
     if (trend.rvApproachMin != null && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
       sub = t('n_rv_approach', { min: trend.rvApproachMin })
+    } else if (trend.dryEndsOpen && trend.traceEcho) {
+      if (trend.modelRainAt) {
+        const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
+        sub = m >= FAR_RAIN_MIN ? t('n_trace_now_far', { h: hoursLabel(m) })
+            : t('n_trace_now_min', { min: Math.max(5, Math.round(m / 5) * 5) })
+      } else {
+        sub = t('n_trace_now')
+      }
     } else if (trend.dryEndsOpen && trend.modelRainAt) {
       const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
       sub = m >= FAR_RAIN_MIN ? t('n_model_rain_far', { h: hoursLabel(m) })
@@ -383,6 +404,23 @@ export function getStatus(
       // was visibly blue on the map while the app said dry" case. Yields to a
       // nearer GeoSphere countdown.
       sub = t('s_rv_approach', { min: trend.rvApproachMin })
+    } else if (trend.dryEndsOpen && trend.traceEcho) {
+      // Real, patchy light echo below our reporting cutoff (hasTraceEcho) — DRY_
+      // THRESHOLD is a reporting line, not a physical one. Radar's own 3h timeline
+      // never crosses it (dryEndsOpen), so without this the app would flatly claim
+      // "clear for hours" while faint drizzle is genuinely happening. Combines with
+      // the model's own far-rain time when we have one (both signals true at once:
+      // trace THIS moment, steadier accumulating rain expected later).
+      if (night) {
+        sub = t('s_night_drizzle')
+      } else if (trend.modelRainAt) {
+        const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
+        sub = m >= FAR_RAIN_MIN
+          ? t('s_trace_now_far', { h: hoursLabel(m) })
+          : t('s_trace_now_min', { min: Math.max(5, Math.round(m / 5) * 5) })
+      } else {
+        sub = t('s_trace_now')
+      }
     } else if (trend.dryEndsOpen && trend.modelRainAt) {
       // Radar sees NOTHING in 3 h but the MODEL's own timeline shows rain — the
       // frontal/stratiform case where the model leads the radar by hours. Never
