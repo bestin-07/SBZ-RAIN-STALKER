@@ -526,6 +526,39 @@ git push origin main --tags        # Railway auto-deploys main
 
 ---
 
+## Operations handbook (READ FIRST when working from the maintainer's machine)
+
+Project skills in `.claude/skills/` encode the four recurring procedures — prefer them over re-deriving:
+`release` (test → bump → changelog voice → tag → push), `verify-deploy` (sw.js stamp method),
+`probe-weather` (safe live-data cross-checks), `logic-change` (mandatory checklist for verdict changes).
+
+### Standing maintainer doctrine (governs every decision)
+1. **Leads forgiven, lags never** — early warnings acceptable, late ones are product failures. Any suppression must prove it cannot delay a warning (dual-key template: v2.8.0).
+2. **Better someone stays inside than gets sent into rain.**
+3. **Only change logic when absolutely better** — decline marginal tweaks; probe live data first. Two proposed threshold bumps (2026-07) were withdrawn when reality validated current behaviour within the hour.
+4. **Test extensively**: both suites before AND after; contract tests pin every release scenario.
+5. **CHANGELOG voice**: "Gemma Raus just got better: …" — warm second-person prose (see 2.8.0/2.9.0 as templates). Logic log = doctrine record; changelog = user story.
+6. The maintainer reports by **voice transcript** — expect phonetic mangling ("Vector dot com" = wetter.com, "Frye Lassing" = Freilassing, "rain ruben" = rain ribbon).
+
+### API quota — HARD RULE
+Never call `api.open-meteo.com` or `dataset.api.hub.geosphere.at` from the dev machine — it shares the user's IP; probing burns their per-IP quota and once bricked the live app on "checking". Safe to poll: own `https://www.gemmaraus.at/api/*` (ambient carries per-point nowcast/arome/ground), RainViewer CDN (unmetered), `aviationweather.gov` METAR (LOWS), `api.github.com`.
+
+### Deploy verification — sw.js stamp only
+After `git push origin main`, wait ~2–3 min, fetch `https://www.gemmaraus.at/sw.js` and read the cache name `gemma-raus-YYYYMMDDHHMM` (UTC build time, stamped by the Dockerfile). To confirm specific code, grep the referenced `assets/index-*.js` for a new distinctive string. **Never** compare live bundle hashes to a local build (Railway bakes different VITE_* → never match) and **never** wait for a post-push baseline hash to change (Railway is faster than you — the baseline is already the new bundle).
+
+### Dev-machine quirks
+- PowerShell **5.1**: no `&&`, no `??`/`?.`; multiline commit messages via file + `git commit -F`; avoid `2>$null` on native exes.
+- Machine TZ is **IST (UTC+5:30)**, Salzburg is CEST (UTC+2 summer) — convert unix timestamps explicitly, never trust local wall-clock.
+- Backend tests: `python backend/test_logic.py` (**no pytest module**). No `gh` / `railway` CLIs — GitHub via anonymous `api.github.com`.
+- `RAIN_LOGIC.md` and `docs/` exports are **local-only by choice** — unstage them if `git add -A` sweeps them in.
+
+### UI layout contracts (v2.9.0 — don't regress these on "cleanup")
+- App shell is fixed-height (`h-full`/`100dvh` + overflow-hidden); the **main column scrolls** (`flex-1 min-h-0 overflow-y-auto overscroll-contain`) so stacked banners can never lock the page; RadarMap keeps `min-h-[320px]`.
+- RainRibbon auto-scroll keeps its position in a **float accumulator** and only writes `el.scrollLeft` — iOS Safari rounds scrollLeft reads to whole px, so any read-add-write drift under 1 px/frame freezes there. rAF `dt` stays clamped (≤100 ms) against background-resume jumps. The `prefers-reduced-motion` no-op is intentional (iOS Reduce Motion disables auto-drift by design).
+- Bottom sheets use `.max-h-sheet` (92dvh under `@supports`) + `overscroll-contain`; `AbortSignal.timeout` polyfill in api.js is load-bearing for iOS ≤ 15.
+
+---
+
 ## Connecting a Local Dev Server to This Session
 
 When connecting Claude Code to a local remote development server (so API scripts can be executed directly from the user's machine):
