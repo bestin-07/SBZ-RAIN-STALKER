@@ -12,6 +12,42 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.9.0] — 2026-07-18 — Gemma Raus just got better: at home on your iPhone 📱
+*A round of iOS love — everything reported from an iPhone in one release, plus a proper front door.*
+
+**What happened**
+- On iOS the moving 12-hour ribbon sat frozen. Found it: iPhones round scroll
+  positions to whole pixels, and our gentle drift moves less than a pixel per
+  frame — so every tiny step got rounded straight back to zero. Desktop browsers
+  keep fractions, which is why only iPhones froze. The ribbon now keeps its own
+  precise position and only *tells* the screen where to be — it drifts on every
+  device now. (If it still holds still for you: iPhone's "Reduce Motion" setting
+  intentionally turns the auto-drift off — that part is by design, your finger
+  still scrolls it.)
+- On busy-weather days the warning banners (UV + wind + thunder + the big verdict)
+  stacked taller than the screen — and the page had nowhere to scroll, so it just
+  felt stuck and the map got squeezed away.
+
+**What's new for you**
+- **The page always scrolls now.** Banners can pile as high as the weather wants —
+  you scroll through them, and the map always keeps a usable size at the bottom.
+- **Tap GEMMA RAUS to go home.** The logo in the top-left now takes you back to
+  the start page. Your saved spot isn't lost — one tap on GET MY LOCATION brings
+  you right back.
+- **The ribbon glides on iPhones** — and it no longer leaps to the far end when
+  you return to a backgrounded tab.
+- **Bottom sheets fit the *visible* screen.** The guide and privacy sheets used to
+  tuck their last lines behind Safari's toolbar; they now size themselves to what
+  you can actually see, and scrolling inside them no longer drags the page behind.
+- **Older iPhones (iOS 15 and earlier) load again.** They're missing a browser
+  timer feature every data call relied on — we now bring our own.
+- The start screen scrolls on small phones instead of clipping the location-help
+  text, and the iOS rubber-band no longer yanks the whole app around.
+
+Nothing about the rain logic changed — same verdicts, same countdowns, same radar.
+
+---
+
 ## [2.8.0] — 2026-07-17 — Gemma Raus just got better: no phantom drizzle on a cloudless day ☀️
 *You looked at a perfect blue sky, the app said "drizzle possible" for three hours straight, and you asked us to cross-check. You were right.*
 

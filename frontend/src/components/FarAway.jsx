@@ -1,7 +1,7 @@
 export default function FarAway({ km, onViewSalzburg, t }) {
   return (
-    <div className="min-h-screen bg-bg flex flex-col items-start justify-center px-6 pb-safe md:items-center">
-      <div className="w-full max-w-md">
+    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-bg flex flex-col items-start px-6 pb-safe md:items-center">
+      <div className="w-full max-w-md my-auto py-10">
         <div className="font-display font-bold text-3xl text-primary tracking-[0.1em] uppercase mb-3">
           {t('far_title')}
         </div>

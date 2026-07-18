@@ -72,8 +72,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const canvas = canvasRef.current
     // Render at device-pixel-ratio so the time labels are crisp (not upscaled/
     // blurry) on retina/mobile screens, then draw in CSS-pixel coordinates.
-    const dpr  = window.devicePixelRatio || 1
+    // Cap the backing store below the GPU-texture ceiling (8192px) — the 12h
+    // ribbon at dpr 3 is already ~6800 device px; anything past the ceiling
+    // renders as a silently blank canvas on iOS.
     const cssW = slots.length * SLOT_W
+    const dpr  = Math.max(1, Math.min(window.devicePixelRatio || 1, 8192 / cssW))
     const cssH = BAND_H + SLOT_H
     canvas.width  = Math.round(cssW * dpr)
     canvas.height = Math.round(cssH * dpr)
@@ -259,41 +262,56 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     let holdUntil = 0
     let lastTs = null
     let rafId
+    // Position lives in a float, NOT in el.scrollLeft: iOS Safari rounds
+    // scrollLeft reads to whole pixels, so read-add-write of the sub-pixel
+    // forward step (34px/s ≈ 0.57px/frame) rounded back to the same value
+    // every frame — the ribbon sat frozen on iPhones while desktop browsers
+    // (fractional scrollLeft) drifted fine. null = resync from the DOM on the
+    // next frame (after a user drag or tab resume).
+    let pos = null
 
     function frame(ts) {
       rafId = requestAnimationFrame(frame)
       if (lastTs == null) lastTs = ts
-      const dt = (ts - lastTs) / 1000
+      // Clamp dt: after a backgrounded tab resumes, ts jumps minutes ahead in
+      // one frame — unclamped that teleports the ribbon to the far end.
+      const dt = Math.min(0.1, (ts - lastTs) / 1000)
       lastTs = ts
 
-      if (Date.now() < pausedUntilRef.current) return   // user is interacting — hands off
+      if (Date.now() < pausedUntilRef.current) { pos = null; return }   // user is interacting — hands off
       const max = el.scrollWidth - el.clientWidth
       if (max <= 4) return                               // fits on screen, nothing to do
+      if (pos == null) pos = el.scrollLeft               // resync after pause/resume
 
       if (phase === 'holdEnd' || phase === 'holdStart') {
         if (Date.now() >= holdUntil) phase = phase === 'holdEnd' ? 'rewind' : 'forward'
         return
       }
       if (phase === 'forward') {
-        el.scrollLeft = Math.min(max, el.scrollLeft + FORWARD_PX_S * dt)
-        if (el.scrollLeft >= max - 1) { phase = 'holdEnd'; holdUntil = Date.now() + HOLD_END_MS }
+        pos = Math.min(max, pos + FORWARD_PX_S * dt)
+        el.scrollLeft = pos
+        if (pos >= max - 1) { phase = 'holdEnd'; holdUntil = Date.now() + HOLD_END_MS }
       } else {   // 'rewind'
-        el.scrollLeft = Math.max(0, el.scrollLeft - REWIND_PX_S * dt)
-        if (el.scrollLeft <= 1) { phase = 'holdStart'; holdUntil = Date.now() + HOLD_START_MS }
+        pos = Math.max(0, pos - REWIND_PX_S * dt)
+        el.scrollLeft = pos
+        if (pos <= 1) { phase = 'holdStart'; holdUntil = Date.now() + HOLD_START_MS }
       }
     }
     rafId = requestAnimationFrame(frame)
 
     const pause = () => { pausedUntilRef.current = Date.now() + RESUME_AFTER_MS }
+    const onVis = () => { lastTs = null; pos = null }   // fresh timing after tab resume
     el.addEventListener('pointerdown', pause, { passive: true })
     el.addEventListener('wheel', pause, { passive: true })
     el.addEventListener('touchstart', pause, { passive: true })
+    document.addEventListener('visibilitychange', onVis)
 
     return () => {
       cancelAnimationFrame(rafId)
       el.removeEventListener('pointerdown', pause)
       el.removeEventListener('wheel', pause)
       el.removeEventListener('touchstart', pause)
+      document.removeEventListener('visibilitychange', onVis)
     }
   }, [forecast])
 

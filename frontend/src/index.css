@@ -56,6 +56,21 @@ html.light {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* iOS Safari: 100% tracks the shifting toolbar poorly; the dynamic viewport
+     unit sizes the app shell exactly, so the map bottom is never hidden behind
+     the collapsed toolbar. Browsers without dvh keep the 100% above. */
+  @supports (height: 100dvh) {
+    html, body, #root {
+      height: 100dvh;
+    }
+  }
+
+  /* Kill the whole-page rubber-band pull on iOS — all scrolling in the app
+     happens inside inner containers, never on the body itself. */
+  body {
+    overscroll-behavior-y: none;
+  }
 }
 
 @layer utilities {
@@ -73,6 +88,18 @@ html.light {
 
   .pb-safe {
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0.5rem));
+  }
+
+  /* Bottom sheets (guide/privacy): 92vh overshoots on iOS when the toolbar is
+     expanded — the sheet's lower edge (and its close padding) sat behind the
+     toolbar. dvh follows the *visible* viewport. */
+  .max-h-sheet {
+    max-height: 92vh;
+  }
+  @supports (height: 100dvh) {
+    .max-h-sheet {
+      max-height: 92dvh;
+    }
   }
 }
 

@@ -2,7 +2,7 @@ export default function Header({
   accuracy, lastUpdated, onRefresh, loading,
   theme, onThemeToggle,
   lang, onLangToggle,
-  onInfo,
+  onInfo, onLogo,
   notifyState, onNotifyToggle,
   installable, onInstall,
   iosHint, onDismissIosHint,
@@ -19,9 +19,13 @@ export default function Header({
   return (
     <header className="shrink-0 border-b border-border">
       <div className="flex items-center justify-between px-4 pt-safe pb-4">
-        <span className="font-display font-bold text-sm tracking-[0.2em] uppercase text-primary">
+        <button
+          onClick={onLogo}
+          className="font-display font-bold text-sm tracking-[0.2em] uppercase text-primary hover:opacity-70 transition-opacity"
+          aria-label="Gemma Raus — start"
+        >
           GEMMA RAUS
-        </span>
+        </button>
 
         <div className="flex items-center gap-1.5">
           {acc30 !== null && acc30 !== undefined && (

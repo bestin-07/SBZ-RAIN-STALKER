@@ -1,5 +1,19 @@
 import { ringDirection, RV_SOLID_COVERAGE } from './gaps'
 
+// iOS Safari < 16 has no AbortSignal.timeout — every fetch in this module uses
+// it, so without this shim the whole data layer throws TypeError (blank app,
+// permanent "checking") on older iPhones.
+if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout !== 'function') {
+  AbortSignal.timeout = (ms) => {
+    const ctrl = new AbortController()
+    setTimeout(() => {
+      try { ctrl.abort(new DOMException('signal timed out', 'TimeoutError')) }
+      catch { ctrl.abort() }   // very old engines: abort() takes no reason
+    }, ms)
+    return ctrl.signal
+  }
+}
+
 const OPEN_METEO     = 'https://api.open-meteo.com/v1/forecast'
 const GEOSPHERE_TAWES = 'https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min'
 // GeoSphere nowcast: radar-extrapolation forecast at 1 km / 15-min steps,

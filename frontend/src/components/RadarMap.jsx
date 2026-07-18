@@ -451,7 +451,9 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   useEffect(() => () => clearTimeout(spinTimer.current), [])
 
   return (
-    <div className="relative flex-1 min-h-0">
+    /* min-h keeps the map usable when the banner stack grows tall — the column
+       above scrolls instead of crushing the map (was min-h-0). */
+    <div className="relative flex-1 min-h-[320px]">
       <div ref={containerRef} className="absolute inset-0" style={{ zIndex: 0 }} />
       {radarFrame && (
         <div className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5

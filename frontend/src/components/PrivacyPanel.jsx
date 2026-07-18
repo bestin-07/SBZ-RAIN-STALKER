@@ -9,8 +9,8 @@ export default function PrivacyPanel({ open, onClose, t }) {
         onClick={onClose}
       />
       <div
-        className="fixed bottom-0 left-0 right-0 z-[60] bg-surface border-t border-border overflow-y-auto"
-        style={{ maxHeight: '92vh', paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
+        className="fixed bottom-0 left-0 right-0 z-[60] bg-surface border-t border-border overflow-y-auto overscroll-contain max-h-sheet"
+        style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
       >
         <div className="px-6 pt-6 pb-2">
 

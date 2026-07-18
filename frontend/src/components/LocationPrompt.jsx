@@ -15,9 +15,13 @@ const ERR_KEY = { denied: 'loc_denied', timeout: 'loc_timeout',
 export default function LocationPrompt({ onRequest, onUseDefault, error, loading, onPrivacy, t }) {
   const helpKey = `loc_help_${detectBrowser()}`
   return (
-    <div className="min-h-screen bg-bg flex flex-col items-start justify-center px-6 pb-safe md:items-center">
+    /* Scrollable, not min-h-screen: this renders inside the fixed app shell
+       (h-full + overflow-hidden), where min-h-screen + justify-center clipped
+       the top/bottom on small iPhones once the location-help box appeared.
+       my-auto centers when there's room and degrades to a normal scroll. */
+    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-bg flex flex-col items-start px-6 pb-safe md:items-center">
       {/* Bounded column: left-aligned editorial look on mobile, centered on desktop */}
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md my-auto py-10">
         <div className="mb-12">
           <div className="font-display font-bold text-3xl text-primary tracking-[0.15em] uppercase mb-1">
             GEMMA RAUS

@@ -861,6 +861,12 @@ export default function App() {
     theme, onThemeToggle: () => setTheme(prev => prev === 'dark' ? 'light' : 'dark'),
     lang,  onLangToggle:  () => setLang(prev  => prev === 'de'   ? 'en'   : 'de'),
     onInfo: () => setInfoOpen(true),
+    // Logo tap → back to the landing view (LocationPrompt). View-only: the
+    // stored last_location stays, so a reload returns straight to the app.
+    onLogo: () => {
+      setLocation(null)
+      setLocationError(null)
+    },
     t,
     // below only meaningful once we have location data
     accuracy:     location ? accuracy     : null,
@@ -916,7 +922,11 @@ export default function App() {
           t={t}
         />
       ) : (
-        <>
+        /* Scrollable middle column: on busy days the warning banners stack up
+           (UV + wind + thunder + gap banner…) inside a fixed-height shell —
+           without a scroll path the map got crushed and the page felt frozen
+           (iOS report: "the website becomes unscrollable"). */
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col">
           {isOutsideSalzburg(location) && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
@@ -1010,7 +1020,7 @@ export default function App() {
           )}
           <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
           <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
-        </>
+        </div>
       )}
 
       <InfoPanel open={infoOpen} onClose={closeInfo} onPrivacy={() => openPrivacy('info')} t={t} />
