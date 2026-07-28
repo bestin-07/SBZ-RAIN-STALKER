@@ -723,6 +723,25 @@ def check_accuracy_health(now_ts: int):
                   f" → threshold {old_th}→{new_th}")
 
 
+def save_last_good_ambient(points: list):
+    """Persist the last successful ambient snapshot so a restart that lands mid-outage
+    (Open-Meteo down right as Railway cycles the container) still has a real snapshot
+    to serve instead of falling into the null-weather skeleton (see run_cycle)."""
+    with get_db() as (_, cur):
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES ('last_good_ambient', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (json.dumps(points),),
+        )
+
+
+def load_last_good_ambient():
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = 'last_good_ambient'")
+        row = cur.fetchone()
+    return json.loads(row[0]) if row else None
+
+
 async def fetch_ambient(client: httpx.AsyncClient):
     """One batched Open-Meteo call for all grid POINTS → the coarse weather fields
     the app shows (temp/wind/code/cape/uv) + hourly precip probability. Returns a
@@ -741,6 +760,7 @@ async def fetch_ambient(client: httpx.AsyncClient):
         timeout=15,
     )
     if r.status_code != 200:
+        print(f"[ambient] Open-Meteo {r.status_code}: {r.text[:200]}")
         return None
     arr = r.json()
     if not isinstance(arr, list):
@@ -1133,6 +1153,10 @@ async def run_cycle():
             amb = None
         if amb:
             _ambient["points"] = amb
+            try:
+                save_last_good_ambient(amb)
+            except Exception as e:
+                print(f"[ambient] save_last_good failed: {e}")
         elif not _ambient.get("points"):
             # Open-Meteo failed (e.g. daily limit) AND we have no prior snapshot to keep.
             # GeoSphere may still be fine, so seed a skeleton from POINTS with null weather
@@ -1305,6 +1329,13 @@ async def scheduler():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    try:
+        restored = load_last_good_ambient()
+        if restored:
+            _ambient["points"] = restored
+            print(f"[ambient] restored last-good snapshot from DB ({len(restored)} points)")
+    except Exception as e:
+        print(f"[ambient] restore failed: {e}")
     try:
         init_vapid()
     except Exception as e:

@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.10.1] — 2026-07-28 — Gemma Raus just got better: quieter outages, faster fixes
+
+**Under the hood**
+- Found and fixed a blind spot from today's earlier deploy: when the container
+  restarts right as Open-Meteo is having a bad moment, the backend used to fail
+  silently — no log line at all — and show a blank temperature/wind/12h-forecast
+  until Open-Meteo recovered on its own. It never touched the GO/WAIT/STUCK
+  verdict (that runs off the radar, not Open-Meteo), but the extended forecast
+  and comfort notes went dark with zero trace of why.
+- Failures now log the actual status code and response, so the next one is
+  diagnosable in seconds instead of minutes of guessing.
+- The last good snapshot is now saved to the database and restored on startup,
+  so a restart that lands mid-outage no longer wipes the fallback — it keeps
+  serving the last real reading instead of going blank.
+
 ## [2.10.0] — 2026-07-28 — Gemma Raus just got better: a little emoji for the mood 🏃
 
 **What's new for you**
