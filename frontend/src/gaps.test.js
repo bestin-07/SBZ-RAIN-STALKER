@@ -379,6 +379,66 @@ describe('getStatus — comfort notes vs rain in sight (v2.6)', () => {
   })
 })
 
+describe('getStatus — moto glance (v2.11): "dry enough for a 30-min ride NOW"', () => {
+  it('bone dry, nothing on any radar signal → moto true', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, noTrend)
+    expect(s.moto).toBe(true)
+  })
+
+  it('dry now but rain due in 20 min (< 30) → moto false, even though it is GO', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { nextRainAt: NOON + 20 * 60 })
+    expect(s.type).toBe('go')
+    expect(s.moto).toBe(false)
+  })
+
+  it('dry now, rain due in 45 min (≥ 30) → moto true — the narrower 30-min promise,\n' +
+     '   independent of the 90-min "go enjoy" comfort-note suppression', () => {
+    const s = getStatus(0, [], { temp: 25, wind: 5, code: 0 }, makeT(), NOON, { nextRainAt: NOON + 45 * 60 })
+    expect(s.type).toBe('go')
+    // The 90-min rainSoon gate still (correctly) suppresses the "perfect, go enjoy" note...
+    expect(s.weather).toBeNull()
+    // ...but 45 min is still a genuinely safe 30-min ride window.
+    expect(s.moto).toBe(true)
+  })
+
+  it('a started gap that closes again in 10 min (< 30 min remaining) → moto false', () => {
+    const gap = { startsAt: NOON - 5 * 60, startsInMinutes: -5, durationMinutes: 30, opensEnded: false }
+    const s = getStatus(0.3, [gap], null, makeT(), NOON, noTrend)
+    expect(s.type).toBe('go')  // gapNow promotes this to GO
+    expect(s.moto).toBe(false) // but only 25 min of the 30-min gap remain
+  })
+
+  it('a started gap with 40 min still remaining → moto true', () => {
+    const gap = { startsAt: NOON - 5 * 60, startsInMinutes: -5, durationMinutes: 45, opensEnded: false }
+    const s = getStatus(0.3, [gap], null, makeT(), NOON, noTrend)
+    expect(s.type).toBe('go')
+    expect(s.moto).toBe(true)
+  })
+
+  it('unquantified nearby radar echo (no ETA) → moto false, conservative by design', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { rvNearbyDir: 'ne' })
+    expect(s.type).toBe('go')
+    expect(s.moto).toBe(false)
+  })
+
+  it('patchy trace echo happening right now → moto false', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { dryEndsOpen: true, traceEcho: true })
+    expect(s.moto).toBe(false)
+  })
+
+  it('actively drizzling (LIGHT state) → moto false regardless of what follows', () => {
+    const s = getStatus(0.3, [], null, makeT(), NOON, noTrend)
+    expect(s.type).toBe('light')
+    expect(s.moto).toBe(false)
+  })
+
+  it('STUCK (raining, no break in 3h) → moto false', () => {
+    const s = getStatus(1.8, [], null, makeT(), NOON, noTrend)
+    expect(s.type).toBe('stuck')
+    expect(s.moto).toBe(false)
+  })
+})
+
 describe('getStatus — night & evening voice', () => {
   it('clear night (03:00) → cosy night sub', () => {
     const s = getStatus(0, [], null, makeT(), NIGHT, { dryEndsOpen: true })

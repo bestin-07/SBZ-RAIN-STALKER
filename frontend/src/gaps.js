@@ -378,6 +378,31 @@ const FAR_RAIN_MIN = 90   // rain ≥ this far out → speak in hours ("rain in 
                           // the ribbon showing a 3h-out band while the sub says nothing
                           // — or a timeless "possible later" — undersold the window)
 
+const MOTO_SAFE_MIN = 30 // a rider only needs the next half hour, not the whole afternoon — a
+                          // narrower, separate promise from RAIN_SOON_NOTE above (see motoSafe)
+
+// Motorbike glance (v2.11): "is it dry enough for a ~30-min ride RIGHT NOW" — deliberately
+// stricter and narrower than rainSoon/RAIN_SOON_NOTE, which governs the "go enjoy your
+// afternoon" comfort notes and rightly stays quiet on any 90-min-out signal. A rider only
+// cares about the next half hour, so this checks its own window instead of reusing that flag.
+// Any signal without a quantified ETA (rvNearbyDir, traceEcho — real radar echo close by or
+// already falling, but no proven arrival time) counts as "inside the window": never claim a
+// dry ride when a source can't rule out rain in the next 30 min (leads forgiven, lags never).
+function minutesToNextRain(trend, firstGap, gapNow, nowSec) {
+  const mins = []
+  if (gapNow && firstGap) {
+    mins.push((firstGap.startsAt + firstGap.durationMinutes * 60 - nowSec) / 60)
+  }
+  if (trend.nextRainAt != null) mins.push((trend.nextRainAt - nowSec) / 60)
+  if (trend.modelRainAt != null) mins.push((trend.modelRainAt - nowSec) / 60)
+  if (trend.downpourSoonMin != null) mins.push(trend.downpourSoonMin)
+  if (trend.rvApproachMin != null) mins.push(trend.rvApproachMin)
+  if (trend.traceAheadMin != null) mins.push(trend.traceAheadMin)
+  if (trend.traceEcho) mins.push(0)
+  if (trend.rvNearbyDir != null) mins.push(0)
+  return mins.length ? Math.min(...mins) : Infinity
+}
+
 // 90 → "1½", 120 → "2", 150 → "2½", 170 → "3" — rounded to the nearest half hour.
 function hoursLabel(min) {
   const h = Math.round(min / 30) / 2
@@ -480,7 +505,7 @@ export function getStatus(
   nowSec = Math.floor(Date.now() / 1000), trend = {},
 ) {
   if (currentPrecip === null) {
-    return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null }
+    return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null, moto: false }
   }
 
   // Browser-local clock: 00:00–04:59 (12am–5am) → cozy night sub-lines (headline
@@ -501,6 +526,11 @@ export function getStatus(
   // pixel, the nowcast is blind to this cell; suppress the override so we
   // don't flash GO while radar confirms rain overhead.
   const gapNow = firstGap && firstGap.startsAt <= nowSec && !trend?.rvRainActive
+  // "Go" covers both a started gap and a trace reading below LIGHT_MIN (see the
+  // early-return below) — computed once here so the moto glance matches exactly
+  // what will actually be returned as type 'go'.
+  const goNow = gapNow || currentPrecip < LIGHT_MIN
+  const motoSafe = goNow && minutesToNextRain(trend, firstGap, gapNow, nowSec) >= MOTO_SAFE_MIN
 
   // Weather note needs to know if we're heading out (dry/go) or stuck in the rain,
   // so the "go outside" comfort lines don't contradict a WAIT/STUCK headline; and
@@ -602,14 +632,14 @@ export function getStatus(
         ? t('s_rain_eased')
         : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     }
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // Trace drizzle (< 0.2 mm) → still GO. A 0.1 mm tip must not flip GEMMA RAUS ↔
   // GO ANYWAY; only a genuine ≥0.2 mm drizzle earns the light state.
   if (currentPrecip < LIGHT_MIN) {
     const sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // ---- Light drizzle (0.2–0.5 mm): "you could still go" ----
@@ -632,7 +662,7 @@ export function getStatus(
     } else {
       sub = t('s_light')
     }
-    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, moto: false, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // ---- Raining now: narrate the break ahead ----
@@ -642,7 +672,7 @@ export function getStatus(
     const soon = clearInMin < SOON_MIN
     const headline = soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
     const sub = night ? t('s_night_raining') : breakSub(firstGap, nowSec, t)
-    return { type: 'wait', headline, sub, weather: weatherNote, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'wait', headline, sub, weather: weatherNote, moto: false, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   const isThunder = (weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99
@@ -664,6 +694,7 @@ export function getStatus(
     headline: t('STUCK'),
     sub: stuckSub,
     weather: weatherNote,
+    moto: false,
     notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
   }
 }

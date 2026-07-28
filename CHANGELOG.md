@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.11.0] — 2026-07-28 — Gemma Raus just got better: a glance for bikers 🏍️
+
+**What's new for you**
+- A 🏍️ now shows up under the verdict whenever it's dry enough right now for a
+  roughly 30-minute ride — a quick glance before you head out, separate from
+  the wider "go enjoy your afternoon" weather note.
+- Deliberately stricter than that note: even on a day where rain is expected
+  within the next hour or two (so the "perfect day" note stays quiet), the
+  bike still shows up as long as the *next 30 minutes specifically* are clear.
+  Riders don't need the whole afternoon — just enough time to get there.
+- Conservative on purpose: if any radar signal can't rule out rain in the next
+  30 minutes (a nearby echo without a clear direction, or drizzle already
+  showing on radar), the bike stays hidden rather than risk sending you out
+  right before it starts.
+
 ## [2.10.1] — 2026-07-28 — Gemma Raus just got better: quieter outages, faster fixes
 
 **Under the hood**

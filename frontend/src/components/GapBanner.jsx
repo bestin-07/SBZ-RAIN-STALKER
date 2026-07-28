@@ -29,6 +29,15 @@ export default function GapBanner({ status }) {
           {status.weather}
         </div>
       )}
+      {status.moto && (
+        <div
+          className="text-xl mt-1 leading-none"
+          title="Dry for the next 30 min — good for a ride"
+          aria-label="Dry enough for a motorbike ride in the next 30 minutes"
+        >
+          🏍️
+        </div>
+      )}
     </div>
   )
 }
