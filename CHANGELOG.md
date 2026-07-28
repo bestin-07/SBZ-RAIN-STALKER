@@ -12,6 +12,16 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.12.0] — 2026-07-28 — Gemma Raus just got better: refresh, properly
+
+**What's new for you**
+- The refresh button used to only update your own status — the little dots
+  for the towns around you kept whatever they last read until their own timer
+  caught up. One tap now refreshes everything at once.
+- New: pull down from the top of the screen (right from above the rain
+  ribbon) and let go to refresh, the same gesture you're used to everywhere
+  else. The button is still there too — this is just another way in.
+
 ## [2.11.1] — 2026-07-28 — Gemma Raus just got better: one glance, all the icons
 
 **What's new for you**

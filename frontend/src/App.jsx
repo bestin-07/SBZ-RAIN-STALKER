@@ -15,6 +15,12 @@ import InstallPrompt from './components/InstallPrompt'
 import UpdateNote from './components/UpdateNote'
 
 const REFRESH_MS = 5 * 60 * 1000
+// Pull-to-refresh (touch): distance (px) the content must be dragged down from
+// the very top before release triggers a refresh, and the resistance-capped max
+// drag so a long pull can't detach the content off-screen.
+const PULL_THRESHOLD = 64
+const PULL_MAX = 90
+const PULL_RESISTANCE = 0.5
 // Narrative continuity: a small story kept in localStorage so a refresh/re-open
 // a few minutes later stays coherent instead of contradicting itself.
 const STORY_RADIUS_M   = 1000        // continuity only trusted within 1 km of the stored spot
@@ -112,6 +118,14 @@ export default function App() {
   const [formingTs, setFormingTs] = useState(null)    // convective-watch Layer 2 (radar-confirmed)
   const [areaWatch, setAreaWatch] = useState(null)    // city-scale wet/dry direction + trend (v2.4)
   const [uvIndex, setUvIndex] = useState(null)
+  // Pull-to-refresh (touch gesture on the scrollable column, see the effect below):
+  // pullDistance drives the visual drag; pullActive disables the snap-back transition
+  // while a finger is actually down; pullRefreshing keeps the indicator spinning until
+  // the triggered refresh (loading) finishes.
+  const [pullDistance, setPullDistance] = useState(0)
+  const [pullActive, setPullActive] = useState(false)
+  const [pullRefreshing, setPullRefreshing] = useState(false)
+  const scrollRef = useRef(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
   useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
@@ -817,6 +831,91 @@ export default function App() {
     return () => clearInterval(id)
   }, [location, refreshAreaStatuses])
 
+  // Manual refresh (header button + pull-to-refresh gesture below) used to only
+  // call loadData — the surrounding town dots kept their stale reading until their
+  // own 6-min timer next fired, so "refresh" didn't actually mean everything.
+  const handleRefresh = useCallback(() => {
+    loadData()
+    refreshAreaStatuses()
+  }, [loadData, refreshAreaStatuses])
+
+  // Pull-to-refresh (touch only): a native (non-passive) touchmove listener on the
+  // scrollable column, so preventDefault actually works — React's own onTouchMove
+  // prop is passive by default and can't stop the native scroll/bounce mid-drag.
+  // Only engages when the column is already scrolled to the very top (scrollTop 0)
+  // and the drag is predominantly downward, so it can never fight normal vertical
+  // scrolling, the RainRibbon's own horizontal drag, or Leaflet map panning.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !location) return
+
+    let startY = 0, startX = 0, tracking = false, pull = 0
+
+    const onTouchStart = (e) => {
+      if (el.scrollTop > 0) { tracking = false; return }
+      if (e.target.closest && e.target.closest('.leaflet-container')) { tracking = false; return }
+      startY = e.touches[0].clientY
+      startX = e.touches[0].clientX
+      tracking = true
+      pull = 0
+    }
+
+    const onTouchMove = (e) => {
+      if (!tracking) return
+      const dy = e.touches[0].clientY - startY
+      const dx = e.touches[0].clientX - startX
+      if (dy <= 0 || Math.abs(dx) > Math.abs(dy)) {
+        // Scrolling back up, or a horizontal drag (ribbon) — not a pull, bail out
+        // and let the browser handle it natively.
+        tracking = false
+        pull = 0
+        setPullActive(false)
+        setPullDistance(0)
+        return
+      }
+      // A genuine downward pull from the top — take over from native scroll/bounce.
+      e.preventDefault()
+      setPullActive(true)
+      pull = Math.min(dy * PULL_RESISTANCE, PULL_MAX)
+      setPullDistance(pull)
+    }
+
+    const onTouchEnd = () => {
+      if (!tracking) return
+      tracking = false
+      setPullActive(false)
+      if (pull >= PULL_THRESHOLD) {
+        setPullRefreshing(true)
+        setPullDistance(PULL_THRESHOLD * 0.6)  // settle at a resting height while it loads
+        handleRefresh()
+      } else {
+        setPullDistance(0)
+      }
+      pull = 0
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [location, handleRefresh])
+
+  // Once the triggered refresh actually finishes, snap the pull indicator away —
+  // tied to `loading` (the same flag the header spinner uses) so pull-to-refresh
+  // and the header button always agree on when a refresh is really done.
+  useEffect(() => {
+    if (pullRefreshing && !loading) {
+      setPullRefreshing(false)
+      setPullDistance(0)
+    }
+  }, [loading, pullRefreshing])
+
   // Back button closes the InfoPanel — unless PrivacyPanel is stacked on top,
   // in which case PrivacyPanel's own popstate handler handles the back press.
   // privacyOpenRef is a ref (not state) so the check is synchronous and never stale.
@@ -871,7 +970,7 @@ export default function App() {
     // below only meaningful once we have location data
     accuracy:     location ? accuracy     : null,
     lastUpdated:  location ? lastUpdated  : null,
-    onRefresh:    location ? loadData     : null,
+    onRefresh:    location ? handleRefresh : null,
     loading:      location ? loading      : false,
     notifyState:  location ? notifyState  : 'unsupported',
     onNotifyToggle: location ? toggleNotifications : null,
@@ -925,8 +1024,37 @@ export default function App() {
         /* Scrollable middle column: on busy days the warning banners stack up
            (UV + wind + thunder + gap banner…) inside a fixed-height shell —
            without a scroll path the map got crushed and the page felt frozen
-           (iOS report: "the website becomes unscrollable"). */
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col">
+           (iOS report: "the website becomes unscrollable"). Wrapped in a relative
+           shell so the pull-to-refresh indicator can sit above it while the
+           column itself is dragged down (see the touch effect above). */
+        <div className="flex-1 min-h-0 relative overflow-hidden">
+          <div
+            className="absolute inset-x-0 top-0 flex justify-center items-center font-mono text-lg text-muted pointer-events-none"
+            style={{
+              height: PULL_MAX,
+              transform: `translateY(${pullDistance - PULL_MAX}px)`,
+              opacity: pullDistance > 4 ? Math.min(pullDistance / PULL_THRESHOLD, 1) : 0,
+            }}
+            aria-hidden="true"
+          >
+            <span
+              className={pullRefreshing ? 'animate-spin' : ''}
+              style={{
+                display: 'inline-block',
+                transform: pullRefreshing ? undefined : `rotate(${Math.min(pullDistance / PULL_THRESHOLD, 1) * 180}deg)`,
+              }}
+            >
+              ↺
+            </span>
+          </div>
+          <div
+            ref={scrollRef}
+            className="h-full overflow-y-auto overscroll-contain flex flex-col"
+            style={{
+              transform: pullDistance ? `translateY(${pullDistance}px)` : undefined,
+              transition: pullActive ? 'none' : 'transform 0.2s ease',
+            }}
+          >
           {isOutsideSalzburg(location) && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
@@ -1020,6 +1148,7 @@ export default function App() {
           )}
           <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
           <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
+          </div>
         </div>
       )}
 
