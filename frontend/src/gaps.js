@@ -341,20 +341,20 @@ function getWeatherNote(weather, t, { night = false, evening = false, raining = 
   // useful whether or not rain is coming.
   if (!rainSoon && temp > 33) {
     if (night) return null  // scorching at midnight needs no action
-    return t('weather_scorching', v)
+    return '🏊🍦 ' + t('weather_scorching', v)
   }
   if (!rainSoon && temp > 29) {
     if (night) return null  // hot night, no "go!" advice
-    return t('weather_hot', v)
+    return '🏊🧺 ' + t('weather_hot', v)
   }
-  if (wind > 30) return t('weather_windy', v)
-  if (temp < 5)  return t('weather_freezing', v)
-  if (temp < 12) return t('weather_cold', v)
+  if (wind > 30) return '💨 ' + t('weather_windy', v)
+  if (temp < 5)  return '🧣 ' + t('weather_freezing', v)
+  if (temp < 12) return '🧥 ' + t('weather_cold', v)
   // "Perfect weather" is an invitation to go out — only when it's genuinely clear
   // (not overcast, code<=2) AND no rain is imminent, otherwise it contradicts the
   // countdown ("made for going out" while "rain in 10 min") or the cloudy banner.
   if (!rainSoon && !night && !evening && temp >= 22 && temp <= 29 && wind < 20 && code <= 2) {
-    return t('weather_perfect', v)
+    return '🚶🏃🏊 ' + t('weather_perfect', v)
   }
   return null
 }

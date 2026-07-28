@@ -12,6 +12,25 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.10.0] — 2026-07-28 — Gemma Raus just got better: a little emoji for the mood 🏃
+
+**What's new for you**
+- The weather note under the verdict now leads with a small emoji cluster that
+  matches what the moment actually invites — not decoration, a quick read:
+  - 🚶🏃🏊 on a genuinely perfect day (clear, calm, comfortable) — go do any of it.
+  - 🏊🧺 when it's hot enough that running isn't a good idea — swim or picnic instead.
+  - 🏊🍦 on scorching days — same idea, turned up.
+  - 🧥 / 🧣 on cold / freezing days — grab a layer.
+  - 💨 on windy days — hold onto your hat.
+- Hazard notes (snow, thunder, storm, fog) are untouched — those already carry
+  urgency in the wording and didn't need decoration.
+
+**Nothing else changed.** No rain logic, no thresholds, no verdicts touched —
+this only dresses up the existing comfort notes that already showed under clear
+conditions.
+
+---
+
 ## [2.9.0] — 2026-07-18 — Gemma Raus just got better: at home on your iPhone 📱
 *A round of iOS love — everything reported from an iPhone in one release, plus a proper front door.*
 

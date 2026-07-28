@@ -299,7 +299,7 @@ describe('getStatus — STUCK (BLEIB DRIN)', () => {
 describe('getStatus — weather notes (never contradict the verdict)', () => {
   it('perfect summer day (25°C, calm, clear, dry) → "made for going out"', () => {
     const s = getStatus(0, [], { temp: 25, wind: 5, code: 0 }, makeT(), NOON, { dryEndsOpen: true })
-    expect(s.weather).toBe('weather_perfect')
+    expect(s.weather).toBe('🚶🏃🏊 weather_perfect')
   })
 
   it('same weather but rain <90 min away → comfort note SUPPRESSED', () => {
@@ -365,17 +365,17 @@ describe('getStatus — comfort notes vs rain in sight (v2.6)', () => {
   it('PREP notes (wind) still show — a jacket helps whether or not drizzle comes', () => {
     const s = getStatus(0, [], { temp: 25, wind: 35, code: 0 }, makeT(), NOON,
       { dryEndsOpen: true, traceAheadMin: 25 })
-    expect(s.weather).toBe('weather_windy')
+    expect(s.weather).toBe('💨 weather_windy')
   })
 
   it('regression: NO signals + all-clear → perfect note still shows', () => {
     const s = getStatus(0, [], perfect, makeT(), NOON, { dryEndsOpen: true })
-    expect(s.weather).toBe('weather_perfect')
+    expect(s.weather).toBe('🚶🏃🏊 weather_perfect')
   })
 
   it('regression: rain far away (nextRainAt in 3h, no radar signals) → note still shows', () => {
     const s = getStatus(0, [], perfect, makeT(), NOON, { nextRainAt: NOON + 180 * 60 })
-    expect(s.weather).toBe('weather_perfect')
+    expect(s.weather).toBe('🚶🏃🏊 weather_perfect')
   })
 })
 
