@@ -12,6 +12,18 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.11.1] — 2026-07-28 — Gemma Raus just got better: one glance, all the icons
+
+**What's new for you**
+- All the context emoji — walk/run/swim, jacket, sunscreen, wind, and now the
+  bike — sit together in one row instead of some being buried inside the
+  sentence and the bike floating separately underneath. One glance tells you
+  everything the moment invites.
+- Still fully context-based: the row only ever shows what actually applies
+  right now, and changes automatically as the weather does. A hazard note
+  (thunder, snow, storm) never gets a "go do this" icon — those stay
+  warnings, not invitations.
+
 ## [2.11.0] — 2026-07-28 — Gemma Raus just got better: a glance for bikers 🏍️
 
 **What's new for you**

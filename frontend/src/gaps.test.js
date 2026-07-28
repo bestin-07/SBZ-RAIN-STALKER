@@ -299,28 +299,33 @@ describe('getStatus — STUCK (BLEIB DRIN)', () => {
 describe('getStatus — weather notes (never contradict the verdict)', () => {
   it('perfect summer day (25°C, calm, clear, dry) → "made for going out"', () => {
     const s = getStatus(0, [], { temp: 25, wind: 5, code: 0 }, makeT(), NOON, { dryEndsOpen: true })
-    expect(s.weather).toBe('🚶🏃🏊 weather_perfect')
+    expect(s.weather).toBe('weather_perfect')
+    expect(s.weatherEmoji).toBe('🚶🏃🏊')
   })
 
   it('same weather but rain <90 min away → comfort note SUPPRESSED', () => {
     const s = getStatus(0, [], { temp: 25, wind: 5, code: 0 }, makeT(), NOON,
       { nextRainAt: NOON + 30 * 60, rainProb: 80 })
     expect(s.weather).toBeNull()
+    expect(s.weatherEmoji).toBeNull()
   })
 
   it('raining → comfort notes suppressed entirely', () => {
     const s = getStatus(1.2, [], { temp: 25, wind: 5, code: 61 }, makeT(), NOON, noTrend)
     expect(s.weather).toBeNull()
+    expect(s.weatherEmoji).toBeNull()
   })
 
-  it('thunder hazard ALWAYS shows, even while raining', () => {
+  it('thunder hazard ALWAYS shows, even while raining — but with no emoji (a warning, not an invitation)', () => {
     const s = getStatus(1.2, [], { temp: 18, wind: 20, code: 95 }, makeT(), NOON, noTrend)
     expect(s.weather).toBe('weather_thunder')
+    expect(s.weatherEmoji).toBeNull()
   })
 
   it('overcast 25°C is NOT "perfect" (needs clear sky, code ≤ 2)', () => {
     const s = getStatus(0, [], { temp: 25, wind: 5, code: 3 }, makeT(), NOON, { dryEndsOpen: true })
     expect(s.weather).not.toBe('weather_perfect')
+    expect(s.weatherEmoji).toBeNull()
   })
 })
 
@@ -365,17 +370,20 @@ describe('getStatus — comfort notes vs rain in sight (v2.6)', () => {
   it('PREP notes (wind) still show — a jacket helps whether or not drizzle comes', () => {
     const s = getStatus(0, [], { temp: 25, wind: 35, code: 0 }, makeT(), NOON,
       { dryEndsOpen: true, traceAheadMin: 25 })
-    expect(s.weather).toBe('💨 weather_windy')
+    expect(s.weather).toBe('weather_windy')
+    expect(s.weatherEmoji).toBe('💨')
   })
 
   it('regression: NO signals + all-clear → perfect note still shows', () => {
     const s = getStatus(0, [], perfect, makeT(), NOON, { dryEndsOpen: true })
-    expect(s.weather).toBe('🚶🏃🏊 weather_perfect')
+    expect(s.weather).toBe('weather_perfect')
+    expect(s.weatherEmoji).toBe('🚶🏃🏊')
   })
 
   it('regression: rain far away (nextRainAt in 3h, no radar signals) → note still shows', () => {
     const s = getStatus(0, [], perfect, makeT(), NOON, { nextRainAt: NOON + 180 * 60 })
-    expect(s.weather).toBe('🚶🏃🏊 weather_perfect')
+    expect(s.weather).toBe('weather_perfect')
+    expect(s.weatherEmoji).toBe('🚶🏃🏊')
   })
 })
 
@@ -397,7 +405,9 @@ describe('getStatus — moto glance (v2.11): "dry enough for a 30-min ride NOW"'
     expect(s.type).toBe('go')
     // The 90-min rainSoon gate still (correctly) suppresses the "perfect, go enjoy" note...
     expect(s.weather).toBeNull()
-    // ...but 45 min is still a genuinely safe 30-min ride window.
+    expect(s.weatherEmoji).toBeNull()
+    // ...but 45 min is still a genuinely safe 30-min ride window — the icon row
+    // would show just 🏍️ alone, with no comfort emoji alongside it.
     expect(s.moto).toBe(true)
   })
 

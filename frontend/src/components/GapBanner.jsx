@@ -24,18 +24,20 @@ export default function GapBanner({ status }) {
       <div className="font-mono text-sm text-muted mt-2 leading-snug">
         {status.sub}
       </div>
+      {(status.weatherEmoji || status.moto) && (
+        <div
+          className="text-xl mt-1 leading-none"
+          title={[status.weather, status.moto && 'Dry for the next 30 min — good for a ride']
+            .filter(Boolean).join(' · ')}
+          aria-label={[status.weather, status.moto && 'Dry enough for a motorbike ride in the next 30 minutes']
+            .filter(Boolean).join(' — ')}
+        >
+          {[status.weatherEmoji, status.moto && '🏍️'].filter(Boolean).join(' ')}
+        </div>
+      )}
       {status.weather && (
         <div className="font-mono text-xs text-muted mt-1 leading-snug">
           {status.weather}
-        </div>
-      )}
-      {status.moto && (
-        <div
-          className="text-xl mt-1 leading-none"
-          title="Dry for the next 30 min — good for a ride"
-          aria-label="Dry enough for a motorbike ride in the next 30 minutes"
-        >
-          🏍️
         </div>
       )}
     </div>

@@ -311,25 +311,40 @@ export function detectGaps(times, precips) {
   return { currentPrecip, gaps, nextRainAt, dryEndsOpen }
 }
 
-function getWeatherNote(weather, t, { night = false, evening = false, raining = false, rainSoon = false } = {}) {
+// Emoji cluster per comfort band, kept separate from the translated text (see
+// weatherNoteKey below) so the app can group ALL context emoji — comfort band +
+// motorbike glance — into one row (GapBanner), instead of embedding emoji inside
+// the sentence. Hazard bands (snow/thunder/storm/fog) deliberately have none —
+// those are warnings, not "here's what to do" invitations.
+const WEATHER_EMOJI = {
+  weather_scorching: '🏊🍦',
+  weather_hot: '🏊🧺',
+  weather_windy: '💨',
+  weather_freezing: '🧣',
+  weather_cold: '🧥',
+  weather_perfect: '🚶🏃🏊',
+}
+
+// Shared band logic for both the translated note (getWeatherNote) and its emoji
+// (getWeatherEmoji) — kept as ONE function so the two can never drift apart into
+// showing an emoji for one band and text for another.
+function weatherNoteKey(weather, { night = false, evening = false, raining = false, rainSoon = false } = {}) {
   if (!weather || weather.temp === null || weather.temp === undefined) return null
   const temp = Math.round(weather.temp)
   const wind = Math.round(weather.wind ?? 0)
   const code = weather.code ?? -1
-  const v = { temp, wind }
 
   // Safety/hazard notes are always shown regardless of time
   if ((code >= 71 && code <= 77) || code === 85 || code === 86) {
     // Snow at night: suppress the "go anyway" encouragement — just skip
-    if (night) return null
-    return t('weather_snow', v)
+    return night ? null : 'weather_snow'
   }
-  if (code >= 95 && code <= 99) return t('weather_thunder', v)
+  if (code >= 95 && code <= 99) return 'weather_thunder'
   // "storm — stay inside" only when we're not saying GO. On a dry, windy day the
   // wind banner already warns; the note falls through to the playful "hold your
   // hat" (weather_windy) so it doesn't contradict the GO headline.
-  if (wind > 50 && raining)     return t('weather_storm', v)
-  if (code === 45 || code === 48) return t('weather_fog', v)
+  if (wind > 50 && raining) return 'weather_storm'
+  if (code === 45 || code === 48) return 'weather_fog'
 
   // Comfort / "go outside" notes make no sense while it's actively raining — they
   // contradicted the status (e.g. "perfect, no excuse to stay in" showing under a
@@ -339,24 +354,28 @@ function getWeatherNote(weather, t, { night = false, evening = false, raining = 
   // Sunny "go out & enjoy" notes contradict an incoming-rain countdown, so skip
   // them when rain is on the way soon. Prep notes (jacket / wind) still apply —
   // useful whether or not rain is coming.
-  if (!rainSoon && temp > 33) {
-    if (night) return null  // scorching at midnight needs no action
-    return '🏊🍦 ' + t('weather_scorching', v)
-  }
-  if (!rainSoon && temp > 29) {
-    if (night) return null  // hot night, no "go!" advice
-    return '🏊🧺 ' + t('weather_hot', v)
-  }
-  if (wind > 30) return '💨 ' + t('weather_windy', v)
-  if (temp < 5)  return '🧣 ' + t('weather_freezing', v)
-  if (temp < 12) return '🧥 ' + t('weather_cold', v)
+  if (!rainSoon && temp > 33) return night ? null : 'weather_scorching'  // scorching at midnight needs no action
+  if (!rainSoon && temp > 29) return night ? null : 'weather_hot'        // hot night, no "go!" advice
+  if (wind > 30) return 'weather_windy'
+  if (temp < 5)  return 'weather_freezing'
+  if (temp < 12) return 'weather_cold'
   // "Perfect weather" is an invitation to go out — only when it's genuinely clear
   // (not overcast, code<=2) AND no rain is imminent, otherwise it contradicts the
   // countdown ("made for going out" while "rain in 10 min") or the cloudy banner.
   if (!rainSoon && !night && !evening && temp >= 22 && temp <= 29 && wind < 20 && code <= 2) {
-    return '🚶🏃🏊 ' + t('weather_perfect', v)
+    return 'weather_perfect'
   }
   return null
+}
+
+function getWeatherNote(weather, t, opts) {
+  const key = weatherNoteKey(weather, opts)
+  if (!key) return null
+  return t(key, { temp: Math.round(weather.temp), wind: Math.round(weather.wind ?? 0) })
+}
+
+function getWeatherEmoji(weather, opts) {
+  return WEATHER_EMOJI[weatherNoteKey(weather, opts)] ?? null
 }
 
 function precipByCode(code) {
@@ -505,7 +524,7 @@ export function getStatus(
   nowSec = Math.floor(Date.now() / 1000), trend = {},
 ) {
   if (currentPrecip === null) {
-    return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null, moto: false }
+    return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null, weatherEmoji: null, moto: false }
   }
 
   // Browser-local clock: 00:00–04:59 (12am–5am) → cozy night sub-lines (headline
@@ -544,7 +563,9 @@ export function getStatus(
                       trend.traceAheadMin != null
   const rainSoon = rainInSight ||
     (trend.nextRainAt != null && (trend.nextRainAt - nowSec) <= RAIN_SOON_NOTE * 60)
-  const weatherNote = getWeatherNote(weather, t, { night, evening, raining: !(isDry || gapNow), rainSoon })
+  const weatherOpts = { night, evening, raining: !(isDry || gapNow), rainSoon }
+  const weatherNote = getWeatherNote(weather, t, weatherOpts)
+  const weatherEmoji = getWeatherEmoji(weather, weatherOpts)
 
   // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {
@@ -632,14 +653,14 @@ export function getStatus(
         ? t('s_rain_eased')
         : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     }
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, weatherEmoji, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // Trace drizzle (< 0.2 mm) → still GO. A 0.1 mm tip must not flip GEMMA RAUS ↔
   // GO ANYWAY; only a genuine ≥0.2 mm drizzle earns the light state.
   if (currentPrecip < LIGHT_MIN) {
     const sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, weatherEmoji, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // ---- Light drizzle (0.2–0.5 mm): "you could still go" ----
@@ -662,7 +683,7 @@ export function getStatus(
     } else {
       sub = t('s_light')
     }
-    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, moto: false, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, weatherEmoji, moto: false, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // ---- Raining now: narrate the break ahead ----
@@ -672,7 +693,7 @@ export function getStatus(
     const soon = clearInMin < SOON_MIN
     const headline = soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
     const sub = night ? t('s_night_raining') : breakSub(firstGap, nowSec, t)
-    return { type: 'wait', headline, sub, weather: weatherNote, moto: false, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'wait', headline, sub, weather: weatherNote, weatherEmoji, moto: false, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   const isThunder = (weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99
@@ -694,6 +715,7 @@ export function getStatus(
     headline: t('STUCK'),
     sub: stuckSub,
     weather: weatherNote,
+    weatherEmoji,
     moto: false,
     notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
   }
