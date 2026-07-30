@@ -12,6 +12,20 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.13.0] — 2026-07-30 — Gemma Raus just got better: official warnings
+
+**What's new for you**
+- When GeoSphere Austria issues an official warning for Salzburg — heat, storm,
+  snow, black ice, thunderstorm, rain or cold — you'll now see it as a banner
+  right in the app, in plain language with the level (yellow/orange/red).
+- Close it once and it stays closed — but if the situation changes (a new
+  warning, a different level, or the next day of a multi-day event like a
+  heatwave), it shows up again so you're never left in the dark.
+- If you've got notifications turned on, you'll also get a single push the
+  moment a new warning becomes active — no repeats until it actually changes.
+
+---
+
 ## [2.12.0] — 2026-07-28 — Gemma Raus just got better: refresh, properly
 
 **What's new for you**

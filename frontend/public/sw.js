@@ -45,7 +45,7 @@ self.addEventListener('push', e => {
   const title = de ? (data.title_de || 'Gemma Raus') : (data.title_en || 'Gemma Raus')
   const body  = de ? (data.body_de  || '') : (data.body_en  || '')
 
-  const tag = data.type === 'rain' ? 'rain-warning' : 'rain-gap'
+  const tag = data.type === 'rain' ? 'rain-warning' : data.type === 'severe' ? 'official-warning' : 'rain-gap'
 
   e.waitUntil(
     self.registration.showNotification(title, {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, AREAS } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, AREAS } from './api'
 import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
@@ -13,6 +13,9 @@ import NotifyModal from './components/NotifyModal'
 import PrivacyPanel from './components/PrivacyPanel'
 import InstallPrompt from './components/InstallPrompt'
 import UpdateNote from './components/UpdateNote'
+
+// Official GeoSphere/ZAMG severe-weather warning hazard types (warntypid 1-7).
+const WARN_EMOJI = { 1: '💨', 2: '🌧', 3: '❄️', 4: '🧊', 5: '⛈', 6: '🥵', 7: '🥶' }
 
 const REFRESH_MS = 5 * 60 * 1000
 // Pull-to-refresh (touch): distance (px) the content must be dragged down from
@@ -118,6 +121,14 @@ export default function App() {
   const [formingTs, setFormingTs] = useState(null)    // convective-watch Layer 2 (radar-confirmed)
   const [areaWatch, setAreaWatch] = useState(null)    // city-scale wet/dry direction + trend (v2.4)
   const [uvIndex, setUvIndex] = useState(null)
+  // Official GeoSphere/ZAMG severe-weather warnings — currently ACTIVE instances only
+  // (start <= now <= end). dismissedWarnings holds `${warnid}:${verlaufid}` ids the
+  // user closed; a NEW instance (different id — new hazard, level, or the next day's
+  // entry of a multi-day event) is never in that set, so the banner reissues on change.
+  const [warnings, setWarnings] = useState([])
+  const [dismissedWarnings, setDismissedWarnings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('dismissed_warnings') || '[]') } catch { return [] }
+  })
   // Pull-to-refresh (touch gesture on the scrollable column, see the effect below):
   // pullDistance drives the visual drag; pullActive disables the snap-back transition
   // while a finger is actually down; pullRefreshing keeps the indicator spinning until
@@ -801,6 +812,21 @@ export default function App() {
         setAreaWatch(aw && typeof aw.ts === 'number' && (Date.now() / 1000 - aw.ts) < 10 * 60 ? aw : null)
         const uv = data?.current?.uv_index ?? null
         setUvIndex(uv !== null && uv >= 6 && localHour >= 7 && localHour < 20 ? uv : null)
+        // Official severe-weather warnings (GeoSphere/ZAMG) — keep only instances
+        // active right now. Prune dismissed ids no longer active: once an instance's
+        // window has passed it can never reappear (ids are per-instance), so this is
+        // safe garbage collection, not a way to re-silence a still-active warning.
+        const nowSecWarn = Date.now() / 1000
+        const activeWarnings = ambientWarnings().filter(w => w.start <= nowSecWarn && nowSecWarn <= w.end)
+        setWarnings(activeWarnings)
+        setDismissedWarnings(prev => {
+          const activeIds = new Set(activeWarnings.map(w => w.id))
+          const next = prev.filter(id => activeIds.has(id))
+          if (next.length !== prev.length) {
+            try { localStorage.setItem('dismissed_warnings', JSON.stringify(next)) } catch {}
+          }
+          return next
+        })
         setLastUpdated(Date.now())
       }
 
@@ -838,6 +864,15 @@ export default function App() {
     loadData()
     refreshAreaStatuses()
   }, [loadData, refreshAreaStatuses])
+
+  const dismissWarning = useCallback((id) => {
+    setDismissedWarnings(prev => {
+      if (prev.includes(id)) return prev
+      const next = [...prev, id]
+      try { localStorage.setItem('dismissed_warnings', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }, [])
 
   // Pull-to-refresh (touch only): a native (non-passive) touchmove listener on the
   // scrollable column, so preventDefault actually works — React's own onTouchMove
@@ -1138,6 +1173,25 @@ export default function App() {
               </span>
             </div>
           )}
+          {warnings.filter(w => !dismissedWarnings.includes(w.id)).map(w => (
+            <div key={w.id} className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
+              <span
+                className="font-mono text-xs flex-1 leading-relaxed"
+                style={{ color: w.level >= 2 ? 'var(--c-alert)' : 'var(--c-warn)' }}
+              >
+                {WARN_EMOJI[w.type] ?? '⚠️'} {t('warn_banner_title', { level: t('warn_level_' + w.level), type: t('warn_type_' + w.type) })}
+                {' — '}
+                {t('warn_banner_body', {
+                  date: new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(w.end * 1000)),
+                })}
+              </span>
+              <button
+                onClick={() => dismissWarning(w.id)}
+                className="font-mono text-xs text-muted hover:text-primary transition-colors shrink-0"
+                aria-label="dismiss"
+              >✕</button>
+            </div>
+          ))}
           <GapBanner status={status} />
           {showCloudyNote && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">

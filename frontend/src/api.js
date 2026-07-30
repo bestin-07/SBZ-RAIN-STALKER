@@ -74,7 +74,7 @@ export const AREAS = [
 // One shared server call for the whole grid; clients pick the nearest point (GPS
 // stays in the browser). Prevents every user hitting Open-Meteo directly (rate
 // limits / shared NAT). Cached ~90s. Returns points[] or null.
-let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null, _ambientAreaWatch = null
+let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null, _ambientAreaWatch = null, _ambientWarnings = []
 async function fetchAmbient() {
   const now = Date.now()
   if (_ambientPoints && now - _ambientPointsTs < 90 * 1000) return _ambientPoints
@@ -88,6 +88,8 @@ async function fetchAmbient() {
     if (typeof j?.forming_ts === 'number') _ambientFormingTs = j.forming_ts
     // City-scale wet/dry direction + trend (v2.4) — {sector, count, trend, ts} or absent.
     _ambientAreaWatch = j?.area_watch ?? null
+    // Official GeoSphere/ZAMG severe-weather warnings — [{id,type,level,start,end}].
+    _ambientWarnings = Array.isArray(j?.warnings) ? j.warnings : []
     if (Array.isArray(j?.points) && j.points.length) { _ambientPoints = j.points; _ambientPointsTs = now; return j.points }
     return _ambientPoints   // empty before first cycle → let caller fall back to direct OM
   } catch { return _ambientPoints }
@@ -98,6 +100,9 @@ export function ambientFormingTs() { return _ambientFormingTs }
 
 // Latest area-watch reading ({sector,count,trend,ts}) seen on /api/ambient, or null.
 export function ambientAreaWatch() { return _ambientAreaWatch }
+
+// Official severe-weather warnings seen on /api/ambient — [{id,type,level,start,end}].
+export function ambientWarnings() { return _ambientWarnings }
 function nearestAmbientPoint(points, lat, lon) {
   let best = null, bd = Infinity
   for (const p of points) {

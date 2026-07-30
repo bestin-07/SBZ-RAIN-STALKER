@@ -535,6 +535,88 @@ async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, 
     return val
 
 
+# ---------------------------------------------------------------------------
+# GeoSphere/ZAMG official severe-weather warnings (Warn API) — a separate,
+# authoritative civil-protection source, distinct from our own CAPE/wind/UV
+# heuristics above. Municipality-aggregated (Salzburg city = one query).
+# ---------------------------------------------------------------------------
+WARN_API = "https://warnungen.zamg.at/wsapp/api"
+
+# warntypid (1-7) and warnstufeid (1-3) → (DE, EN) label pairs, used both by the
+# push payload here and mirrored as i18n keys (warn_type_N / warn_level_N) for
+# the frontend banner — the raw text field from the API is never served/shown,
+# so both languages come from one translation source, not the external API.
+WARN_TYPE_NAMES = {
+    1: ("Sturm", "Storm"), 2: ("Regen", "Rain"), 3: ("Schnee", "Snow"),
+    4: ("Glatteis", "Black ice"), 5: ("Gewitter", "Thunderstorm"),
+    6: ("Hitze", "Heat"), 7: ("Kälte", "Cold"),
+}
+WARN_LEVEL_NAMES = {1: ("Gelb", "Yellow"), 2: ("Orange", "Orange"), 3: ("Rot", "Red")}
+
+
+async def fetch_severe_warnings(client: httpx.AsyncClient, lat: float, lon: float):
+    """Official GeoSphere/ZAMG civil-protection warnings for the municipality
+    containing (lat, lon). Returns only structured fields (id/type/level/start/end)
+    — the API's free-text is deliberately not served; the frontend translates
+    type+level via t(), matching the area_watch dir_* pattern."""
+    r = await client.get(f"{WARN_API}/getWarningsForCoords", params={"lat": lat, "lon": lon}, timeout=10)
+    if r.status_code != 200:
+        print(f"[warnings] {r.status_code}: {r.text[:200]}")
+        return []
+    out = []
+    for w in r.json().get("properties", {}).get("warnings", []):
+        p = w.get("properties", {})
+        raw = p.get("rawinfo") or {}
+        start, end = raw.get("start"), raw.get("end")
+        if start is None or end is None:
+            continue
+        wtype, wlevel = p.get("warntypid"), p.get("warnstufeid")
+        if wtype not in WARN_TYPE_NAMES or wlevel not in WARN_LEVEL_NAMES:
+            continue
+        out.append({
+            "id": f"{p.get('warnid')}:{p.get('verlaufid')}",
+            "type": wtype,
+            "level": wlevel,
+            "start": int(start),
+            "end": int(end),
+        })
+    return out
+
+
+async def _push_severe_warning(warnings: list, now_ts: int):
+    """One-time push per warning INSTANCE (warnid:verlaufid) — reissued only when
+    the active id changes (new hazard, new level, or the next day's instance of a
+    multi-day event). Bypasses the daytime/story-slot gates used by check_and_push:
+    an official civil-protection warning isn't our own heuristic, and multi-day
+    hazards (e.g. heat) legitimately span the whole day."""
+    active = [w for w in warnings if w["start"] <= now_ts <= w["end"]]
+    if not active:
+        return
+    best = max(active, key=lambda w: (w["level"], -w["start"]))
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = 'last_warning_push_id'")
+        row = cur.fetchone()
+    if row and row[0] == best["id"]:
+        return  # same instance already pushed — no reissue until it changes
+    type_de, type_en = WARN_TYPE_NAMES[best["type"]]
+    level_de, level_en = WARN_LEVEL_NAMES[best["level"]]
+    payload = {
+        "type": "severe",
+        "title_de": f"{level_de}e Warnung: {type_de}",
+        "body_de":  "Offizielle Warnung von GeoSphere Austria für Salzburg — Details in der App",
+        "title_en": f"{level_en} warning: {type_en}",
+        "body_en":  "Official warning from GeoSphere Austria for Salzburg — see the app for details",
+    }
+    await push_to_all(payload)
+    with get_db() as (_, cur):
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES ('last_warning_push_id', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (best["id"],),
+        )
+    print(f"[warnings] pushed {best['id']} (type {best['type']}, level {best['level']})")
+
+
 async def fetch_timeline(client: httpx.AsyncClient, point: dict):
     times, precips, _ = await _fetch_timeline_sourced(client, point)
     return times, precips
@@ -1216,6 +1298,16 @@ async def run_cycle():
             print(f"[ground] {e}")
             city_ground = None
 
+        # Official GeoSphere/ZAMG severe-weather warnings — municipality-level, one
+        # query for Salzburg city centre covers the whole city (same precedent as
+        # city_ground above).
+        try:
+            severe_warnings = await fetch_severe_warnings(client, 47.8009, 13.0448)
+            _ambient["warnings"] = severe_warnings
+        except Exception as e:
+            print(f"[warnings] {e}")
+            severe_warnings = []
+
         for pt in _ambient.get("points", []):
             pt["ground"] = city_ground   # shared 2-gauge reading (None if TAWES unavailable)
             nc = nowcasts.get(pt["name"]) if nowcasts else None
@@ -1311,6 +1403,11 @@ async def run_cycle():
             weekly_calibrate()
 
         await check_and_push(client, now_ts)
+
+        try:
+            await _push_severe_warning(severe_warnings, now_ts)
+        except Exception as e:
+            print(f"[warnings] push failed: {e}")
 
 
 async def scheduler():
