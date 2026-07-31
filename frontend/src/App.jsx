@@ -182,6 +182,12 @@ export default function App() {
   // Radar-confirmed initiation stays visible for 30 min after the backend stamps it
   // (tickNow-driven, so it expires live without a refresh).
   const formingActive   = formingTs != null && (tickNow - formingTs) < 30 * 60 && (tickNow - formingTs) >= 0
+  // RED-level official warning overrides the headline itself ("bleib schon drin" —
+  // an emergency civil-protection warning outranks a dry rain reading). Undismissable
+  // by design (unlike the banner list above) — safety over convenience; disappears on
+  // its own once the warning instance is no longer active. Rain-verdict logic in
+  // gaps.js is completely untouched; this only swaps what's rendered in GapBanner.
+  const redWarning = warnings.find(w => w.level === 3)
 
   // Tick every minute so the "rain in X" / "dry in X" countdown moves live
   // between the 5-minute data refreshes (re-synced on each refresh).
@@ -1173,7 +1179,14 @@ export default function App() {
               </span>
             </div>
           )}
-          {warnings.filter(w => !dismissedWarnings.includes(w.id)).map(w => (
+          {warnings
+            .filter(w => !dismissedWarnings.includes(w.id))
+            // Most serious first (level desc), soonest-ending as tiebreak; cap at
+            // 2 — a wall of 4+ simultaneous banners was the reported problem, not
+            // useful signal (the app already knows to pick the top ones for push).
+            .sort((a, b) => b.level - a.level || a.end - b.end)
+            .slice(0, 2)
+            .map(w => (
             <div key={w.id} className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
               <span
                 className="font-mono text-xs flex-1 leading-relaxed"
@@ -1192,7 +1205,16 @@ export default function App() {
               >✕</button>
             </div>
           ))}
-          <GapBanner status={status} />
+          <GapBanner status={redWarning ? {
+            ...status,
+            type: 'danger',
+            headline: t('STUCK'),
+            sub: t('warn_danger_sub', {
+              type: t('warn_type_' + redWarning.type),
+              date: new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(redWarning.end * 1000)),
+            }),
+            weather: null, weatherEmoji: null, moto: false,
+          } : status} />
           {showCloudyNote && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs leading-relaxed text-muted">

@@ -12,6 +12,17 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.14.0] — 2026-08-01 — Gemma Raus just got better: warnings that know when to shout
+
+**What's new for you**
+- If GeoSphere Austria issues a RED warning — the serious kind — Gemma Raus now
+  says so front and center: the headline itself switches to "BLEIB DRIN" until
+  it's over, instead of quietly showing a calm "dry" reading underneath.
+- Multiple warnings at once no longer pile up into a wall of banners — you'll
+  see the top 2 most serious ones, not four stacked on top of each other.
+- Thunderstorm warnings were showing twice (once from GeoSphere, once from our
+  own storm radar) — dropped the duplicate, kept the one with more detail.
+
 ## [2.13.0] — 2026-07-30 — Gemma Raus just got better: official warnings
 
 **What's new for you**

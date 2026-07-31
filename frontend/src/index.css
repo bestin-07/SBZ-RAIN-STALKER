@@ -19,6 +19,7 @@
   --c-uv:      #F97316;
   --c-warn:    #FB923C;
   --c-alert:   #FBBF24;
+  --c-danger:  #EF4444;
 }
 
 html.light {
@@ -39,6 +40,7 @@ html.light {
   --c-uv:      #9A3D00;
   --c-warn:    #A24E00;
   --c-alert:   #8A5A00;
+  --c-danger:  #991B1B;
 }
 
 @layer base {

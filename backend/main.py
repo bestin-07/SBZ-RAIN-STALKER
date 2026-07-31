@@ -573,6 +573,11 @@ async def fetch_severe_warnings(client: httpx.AsyncClient, lat: float, lon: floa
         wtype, wlevel = p.get("warntypid"), p.get("warnstufeid")
         if wtype not in WARN_TYPE_NAMES or wlevel not in WARN_LEVEL_NAMES:
             continue
+        if wtype == 5:
+            # Gewitter/Thunderstorm — already covered by our own CAPE-based storm
+            # banner (App.jsx stormCape/regionalThunder); showing both here would
+            # be a redundant duplicate warning for the same hazard.
+            continue
         out.append({
             "id": f"{p.get('warnid')}:{p.get('verlaufid')}",
             "type": wtype,

@@ -3,6 +3,7 @@ const COLORS = {
   light:   '#6CD1EB',
   wait:    '#1BAEE2',
   stuck:   '#0077AA',
+  danger:  '#EF4444',
   loading: '#6B7280',
 }
 
