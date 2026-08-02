@@ -103,6 +103,20 @@ export function ambientAreaWatch() { return _ambientAreaWatch }
 
 // Official severe-weather warnings seen on /api/ambient — [{id,type,level,start,end}].
 export function ambientWarnings() { return _ambientWarnings }
+
+// Highest CAPE across all sampled grid points (or null if no snapshot yet).
+// Storm risk is a city-scale signal (cells fire and move within the hour), so the
+// storm banner uses the grid max rather than whichever single point GPS nearest-
+// neighbor happens to land on — that pick can flip between reloads on GPS jitter
+// even though nothing about the actual instability changed. Mirrors the backend's
+// own _detect_forming(), which already uses max_cape across all points for the
+// same reason. Grid max is always >= the local point's own reading, so this only
+// ever makes the banner more (never less) willing to warn — leads forgiven, lags never.
+export function ambientMaxCape() {
+  if (!_ambientPoints || !_ambientPoints.length) return null
+  const capes = _ambientPoints.map(p => p.cape).filter(v => typeof v === 'number')
+  return capes.length ? Math.max(...capes) : null
+}
 function nearestAmbientPoint(points, lat, lon) {
   let best = null, bd = Infinity
   for (const p of points) {

@@ -12,6 +12,11 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.15.0] — 2026-08-03 — Gemma Raus just got better: the storm banner stopped flickering
+
+- Fixed the ⚡ severe storm potential banner sometimes appearing, sometimes not, across refreshes with nothing actually changing outside — it was reading instability from whichever single grid point happened to be nearest to your GPS fix, and that pick could shift between reloads. Now it reads the highest instability across the whole city grid instead, so it no longer depends on exactly which point you land on.
+- Same fix carries over to the "unsettled air" wording, which was reading from the same value.
+
 ## [2.14.0] — 2026-08-01 — Gemma Raus just got better: warnings that know when to shout
 
 **What's new for you**

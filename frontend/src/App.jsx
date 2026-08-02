@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, AREAS } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, AREAS } from './api'
 import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
@@ -799,7 +799,11 @@ export default function App() {
         // extreme convective instability. Gap timings become unreliable
         // as cells can fire and intensify within 15-20 min.
         const localHour = new Date().getHours()
-        const cape = data?.current?.cape ?? null
+        // Grid max, not the single GPS-nearest point: instability is a city-scale
+        // signal, and nearest-point selection can flip between reloads on GPS
+        // jitter alone (no hysteresis) even though nothing atmospheric changed.
+        // Falls back to the local point when no ambient snapshot is cached yet.
+        const cape = ambientMaxCape() ?? (data?.current?.cape ?? null)
         const severeStorm = cape !== null && cape >= 1500 && localHour >= 12 && localHour < 21
         setStormCape(severeStorm ? cape : null)
         // Convective watch (v1.3.0) — banners only, the verdict is untouched.
