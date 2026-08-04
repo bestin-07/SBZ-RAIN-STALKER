@@ -188,6 +188,16 @@ export default function App() {
   // its own once the warning instance is no longer active. Rain-verdict logic in
   // gaps.js is completely untouched; this only swaps what's rendered in GapBanner.
   const redWarning = warnings.find(w => w.level === 3)
+  // Dual-corroborated self-detected storm: our OWN two strongest signals agreeing
+  // at once — extreme instability (stormCape, CAPE≥1500) AND radar-confirmed
+  // initiation (formingActive) — outranks a dry precip reading the same way an
+  // official RED warning does. Either alone stays banner-only (CAPE floods on
+  // ordinary hot afternoons; forming alone can be a light shower) — it's the
+  // combination that's rare and reliable. Live incident (2026-08-02, ~20:30):
+  // CAPE 1600-1860 + forming fired within a minute of real thunder/wind outside,
+  // yet the headline stayed GEMMA RAUS because both signals were banner-only and
+  // the ribbon's storm was still >30 min out (past DOWNPOUR_WINDOW_MIN).
+  const stormImminent = stormCape != null && formingActive
 
   // Tick every minute so the "rain in X" / "dry in X" countdown moves live
   // between the 5-minute data refreshes (re-synced on each refresh).
@@ -1217,6 +1227,12 @@ export default function App() {
               type: t('warn_type_' + redWarning.type),
               date: new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(redWarning.end * 1000)),
             }),
+            weather: null, weatherEmoji: null, moto: false,
+          } : stormImminent ? {
+            ...status,
+            type: 'danger',
+            headline: t('STUCK'),
+            sub: t('storm_danger_sub'),
             weather: null, weatherEmoji: null, moto: false,
           } : status} />
           {showCloudyNote && (

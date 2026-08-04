@@ -12,6 +12,10 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.16.0] — 2026-08-04 — Gemma Raus just got better: when we're sure, we say so
+
+- If our own data is screaming "storm" from two independent angles at once — extreme instability AND radar-confirmed initiation — the headline now says BLEIB DRIN instead of staying quietly calm underneath the warnings. Before, that combination only showed up in banners while the main headline could still read "passt schon." One dry gauge reading is no longer enough to override thunder outside when the rest of our own data already agrees.
+
 ## [2.15.0] — 2026-08-03 — Gemma Raus just got better: the storm banner stopped flickering
 
 - Fixed the ⚡ severe storm potential banner sometimes appearing, sometimes not, across refreshes with nothing actually changing outside — it was reading instability from whichever single grid point happened to be nearest to your GPS fix, and that pick could shift between reloads. Now it reads the highest instability across the whole city grid instead, so it no longer depends on exactly which point you land on.
