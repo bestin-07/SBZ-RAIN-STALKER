@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot,
+  aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
+  showGhost, GHOST_MIN_FACTOR, hoursLabel,
   modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
@@ -657,6 +659,110 @@ describe('modelNowValue — corroborated heavy current (Nonntal thunderstorm 202
     expect(nowcastNowSlot(nc, NOON)).toBe(1.7)
     expect(nowcastNowSlot(null, NOON)).toBe(0)
     expect(nowcastNowSlot({ times: [], precips: [] }, NOON)).toBe(0)
+  })
+})
+
+// ---- v2.18.0: ribbon confidence — say how sure the forecast lane is ---------------
+
+describe('aromeSlotSeries — AROME hours projected onto the 15-min grid', () => {
+  const times = [NOON, NOON + 900, NOON + 1800, NOON + 2700]
+
+  it('scales an hourly mm/h total onto the slots it covers (÷4 for 15-min slots)', () => {
+    // AROME stamp = END of its accumulation hour, so NOON+3600 covers (NOON, NOON+3600].
+    const s = aromeSlotSeries(times, [NOON + 3600], [8])
+    expect(s).toEqual([0, 2, 2, 2])   // NOON itself is NOT in (NOON, NOON+3600]
+  })
+
+  it('no AROME → all zeros, never undefined', () => {
+    expect(aromeSlotSeries(times, [], [])).toEqual([0, 0, 0, 0])
+    expect(aromeSlotSeries(times, null, null)).toEqual([0, 0, 0, 0])
+    expect(aromeSlotSeries([], [NOON], [5])).toEqual([])
+  })
+
+  it('combineModelSeries is still exactly max(own, arome) over this series', () => {
+    const own = [0, 0.5, 3, 0]
+    const a   = aromeSlotSeries(times, [NOON + 3600], [8])
+    const c   = combineModelSeries(times, own, [NOON + 3600], [8])
+    expect(c).toEqual(own.map((o, i) => Math.max(o, a[i])))
+  })
+})
+
+describe('modelsAgree — the disagreement max() used to hide', () => {
+  it('THE LIVE CASE (2026-08-06, 21:15): ICON-EU 2.2 vs AROME 0.20 → disagree', () => {
+    // ICON-EU replaying the storm ~2 h late, against AROME and radar both saying it
+    // is over. max() drew 2.2 as one confident bar; the ribbon now marks it contested.
+    expect(modelsAgree(2.2, 0.20)).toBe(false)
+  })
+  it('both dry counts as agreement (not a disagreement about nothing)', () => {
+    expect(modelsAgree(0, 0)).toBe(true)
+    expect(modelsAgree(0.05, 0.02)).toBe(true)
+  })
+  it('one wet, one dry → disagreement whichever way round', () => {
+    expect(modelsAgree(1.2, 0)).toBe(false)
+    expect(modelsAgree(0, 1.2)).toBe(false)
+  })
+  it('same story, comparable magnitude → agreement', () => {
+    expect(modelsAgree(1.0, 2.0)).toBe(true)          // within 2.5x
+    expect(modelsAgree(1.0, 2.5)).toBe(true)          // exactly at the boundary
+    expect(modelsAgree(1.0, 2.6)).toBe(false)         // past it
+    expect(MODEL_AGREE_FACTOR).toBe(2.5)
+  })
+  it('is symmetric and null-safe', () => {
+    expect(modelsAgree(3, 1)).toBe(modelsAgree(1, 3))
+    expect(modelsAgree(null, undefined)).toBe(true)
+  })
+})
+
+describe('probAt — no confidence data must not look like low confidence', () => {
+  const hT = [NOON, NOON + 3600, NOON + 7200]
+  const hP = [80, 43, 10]
+  it('picks the nearest hour', () => {
+    expect(probAt(hT, hP, NOON + 300)).toBe(80)
+    expect(probAt(hT, hP, NOON + 3500)).toBe(43)
+  })
+  it('returns null past the fetched horizon instead of leaking the last hour', () => {
+    // The old ribbon had 6 h of probability under a 12 h chart; the nearest-hour
+    // lookup would have applied hour 6's number to hour 11.
+    expect(probAt(hT, hP, NOON + 7200 + 3601)).toBeNull()
+    expect(probAt([], [], NOON)).toBeNull()
+  })
+  it('non-numeric probability → null', () => {
+    expect(probAt(hT, [80, null, 10], NOON + 3600)).toBeNull()
+  })
+})
+
+describe('radarSpanLabel — the band must not promise 3 h it never had', () => {
+  it('THE LIVE CASE: radar reaching 22:00 at 19:21 is 2½ h, not 3', () => {
+    expect(radarSpanLabel(NOON + 159 * 60, NOON)).toBe('2½')
+  })
+  it('uses the same ½-hour rounding as the countdowns', () => {
+    expect(radarSpanLabel(NOON + 180 * 60, NOON)).toBe(hoursLabel(180))
+    expect(radarSpanLabel(NOON + 165 * 60, NOON)).toBe('3')
+    expect(radarSpanLabel(NOON + 150 * 60, NOON)).toBe('2½')
+  })
+  it('never goes negative on a stale timeline', () => {
+    expect(radarSpanLabel(NOON - 600, NOON)).toBe('0')
+  })
+})
+
+describe('showGhost — the 0.05 mm cliff at the end of the radar zone', () => {
+  it('THE BUG: radar 0.14 hid a 2.2 model expectation; 0.09 drew it full height', () => {
+    expect(showGhost(0.14, 2.2)).toBe(true)     // now visible
+    expect(showGhost(0.09, 2.2)).toBe(true)     // as it always was
+  })
+  it('model must MATERIALLY exceed radar — no ghost for a rounding difference', () => {
+    expect(showGhost(2.0, 2.1)).toBe(false)     // below the factor and the abs floor
+    expect(showGhost(1.0, 1.4)).toBe(false)     // 1.4x < 1.5x
+    expect(showGhost(1.0, 1.6)).toBe(true)
+    expect(GHOST_MIN_FACTOR).toBe(1.5)
+  })
+  it('a dry model never ghosts, and radar-above-model never ghosts', () => {
+    expect(showGhost(0, 0.05)).toBe(false)
+    expect(showGhost(3.0, 0.2)).toBe(false)
+  })
+  it('null-safe', () => {
+    expect(showGhost(null, null)).toBe(false)
+    expect(showGhost(0, undefined)).toBe(false)
   })
 })
 

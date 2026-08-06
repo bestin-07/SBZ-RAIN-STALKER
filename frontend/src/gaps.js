@@ -123,19 +123,84 @@ export function nowcastNowSlot(nowcast, nowSec) {
 // accumulation hour (the meteorological convention for accumulated params);
 // if the product actually stamps the START, rain paints one hour EARLY — a
 // lead, our forgiven direction — never an hour late.
+// AROME's hourly totals projected onto the 15-min slot grid. Extracted (v2.18.0)
+// so the ribbon can compare the two models slot-by-slot instead of only seeing the
+// max of them. combineModelSeries below is unchanged in behaviour — same loop, same
+// window condition, same scale — and its existing contract tests pin that.
+export function aromeSlotSeries(times, aTimes, aPrecips) {
+  if (!times?.length) return []
+  if (!aTimes?.length) return times.map(() => 0)
+  const dt = times.length > 1 ? Math.max(60, times[1] - times[0]) : 900
+  const scale = Math.min(1, dt / 3600)
+  return times.map(tt => {
+    for (let j = 0; j < aTimes.length; j++) {
+      if (tt > aTimes[j] - 3600 && tt <= aTimes[j]) return (aPrecips?.[j] ?? 0) * scale
+    }
+    return 0
+  })
+}
+
 export function combineModelSeries(times, precips, aTimes, aPrecips) {
   const base = times?.map((_, i) => precips?.[i] ?? 0) ?? []
   if (!times?.length || !aTimes?.length) return base
-  const dt = times.length > 1 ? Math.max(60, times[1] - times[0]) : 900
-  const scale = Math.min(1, dt / 3600)
-  return base.map((own, i) => {
-    const tt = times[i]
-    let a = 0
-    for (let j = 0; j < aTimes.length; j++) {
-      if (tt > aTimes[j] - 3600 && tt <= aTimes[j]) { a = (aPrecips?.[j] ?? 0) * scale; break }
-    }
-    return Math.max(own, a)
-  })
+  const a = aromeSlotSeries(times, aTimes, aPrecips)
+  return base.map((own, i) => Math.max(own, a[i] ?? 0))
+}
+
+// ---- Ribbon confidence (v2.18.0) -------------------------------------------------
+// The forecast lane is max(ICON-EU, AROME). A max can never sit below either input,
+// so when the two models disagree the ribbon drew one confident line over a genuine
+// argument. Live case (2026-08-06 storm): at 21:15 ICON-EU said 2.2 mm while AROME
+// said 0.20 and radar read 0.14 — ICON-EU was replaying the same storm ~2 h late (its
+// documented Alpine convective lag). The verdict lane keeps using the max (a union can
+// only ADD warnings — the lead/lag asymmetry); the RIBBON now says how sure that is.
+export const MODEL_AGREE_FACTOR = 2.5
+
+export function modelsAgree(om, arome) {
+  const a = typeof om === 'number' ? om : 0
+  const b = typeof arome === 'number' ? arome : 0
+  const aWet = a >= DRY_THRESHOLD, bWet = b >= DRY_THRESHOLD
+  if (!aWet && !bWet) return true            // both say dry — that IS agreement
+  if (aWet !== bWet) return false            // one sees rain, the other nothing
+  const hi = Math.max(a, b), lo = Math.min(a, b)
+  return hi <= lo * MODEL_AGREE_FACTOR       // same story, comparable magnitude
+}
+
+// Model probability at a moment. Returns null past the fetched horizon rather than
+// letting the last hour's number leak across the tail — "no data" and "low confidence"
+// must not render the same way.
+export function probAt(hTimes, hProb, tt) {
+  if (!hTimes?.length) return null
+  let bi = -1, bd = Infinity
+  for (let i = 0; i < hTimes.length; i++) {
+    const d = Math.abs(hTimes[i] - tt)
+    if (d < bd) { bd = d; bi = i }
+  }
+  if (bi < 0 || bd > 3600) return null
+  return typeof hProb?.[bi] === 'number' ? hProb[bi] : null
+}
+
+// How far the radar zone ACTUALLY reaches, as a "3" / "2½" label. The band said a
+// hardcoded "NEXT 3 H" while the nowcast's 12 slots span 2h45 from their first slot
+// and then age up to 15 min before the next issue — so the promise was never once
+// what the data delivered, and the boundary visibly slid between refreshes.
+export function radarSpanLabel(radarUntil, nowSec) {
+  if (!Number.isFinite(radarUntil) || !Number.isFinite(nowSec)) return '3'  // never "Infinity H"
+  const mins = Math.max(0, Math.round((radarUntil - nowSec) / 60))
+  return hoursLabel(mins)
+}
+
+// Ghost bars showed model rain only where radar was bone-dry (< 0.1), so a radar
+// reading of 0.14 hid a 2.2 mm model expectation completely while 0.09 would have
+// drawn it full height. That 0.05 mm cliff sat right at the end of the radar zone.
+// Now: draw whenever the model MATERIALLY exceeds what radar sees.
+export const GHOST_MIN_FACTOR = 1.5
+export function showGhost(radarP, modelP) {
+  const r = typeof radarP === 'number' ? radarP : 0
+  const m = typeof modelP === 'number' ? modelP : 0
+  if (m < DRY_THRESHOLD) return false            // model sees nothing worth drawing
+  if (m - r < DRY_THRESHOLD) return false        // difference too small to be a claim
+  return m >= r * GHOST_MIN_FACTOR
 }
 
 export function modelNextRainAt(omTimes, omPrecips, nowSec) {
@@ -449,7 +514,9 @@ function minutesToNextRain(trend, firstGap, gapNow, nowSec) {
 }
 
 // 90 → "1½", 120 → "2", 150 → "2½", 170 → "3" — rounded to the nearest half hour.
-function hoursLabel(min) {
+// Exported since v2.18.0 so the ribbon's radar-zone label uses the SAME rounding
+// convention the countdowns do.
+export function hoursLabel(min) {
   const h = Math.round(min / 30) / 2
   return h % 1 ? `${Math.floor(h)}½` : `${h}`
 }

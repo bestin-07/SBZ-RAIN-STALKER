@@ -845,7 +845,10 @@ async def fetch_ambient(client: httpx.AsyncClient):
             "current": "temperature_2m,wind_speed_10m,weather_code,precipitation,cape,uv_index",
             "minutely_15": "precipitation", "forecast_minutely_15": 48,
             "hourly": "precipitation_probability",
-            "forecast_hours": 6, "timeformat": "unixtime", "timezone": "UTC",
+            # v2.18: 6 -> 12 so the served confidence layer spans the whole 12 h the
+            # ribbon draws. _filter_virga only ever reads the first 3 h of this, and
+            # the client's isUnsettled reads slice(0, 4) — both unaffected.
+            "forecast_hours": 12, "timeformat": "unixtime", "timezone": "UTC",
         },
         timeout=15,
     )

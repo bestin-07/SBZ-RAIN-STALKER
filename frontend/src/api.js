@@ -162,7 +162,12 @@ export async function fetchForecast(lat, lon) {
     // Hourly rain probability — a smooth model-confidence signal used to soften
     // the radar countdown when the nowcast shows rain the model isn't sure about.
     hourly: 'precipitation_probability',
-    forecast_hours: 6,
+    // v2.18: 6 → 12 so the confidence layer spans the whole 12 h the ribbon draws.
+    // At 6 h the outer half of the ribbon had no probability behind it at all and was
+    // rendered with exactly the same authority as the inner half. Existing consumers
+    // are unaffected: isUnsettled reads .slice(0, 4), and rainProb picks the hour
+    // nearest an onset that is by definition within 3 h.
+    forecast_hours: 12,
     timeformat: 'unixtime',
     timezone: 'UTC',
   })

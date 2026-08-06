@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { showGhost, radarSpanLabel } from '../gaps'
 
 const SLOT_W = 46
 const SLOT_H = 52
@@ -62,8 +63,14 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const { times, precips } = forecast
     const now = Math.floor(Date.now() / 1000)
 
+    // agree/prob are carried on the slot itself — `i` here is the index into the
+    // forecast arrays, which no longer matches the slot index after filter+slice.
     const slots = times
-      .map((t, i) => ({ t, p: precips[i] ?? 0 }))
+      .map((t, i) => ({
+        t, p: precips[i] ?? 0,
+        agree: forecast.modelAgree?.[i],
+        prob:  forecast.modelProb?.[i],
+      }))
       .filter(s => s.t >= now - 300)
       .slice(0, MAX_SLOTS)
 
@@ -127,7 +134,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.fillStyle = bandRadar
       ctx.fillRect(0, 0, radarEnd, BAND_H - 2)
       ctx.fillStyle = labelCol
-      ctx.fillText(t ? t('zone_radar') : 'radar · next 3h', 6, BAND_H - 4)
+      // v2.18: the span is COMPUTED, not the old hardcoded "3 H". The nowcast's 12
+      // slots cover 2h45 from their first slot and then age up to 15 min before the
+      // next issue, so the radar zone really reaches ~2½ h — saying "3 H" made the
+      // boundary look like it was drifting when it was the label that was wrong.
+      ctx.fillText(t ? t('zone_radar', { h: radarSpanLabel(radarUntil, now) }) : 'radar', 6, BAND_H - 4)
     }
     if (radarEnd < cssW) {
       ctx.fillStyle = bandFcst
@@ -154,13 +165,26 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         if (slot.p >= DRY_THRESHOLD) {
           const gh = precipToHeight(slot.p)
           const c  = precipToColor(slot.p, pal)
+          // v2.18 confidence: the bar height is still max(ICON-EU, AROME) — a union
+          // can only ADD warnings — but HOW SOLID it looks now reflects whether the
+          // two models actually agree, and how confident the model is that hour.
+          // Disagreement was previously invisible: max() drew one confident line over
+          // a genuine argument between the two.
+          const agree = slot.agree !== false
+          const pr    = slot.prob
+          // Probability scales the fill within a modest range so a low-confidence hour
+          // reads fainter without ever vanishing (we never hide data). No probability
+          // at all (past the fetched horizon) → treated as unknown, not as low.
+          const prAlpha = typeof pr === 'number' ? 0.16 + 0.22 * Math.min(1, pr / 100) : 0.28
           ctx.save()
-          ctx.globalAlpha = 0.28
+          ctx.globalAlpha = agree ? prAlpha : prAlpha * 0.55
           ctx.fillStyle = c
           ctx.fillRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
-          ctx.globalAlpha = 1
+          ctx.globalAlpha = agree ? 1 : 0.45
           ctx.strokeStyle = c
-          ctx.setLineDash([3, 2])
+          // Models disagreeing get a finer, sparser dash than the standard estimate
+          // dash — visually "this is contested", not merely "this is a forecast".
+          ctx.setLineDash(agree ? [3, 2] : [1, 3])
           ctx.lineWidth = 1.5
           ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
           ctx.restore()
@@ -172,10 +196,13 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         ctx.fillStyle = color
         ctx.fillRect(x, SLOT_H - barH, SLOT_W - 1, barH)
 
-        // GHOST bar (v2.1): radar says dry here but the FORECAST expects rain —
-        // faint fill + dashed outline (v2.3.1) so it's visible at a glance.
+        // GHOST bar (v2.1): the FORECAST expects materially more rain than radar sees
+        // here — faint fill + dashed outline (v2.3.1) so it's visible at a glance.
+        // v2.18: was gated on radar being bone-dry (< 0.1), so a 0.14 radar reading
+        // hid a 2.2 mm model expectation entirely while 0.09 would have drawn it full
+        // height — a 0.05 mm cliff, sitting right at the end of the radar zone.
         const mp = modelAt(slot.t)
-        if (slot.p < DRY_THRESHOLD && mp != null && mp >= DRY_THRESHOLD) {
+        if (showGhost(slot.p, mp)) {
           const gh = precipToHeight(mp)
           ctx.save()
           ctx.globalAlpha = 0.28
@@ -322,9 +349,12 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // dry forecast never reads as "broken". No data at all → "waiting for data".
   const nowS = Math.floor(Date.now() / 1000)
   const rslots = (forecast?.times || [])
-    .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0 }))
+    .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i] }))
     .filter(s => s.t >= nowS - 300)
     .slice(0, MAX_SLOTS)
+  // Only a WET slot the two models argue about is worth a legend entry — two models
+  // disagreeing about nothing is not a disagreement a user needs to see.
+  const hasDisagreement = rslots.some(s => s.agree === false && s.p >= DRY_THRESHOLD)
   const hasData = rslots.length > 0
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
   // Trace slots only (all sub-threshold, at least one non-zero): the overlay must
@@ -364,6 +394,15 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           <div className="w-2.5 h-2.5 shrink-0 border border-dashed" style={{ borderColor: pal.light }} />
           <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_model')}</span>
         </div>
+        {/* v2.18: only shown when the two models actually disagree somewhere on the
+            visible ribbon — a permanent legend entry for a rare state is clutter. */}
+        {hasDisagreement && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 shrink-0 border border-dotted opacity-50"
+                 style={{ borderColor: pal.light }} />
+            <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_uncertain')}</span>
+          </div>
+        )}
         <Legend color={pal.mod}   label={t('mod_rain')} />
         <Legend color={pal.heavy} label={t('heavy_rain')} />
         <Legend color={pal.storm} label={t('storm_rain')} />

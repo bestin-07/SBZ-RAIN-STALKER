@@ -12,6 +12,27 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.18.0] — 2026-08-06 — Gemma Raus just got better: the ribbon tells you how sure it is 📊
+
+*You said the data around the 3-hour mark never looked consistent, and that the forecast should feel more confident. You were reading it correctly — the ribbon was showing you certainty it didn't have.*
+
+**What happened**
+
+The rain ribbon has two halves. The near part is radar: what's actually in the sky right now, tracked as it moves. The far part is a forecast from weather models. The join between them is where everything went wrong.
+
+The label said "RADAR · NEXT 3 H". It was never three hours — radar reaches about two and a half, and that shrinks minute by minute until fresh radar arrives. So the join genuinely wandered, and you were watching it wander against a label insisting it shouldn't.
+
+Behind the far half sit two forecast models, and we were drawing whichever of the two predicted more rain. When they agree, that's fine. When they don't, you got a single confident-looking bar covering up a real argument. During last night's storm they disagreed sharply: one had the storm ending around nine, the other was still replaying it two hours later, having never noticed it start on time. You saw the louder one, with no hint the other existed. And past six hours out there was no confidence information at all — those bars were drawn exactly as boldly as the rest, backed by nothing.
+
+**What's new for you**
+
+- **The radar label now tells the truth.** It says how far radar actually reaches — "NEXT 2½ H" when that's what you've got. The join stops looking like it's drifting, because it was the label drifting, not the data.
+- **You can see when the models disagree.** Where both forecasts tell the same story, the bars stay solid. Where they argue, the bars go faint and finely dotted, with a "models disagree" note in the legend. The bar still shows the wetter of the two — we'd rather warn you early — but you can now tell the difference between "both models are sure" and "one of them is guessing."
+- **Confidence now covers the whole chart.** We fetch twice as far ahead, so the far hours are shaded by how confident the model actually is. Fainter means less sure. And where we genuinely have no information, it no longer pretends to be a low reading.
+- **A forecast that disagrees with radar is no longer hidden.** There was a threshold where the tiniest radar reading would silently erase a heavy forecast for the same moment. If the models expect much more rain than radar currently sees, you'll see that.
+
+None of this changes the go/no-go verdict — the headline decides exactly as it did yesterday. This is the ribbon being honest about which parts of itself you should trust.
+
 ## [2.17.0] — 2026-08-06 — Gemma Raus just got better: a storm is never "passt schon" ⛈️
 
 *You were out in Nonntal in hail and heavy rain, and Gemma Raus told you it was a light drizzle. That should never have happened, and we're sorry. It only admitted the storm once the rain gauge across town had physically filled up — long after you were already soaked.*

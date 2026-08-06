@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -734,9 +734,28 @@ export default function App() {
             extTimes.push(omTimes[i]); extPrecips.push(omPrecips[i] ?? 0)
           }
         }
+        // v2.18 ribbon confidence. Two aligned series over the WHOLE ribbon:
+        //  • modelAgree — do ICON-EU and AROME tell the same story in this slot?
+        //    The bars stay max(both) (a union can only add warnings), but the ribbon
+        //    now shows where that max is papering over a genuine disagreement.
+        //  • modelProb — the model's own hourly confidence, now fetched across the
+        //    full 12 h the ribbon draws (was 6 h, so the outer half had none and was
+        //    drawn with exactly the same authority as the inner half).
+        // Radar-zone slots get agree=true: radar owns 0–3 h, so a model argument
+        // there is not what the solid bar is claiming and must not restyle it.
+        const aromeSlots = aromeSlotSeries(omTimes, data?.arome?.times, data?.arome?.precips)
+        const omRaw = data?.minutely_15?.precipitation ?? []
+        const agreeByTime = new Map()
+        for (let i = 0; i < omTimes.length; i++) {
+          agreeByTime.set(omTimes[i], modelsAgree(omRaw[i], aromeSlots[i]))
+        }
+        const allTimes = [...ribbonTimeline.times, ...extTimes]
+        const hT = data?.hourly?.time ?? [], hP = data?.hourly?.precipitation_probability ?? []
         setForecast({
-          times: [...ribbonTimeline.times, ...extTimes],
+          times: allTimes,
           precips: [...ribbonTimeline.precips, ...extPrecips],
+          modelAgree: allTimes.map(tt => (tt <= radarUntil && nowcast) ? true : (agreeByTime.get(tt) ?? true)),
+          modelProb:  allTimes.map(tt => probAt(hT, hP, tt)),
           isNowcast: !!nowcast,
           radarUntil: nowcast ? radarUntil : nowSec,   // no radar at all → everything is "model"
           // v2.8: both instruments contradict the radar-zone trace carpet → the
