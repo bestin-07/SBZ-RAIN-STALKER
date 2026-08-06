@@ -59,7 +59,7 @@ class TestVirgaFilter(unittest.TestCase):
         # Change ONLY with a CLAUDE.md logic-log entry.
         self.assertEqual(NS["VIRGA_PROB_MIN"], 50)
         self.assertEqual(NS["VIRGA_CAP_TO"], 0.4)
-        self.assertEqual(NS["VIRGA_HEAVY_PASS"], 1.5)
+        self.assertEqual(NS["VIRGA_HEAVY_PASS"], 0.8)   # v2.17.0: was 1.5
         self.assertEqual(NS["DRY_THRESHOLD"], 0.1)
 
     def test_real_downpour_survives_lagging_model(self):
@@ -78,11 +78,33 @@ class TestVirgaFilter(unittest.TestCase):
             self.assertLessEqual(v, NS["VIRGA_CAP_TO"])
         self.assertTrue(max(out) >= 0.1, "a real light drizzle must still show")
 
-    def test_low_confidence_moderate_echo_pulled_into_light_band(self):
-        # 0.8–1.2mm at 20% prob (below HEAVY_PASS) → capped to 0.4: can't paint a
-        # storm or force STUCK, but still visible as light.
+    def test_low_confidence_moderate_echo_now_passes(self):
+        # v2.17.0 (was test_low_confidence_moderate_echo_pulled_into_light_band, which
+        # pinned the OLD 1.5 boundary and asserted [0.4]*4 here). Moderate echo at
+        # 0.8+ is real weather even when the model is asleep at 20% — only genuinely
+        # LIGHT echo below 0.8 still gets pulled into the light band.
         out = self.f(self.times, [0.8, 1.2, 0.9, 0.6], self.ptime, self.low)
-        self.assertEqual(out, [0.4, 0.4, 0.4, 0.4])
+        self.assertEqual(out, [0.8, 1.2, 0.9, 0.4])
+
+    def test_nonntal_thunderstorm_2026_08_06(self):
+        # THE INCIDENT: user soaked in a hail thunderstorm while the app read
+        # PASST SCHON. Replays the real served values — ICON-EU had hour 19 at 43%
+        # (just under VIRGA_PROB_MIN), which clamped a whole storm to a flat 0.4
+        # carpet. Under the new boundary the moderate slots survive, so the verdict
+        # and the ribbon see rain instead of drizzle.
+        prob43 = [43, 43, 43, 43]
+        out = self.f(self.times, [1.1, 1.3, 0.9, 1.4], self.ptime, prob43)
+        self.assertEqual(out, [1.1, 1.3, 0.9, 1.4])
+        self.assertGreater(max(out), NS["VIRGA_CAP_TO"],
+                           "a thunderstorm must never be served as a flat light-band carpet")
+
+    def test_downpour_warning_always_reachable(self):
+        # Structural invariant: the >=1.5mm downpour warning reads the FILTERED
+        # timeline, so the filter must never be able to clamp a value from at or above
+        # DOWNPOUR_MM. Holds as long as VIRGA_HEAVY_PASS <= 1.5.
+        self.assertLessEqual(NS["VIRGA_HEAVY_PASS"], 1.5)
+        out = self.f(self.times, [1.5, 4.0, 1.6, 0.05], self.ptime, self.low)
+        self.assertEqual(out[:3], [1.5, 4.0, 1.6])
 
     def test_high_confidence_rain_untouched(self):
         vals = [0.8, 1.2, 0.5, 0.2]
@@ -98,6 +120,34 @@ class TestVirgaFilter(unittest.TestCase):
     def test_dry_stays_dry(self):
         out = self.f(self.times, [0.0, 0.0, 0.0, 0.0], self.ptime, self.low)
         self.assertEqual(out, [0.0, 0.0, 0.0, 0.0])
+
+
+class TestWarningTypeFilter(unittest.TestCase):
+    """v2.17.0: official GeoSphere thunderstorm warnings must reach the app.
+
+    `fetch_severe_warnings` is async + does HTTP, so it can't be exercised through the
+    AST namespace like the pure functions above. This asserts on its parsed body
+    instead — narrow, but it pins the exact regression: a `warntypid == 5` skip that
+    threw away the only human-issued storm warning we get (and the only signal with
+    headline-override power) because our own CAPE>=1500 heuristic was assumed to cover
+    it. During the Nonntal thunderstorm of 2026-08-06 CAPE was 200-260 — it did not.
+    """
+
+    def test_thunderstorm_warnings_not_dropped(self):
+        with open(os.path.join(HERE, "main.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        fn = next(n for n in ast.parse(src).body
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  and n.name == "fetch_severe_warnings")
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Compare):
+                continue
+            left, ops, comps = node.left, node.ops, node.comparators
+            if (isinstance(left, ast.Name) and left.id == "wtype"
+                    and isinstance(ops[0], ast.Eq)
+                    and isinstance(comps[0], ast.Constant) and comps[0].value == 5):
+                self.fail("wtype == 5 guard is back — thunderstorm warnings are being "
+                          "dropped again (see CLAUDE.md v2.17.0)")
 
 
 class TestPushContract(unittest.TestCase):

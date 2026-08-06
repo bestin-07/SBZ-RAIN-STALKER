@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -443,10 +443,15 @@ export default function App() {
       data?.arome?.times, data?.arome?.precips)
     const measured  = data?.current?.precipitation ?? 0
     const stationPrecip = stationData?.precip ?? 0
-    const omForNow = modelNowValue(measured, stationData !== null, stationPrecip)
+    const nowSec = Math.floor(Date.now() / 1000)
+    // Radar's own read at "now" — the independent witness that releases the v2.0.1
+    // model cap during a live downpour (v2.17.0). Must precede the NOW blend, and
+    // the dot must use the SAME rule as the live view or they diverge again.
+    const rawNowSlot = nowcastNowSlot(nowcast, nowSec)
+    const omForNow = modelNowValue(measured, stationData !== null, stationPrecip,
+      Math.max(rawNowSlot, rvPrecip))
     const groundPrecip = Math.max(omForNow, stationPrecip)
     const groundDry = stationData !== null && groundPrecip < DRY_THRESHOLD
-    const nowSec = Math.floor(Date.now() / 1000)
     const gapTimeline = nowcast
       ? { times: nowcast.times, precips: nowcast.precips }
       : { times: [nowSec, ...omTimes], precips: [groundPrecip, ...omPrecips] }
@@ -458,13 +463,6 @@ export default function App() {
       gapPrecips = gapTimeline.precips.map((p, i) => (i === idx ? 0 : p))
     }
     const { currentPrecip: cp, gaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
-    // Raw nowcast value at "now" (un-zeroed) — to catch a drizzle the gauge misses.
-    let rawNowSlot = 0
-    if (nowcast) {
-      let bi = 0, bd = Infinity
-      for (let i = 0; i < nowcast.times.length; i++) { const dd = Math.abs(nowcast.times[i] - nowSec); if (dd < bd) { bd = dd; bi = i } }
-      rawNowSlot = nowcast.precips[bi] ?? 0
-    }
     // Trace-ahead (v2.5): sub-threshold drizzle starting later on the radar timeline.
     // v2.8: dual-key phantom guard — clear sky + a fully quiet RainViewer overrule
     // the nowcast's model-blend trace noise (see gaps.tracePhantom).
@@ -600,11 +598,6 @@ export default function App() {
         const measured      = data?.current?.precipitation ?? 0
         const stationPrecip = stationData?.precip ?? 0
         const stationTemp   = stationData?.temp ?? null
-        // Model-current contribution (v2.0.1, gaps.modelNowValue): a reporting gauge
-        // owns the NOW magnitude — the hour-lagged model current is capped at the
-        // light band (0.4) and zeroed below 0.10 vs a 0-reading gauge, so a stale
-        // model value can never manufacture WAIT/STUCK on the trailing edge.
-        const omForNow = modelNowValue(measured, stationData !== null, stationPrecip)
         // RainViewer radar at your exact GPS pixel — { now, soon }. `now` is the
         // freshest is-it-raining signal we have (~5 min latency); `soon` is the
         // forecast frame ~20–30 min out (observed echo motion) → the "approaching"
@@ -615,6 +608,20 @@ export default function App() {
         const rvApproachMin = rvPrecip < DRY_THRESHOLD ? (rv?.approachMin ?? null) : null
         const rvApproachDir = rvApproachMin != null ? (rv?.fromDir ?? null) : null
         const rvNearbyDir   = rvApproachMin == null ? (rv?.fromDir ?? null) : null
+        const nowSec = Math.floor(Date.now() / 1000)
+        // Raw (un-zeroed) radar reading at "now". Computed BEFORE the NOW blend
+        // because it is the independent witness that releases the v2.0.1 model cap
+        // during a live downpour (v2.17.0); gapPrecips below zeroes the current slot
+        // for gap detection only, so we keep the real value here.
+        const rawNowSlot = nowcastNowSlot(nowcast, nowSec)
+        // Model-current contribution (v2.0.1, gaps.modelNowValue): a reporting gauge
+        // owns the NOW magnitude — the hour-lagged model current is capped at the
+        // light band (0.4) and zeroed below 0.10 vs a 0-reading gauge, so a stale
+        // model value can never manufacture WAIT/STUCK on the trailing edge. v2.17.0:
+        // a HEAVY model current (≥1.5) that radar or RainViewer independently confirm
+        // is falling right now is not a trailing-edge leftover — it passes uncapped.
+        const omForNow = modelNowValue(measured, stationData !== null, stationPrecip,
+          Math.max(rawNowSlot, rvPrecip))
         const nowPrecip = Math.max(omForNow, stationPrecip, rvPrecip)
         // Ground truth = physical stations + model current (no radar). When these
         // are available and read dry they are authoritative for "is it raining on
@@ -635,7 +642,6 @@ export default function App() {
         // TAWES still protects against false-GO via effectivePrecip: if sensors show
         // active rain but the nowcast gap has already started, gapNow in getStatus
         // routes to GO (trust the model) — the intended "clearing" behaviour.
-        const nowSec = Math.floor(Date.now() / 1000)
         const gapTimeline = nowcast
           ? { times: nowcast.times, precips: nowcast.precips }
           : { times: [nowSec, ...omTimes], precips: [nowPrecip, ...omPrecips] }
@@ -660,17 +666,6 @@ export default function App() {
         }
 
         const { currentPrecip: cp, gaps: detectedGaps, nextRainAt, dryEndsOpen } = detectGaps(gapTimeline.times, gapPrecips)
-        // Raw (un-zeroed) nowcast value at "now" — gapPrecips zeroes the current slot
-        // for gap detection, but here we want the real radar reading to catch a drizzle.
-        let rawNowSlot = 0
-        if (nowcast) {
-          let bi = 0, bd = Infinity
-          for (let i = 0; i < nowcast.times.length; i++) {
-            const d = Math.abs(nowcast.times[i] - nowSec)
-            if (d < bd) { bd = d; bi = i }
-          }
-          rawNowSlot = nowcast.precips[bi] ?? 0
-        }
         // Trace-ahead (v2.5): sub-threshold drizzle starting later on the radar timeline.
         // v2.8: dual-key phantom guard — clear sky + a fully quiet RainViewer overrule
         // the nowcast's model-blend trace noise (see gaps.tracePhantom).

@@ -573,11 +573,14 @@ async def fetch_severe_warnings(client: httpx.AsyncClient, lat: float, lon: floa
         wtype, wlevel = p.get("warntypid"), p.get("warnstufeid")
         if wtype not in WARN_TYPE_NAMES or wlevel not in WARN_LEVEL_NAMES:
             continue
-        if wtype == 5:
-            # Gewitter/Thunderstorm — already covered by our own CAPE-based storm
-            # banner (App.jsx stormCape/regionalThunder); showing both here would
-            # be a redundant duplicate warning for the same hazard.
-            continue
+        # v2.17.0: Gewitter/Thunderstorm (wtype 5) is NO LONGER dropped. It was
+        # filtered on the theory that our CAPE storm banner already covers the hazard —
+        # but that banner needs CAPE >= 1500, and the Nonntal thunderstorm of
+        # 2026-08-06 ran at CAPE 200-260, so nothing covered it at all. We were
+        # discarding the only authoritative, independently-issued, human-checked storm
+        # signal we have, and the one with headline-override power (v2.14.0 redWarning)
+        # — a meteorologist's call thrown away in favour of our own heuristic's silence.
+        # Duplicate-banner risk stays bounded by the existing top-2-by-severity cap.
         out.append({
             "id": f"{p.get('warnid')}:{p.get('verlaufid')}",
             "type": wtype,
@@ -1145,7 +1148,15 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
 # misses) and high-probability slots pass through untouched, so genuine onset is kept.
 VIRGA_PROB_MIN  = 50     # low-confidence when hourly rain probability is under this
 VIRGA_CAP_TO    = 0.4    # cap (not zero) low-confidence LIGHT echo → shows as at most LIGHT
-VIRGA_HEAVY_PASS = 1.5   # low-confidence echo AT/ABOVE this passes through UNTOUCHED
+# v2.17.0: 1.5 → 0.8, the shelf fix CLAUDE.md parked for SOFT SPOT ② ("GO ANYWAY light
+# drizzle that is actually steady moderate rain"), redeemed by the Nonntal thunderstorm
+# of 2026-08-06. Live snapshot at 18:47 CEST: ICON-EU put hour 19 at 43% probability,
+# so every slot under 1.5 was clamped — Gneis was served a flat 0.4, 0.4, 0.4, 0.4
+# carpet during a hail thunderstorm (code 96/99, AROME 9-14 mm, gauge 1.8 mm/10min).
+# Virga is LIGHT by nature (the over-read this filter was built for is 0.10-0.11 mm);
+# echo at 0.8+ is real weather, not an artifact, so the lagging model no longer gets
+# to call it drizzle. Direction of change is caution-only — leads forgiven, lags never.
+VIRGA_HEAVY_PASS = 0.8   # low-confidence echo AT/ABOVE this passes through UNTOUCHED
 
 # ---- Convective-initiation detector (v1.3.0, "Layer 2") -------------------------
 # Radar-CONFIRMED formation: several grid points flipping dry → wet within one cycle,

@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.17.0] — 2026-08-06 — Gemma Raus just got better: a storm is never "passt schon" ⛈️
+
+*You were out in Nonntal in hail and heavy rain, and Gemma Raus told you it was a light drizzle. That should never have happened, and we're sorry. It only admitted the storm once the rain gauge across town had physically filled up — long after you were already soaked.*
+
+**What happened**
+
+Gemma Raus has two safety rules that both exist for good reasons. One stops a distant rain gauge from being out-shouted by a weather model that's running an hour behind. The other stops the radar from painting rain that's really just moisture high in the air, never reaching the ground. Both work by quietly turning a big number into a small one.
+
+Yesterday evening they both fired at once, on the same storm. The forecast model had only put the 7 o'clock hour at 43% likely to rain — it simply hadn't caught up with what was already happening over your head. So both rules decided the readings couldn't be trusted, and both trimmed them down to the same small value: a light drizzle. Every instrument we had was shouting — the radar, the thunderstorm reading, the second forecast model expecting up to 14 mm — and we talked all of them down to "passt schon."
+
+**What's new for you**
+
+- **A downpour that's actually falling now is never called a drizzle again.** The safety rule that quiets an out-of-date model still applies — but only when the radar agrees nothing is falling. When radar can see rain over your spot right now, the model's own heavy reading is taken at face value, however far behind the model has fallen.
+- **Moderate rain stops being rounded down to drizzle.** The threshold at which we stop second-guessing the radar has come down. Genuinely light readings are still treated with care; real rain now comes through as real rain.
+- **Official thunderstorm warnings reach you again.** When GeoSphere Austria's meteorologists issue a thunderstorm warning, you'll see it. We used to hide those, on the assumption that our own storm detector already had it covered — but ours is tuned for the extreme end, and yesterday's storm sat well below that line, so nothing reached you at all. A warning issued by a person now always outranks the silence of our own heuristic.
+
+Everything here moves in one direction: toward telling you it's wet. You'll forgive us for warning you a bit early. You shouldn't have to forgive us for being late.
+
 ## [2.16.0] — 2026-08-04 — Gemma Raus just got better: when we're sure, we say so
 
 - If our own data is screaming "storm" from two independent angles at once — extreme instability AND radar-confirmed initiation — the headline now says BLEIB DRIN instead of staying quietly calm underneath the warnings. Before, that combination only showed up in banners while the main headline could still read "passt schon." One dry gauge reading is no longer enough to override thunder outside when the rest of our own data already agrees.

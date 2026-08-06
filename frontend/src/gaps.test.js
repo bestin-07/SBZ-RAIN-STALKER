@@ -9,7 +9,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
-  modelNowValue, MODEL_NOW_CAP, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
+  modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot,
+  modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
@@ -609,6 +610,53 @@ describe('modelNowValue — trailing-edge lag guard (the bogus "WAIT 50 in the s
   })
   it('no gauge at all → model passes through (radar-max path handles that case)', () => {
     expect(modelNowValue(0.7, false, 0)).toBe(0.7)
+  })
+})
+
+// ---- v2.17.0: the cap must not clamp a downpour that is happening RIGHT NOW -------
+
+describe('modelNowValue — corroborated heavy current (Nonntal thunderstorm 2026-08-06)', () => {
+  it('THE INCIDENT: gauge dry, model 6.2mm, radar confirms rain → uncapped, NOT light', () => {
+    // Live /api/ambient at 18:47 CEST: OM current 6.2mm (10.8 at Aigen), code 96/99,
+    // radar served 0.4 (itself clamped). Before the fix this returned 0.4 — dead centre
+    // of the light band — and the headline read PASST SCHON during a hail thunderstorm.
+    const v = modelNowValue(6.2, true, 0, 0.4)
+    expect(v).toBe(6.2)
+    expect(v).toBeGreaterThan(LIGHT_MAX)   // cannot be rendered as "light drizzle"
+  })
+
+  it('the trailing-edge bug stays fixed: stale model, radar already dry → still capped', () => {
+    // v2.0.1's "WAIT 50 MIN in the sun". Rain is over, so nothing corroborates the
+    // model's preceding-hour leftover — the cap must still apply, at any magnitude.
+    expect(modelNowValue(0.7, true, 0, 0)).toBe(MODEL_NOW_CAP)
+    expect(modelNowValue(3.0, true, 0, 0)).toBe(MODEL_NOW_CAP)
+    expect(modelNowValue(3.0, true, 0, 0.05)).toBe(MODEL_NOW_CAP)  // sub-threshold trace
+  })
+
+  it('only HEAVY passes: corroborated but under the bar → still capped', () => {
+    expect(MODEL_HEAVY_PASS).toBe(1.5)
+    expect(modelNowValue(0.7, true, 0, 0.9)).toBe(MODEL_NOW_CAP)
+    expect(modelNowValue(1.49, true, 0, 0.9)).toBe(MODEL_NOW_CAP)
+    expect(modelNowValue(1.5, true, 0, 0.9)).toBe(1.5)
+  })
+
+  it('0.10-rounding guard still wins over the new rule', () => {
+    expect(modelNowValue(0.1, true, 0, 5.0)).toBe(0)
+  })
+
+  it('direction invariant: the new rule can only RAISE the NOW value, never lower it', () => {
+    for (const m of [0, 0.05, 0.3, 0.7, 1.4, 1.5, 3.0, 10.8]) {
+      for (const r of [0, 0.05, 0.1, 0.4, 2.0]) {
+        expect(modelNowValue(m, true, 0, r)).toBeGreaterThanOrEqual(modelNowValue(m, true, 0, 0))
+      }
+    }
+  })
+
+  it('nowcastNowSlot picks the slot nearest now, and is 0 without a nowcast', () => {
+    const nc = { times: [NOON - 900, NOON + 60, NOON + 900], precips: [0.2, 1.7, 0.3] }
+    expect(nowcastNowSlot(nc, NOON)).toBe(1.7)
+    expect(nowcastNowSlot(null, NOON)).toBe(0)
+    expect(nowcastNowSlot({ times: [], precips: [] }, NOON)).toBe(0)
   })
 })
 

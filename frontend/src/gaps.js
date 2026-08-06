@@ -71,13 +71,39 @@ export function isUnsettled(cape, maxProb, hour) {
 // into the LIGHT band (cap 0.4 — same philosophy as the virga cap): it can whisper
 // "drizzle the gauge missed", it can never manufacture WAIT/STUCK alone. With no
 // gauge at all, the model passes through (the radar-max path handles that case).
+// v2.17.0 — the cap's blind spot (Nonntal thunderstorm, 2026-08-06): the cap was
+// written for the TRAILING edge (rain over, model still reporting last hour). It
+// cannot tell that case apart from a downpour happening RIGHT NOW, so a model
+// reading 6-10 mm during a hail thunderstorm was clamped to 0.4 — dead centre of
+// the light band — and the app said PASST SCHON while the user was being soaked.
+// The distinguishing evidence is an INDEPENDENT witness: on the trailing edge the
+// radar is already dry, during a live downpour it is not. So a heavy model current
+// passes uncapped only when radar/RainViewer confirm rain is falling at this cell —
+// the same "heavy echo is self-evidencing" rule VIRGA_HEAVY_PASS applies to radar
+// (v1.1.4), now applied to the second cap that was missed. `radarNow` defaults to 0,
+// so an uncorroborated call behaves exactly as v2.0.1 did.
 export const MODEL_NOW_CAP = 0.4
-export function modelNowValue(measured, stationPresent, stationPrecip) {
+export const MODEL_HEAVY_PASS = 1.5
+export function modelNowValue(measured, stationPresent, stationPrecip, radarNow = 0) {
   if (!stationPresent) return measured
   // 0.10-rounding guard (unchanged): a 0-reading gauge needs the model to be
   // STRICTLY above 0.1 before it may claim any wetness at all.
   if (stationPrecip === 0 && measured <= 0.1) return 0
+  if (measured >= MODEL_HEAVY_PASS && (radarNow ?? 0) >= DRY_THRESHOLD) return measured
   return Math.min(measured, MODEL_NOW_CAP)
+}
+
+// The radar's own reading at this moment — nearest nowcast slot to `nowSec`.
+// Extracted (v2.17.0) from the loop duplicated at both App.jsx call sites, because
+// the NOW blend now needs it BEFORE modelNowValue rather than after.
+export function nowcastNowSlot(nowcast, nowSec) {
+  if (!nowcast?.times?.length) return 0
+  let bi = 0, bd = Infinity
+  for (let i = 0; i < nowcast.times.length; i++) {
+    const d = Math.abs(nowcast.times[i] - nowSec)
+    if (d < bd) { bd = d; bi = i }
+  }
+  return nowcast.precips[bi] ?? 0
 }
 
 // Model second-opinion (v1.4.0). The radar nowcast EXTRAPOLATES existing echo — it is
