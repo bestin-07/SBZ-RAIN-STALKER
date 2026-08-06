@@ -12,6 +12,14 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.18.1] — 2026-08-07 — Gemma Raus just got better: one thunderstorm, one message ⛈️
+
+*Since yesterday you'd have seen the same thunderstorm announced twice — once by us, once by an official warning you had to close by hand.*
+
+- Gemma Raus already tells you "thunderstorm in the region — conditions can change fast", from its own reading of the sky, and that note stays put on its own. The official GeoSphere thunderstorm warning was saying the same thing again right underneath, with a ✕ to dismiss. That second banner is gone.
+- All other official warnings — heat, heavy rain, snow, black ice, wind, cold — are unchanged and still appear as before.
+- One thing deliberately kept: if GeoSphere ever issues a **red** thunderstorm warning, the headline still switches to BLEIB DRIN, and the notification still goes out. Only the duplicate banner was removed, not the warning itself.
+
 ## [2.18.0] — 2026-08-06 — Gemma Raus just got better: the ribbon tells you how sure it is 📊
 
 *You said the data around the 3-hour mark never looked consistent, and that the forecast should feel more confident. You were reading it correctly — the ribbon was showing you certainty it didn't have.*

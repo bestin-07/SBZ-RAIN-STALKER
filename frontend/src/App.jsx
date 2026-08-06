@@ -16,6 +16,11 @@ import UpdateNote from './components/UpdateNote'
 
 // Official GeoSphere/ZAMG severe-weather warning hazard types (warntypid 1-7).
 const WARN_EMOJI = { 1: '💨', 2: '🌧', 3: '❄️', 4: '🧊', 5: '⛈', 6: '🥵', 7: '🥶' }
+// Gewitter/Thunderstorm. Kept in the served data (push + the RED headline override
+// still consult it) but suppressed from the DISMISSIBLE BANNER LIST — the always-on
+// `regionalThunder` note already tells the user a thunderstorm is in the region, and
+// two thunderstorm messages on one screen is one too many. See v2.18.1.
+const WARN_TYPE_THUNDERSTORM = 5
 
 const REFRESH_MS = 5 * 60 * 1000
 // Pull-to-refresh (touch): distance (px) the content must be dragged down from
@@ -1209,6 +1214,13 @@ export default function App() {
           )}
           {warnings
             .filter(w => !dismissedWarnings.includes(w.id))
+            // v2.18.1: thunderstorm warnings don't get a banner — `regionalThunder`
+            // above already says it, from our own data, without a dismiss button.
+            // This is BANNER-ONLY suppression: `warnings` itself still carries type 5,
+            // so a RED thunderstorm still overrides the headline (redWarning) and the
+            // backend still pushes it. The v2.17.0 mistake was dropping it at the
+            // SOURCE, which killed those two as collateral.
+            .filter(w => w.type !== WARN_TYPE_THUNDERSTORM)
             // Most serious first (level desc), soonest-ending as tiebreak; cap at
             // 2 — a wall of 4+ simultaneous banners was the reported problem, not
             // useful signal (the app already knows to pick the top ones for push).
