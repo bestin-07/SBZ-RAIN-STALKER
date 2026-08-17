@@ -12,6 +12,18 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.20.1] — 2026-08-17 — Gemma Raus spricht jetzt ordentlich Deutsch ✍️
+
+*Die deutschen Texte waren stellenweise schlampig — kleingeschriebene Substantive, fehlende Kommas, und mit „labiler Luft" ein Fachbegriff, den außerhalb der Meteorologie kaum jemand verwendet.*
+
+- **Groß- und Kleinschreibung durchgehend korrigiert.** Ein Teil der Texte war komplett kleingeschrieben, ein neuerer Teil korrekt — im Deutschen ist Kleinschreibung von Substantiven aber kein Stil, sondern schlicht falsch. Jetzt einheitlich richtig.
+- **„labile Luft" ist raus.** Meteorologisch korrekt, im Alltag aber Fachjargon. Steht jetzt „wechselhaft" — und das Wetter „schlägt um" statt zu „kippen".
+- **Kommasetzung korrigiert**, vor allem bei Nebensätzen („zeigt dir genau, wann du rausgehen kannst", „verfolgt, wie genau die Vorhersage wirklich ist").
+- **Einheitliche Abkürzungen** („Min.", „Std.") und deutsche Anführungszeichen („…") statt gerader Zollzeichen.
+- Kleinigkeiten: „Flughafen Salzburg" statt „Salzburg Flughafen", „Open-Meteo-Modell" mit Bindestrichen, fehlendes °C bei der Gewitter-Meldung, und „PRÜFEN" (klang wie eine Aufforderung an dich) heißt jetzt „PRÜFE …".
+
+*English texts are unchanged. Also removed two dead translation entries that were silently overwritten by later duplicates and never rendered.*
+
 ## [2.20.0] — 2026-08-17 — Gemma Raus just got better: steady rain counts too 🌦
 
 *Same morning, same spot: the gauge was measuring rain on you and Gemma Raus said "no rain right now". That one was simply wrong, and it's fixed.*
