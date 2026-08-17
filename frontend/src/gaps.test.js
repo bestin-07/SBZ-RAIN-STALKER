@@ -1,4 +1,4 @@
-// LOGIC INTEGRITY GUARD — the intended rain logic as an executable contract.
+﻿// LOGIC INTEGRITY GUARD — the intended rain logic as an executable contract.
 //
 // These tests encode the DESIGNED behaviour of the decision tree (CLAUDE.md →
 // "Status Logic" + "Logic change log"). If a change breaks one of these, either the
@@ -11,7 +11,7 @@ import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot,
   aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
-  goWindowTooShort, GO_MIN_WINDOW,
+  goWindowTooShort, GO_MIN_WINDOW, windowWetMm, WINDOW_WET_MM,
   showGhost, GHOST_MIN_FACTOR, hoursLabel,
   modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
@@ -790,6 +790,98 @@ describe('the Nonntal short-window incident (2026-08-17, 11:36)', () => {
     const s = getStatus(2.0, gaps, null, makeT(), NOON,
       { downpourSoonMin: 10, downpourSoonWideMin: 10 })
     expect(s.type).toBe('wait')
+  })
+})
+
+// ---- v2.20.0: steady rain soaks you as well as a burst ----------------------------
+
+describe('windowWetMm — how much actually lands while you would be out', () => {
+  const nowcast = {
+    times:   [NOON + 6 * 60, NOON + 21 * 60, NOON + 36 * 60, NOON + 51 * 60, NOON + 66 * 60],
+    precips: [0.65,          0.40,           0.55,           0.13,           0.18],
+  }
+  it('THE LIVE CASE (2026-08-17, 11:54 Altstadt): 1.6 mm over the next 45 min', () => {
+    expect(windowWetMm(nowcast, NOON, GO_MIN_WINDOW)).toBeCloseTo(1.6, 5)
+  })
+  it('only counts slots inside the window', () => {
+    expect(windowWetMm(nowcast, NOON, 25)).toBeCloseTo(1.05, 5)
+  })
+  it('a trace carpet sums to nothing — no extra guard needed', () => {
+    const trace = { times: [NOON, NOON + 900, NOON + 1800], precips: [0.01, 0.02, 0.01] }
+    expect(windowWetMm(trace, NOON, GO_MIN_WINDOW)).toBeLessThan(WINDOW_WET_MM)
+  })
+  it('no nowcast → 0, never NaN', () => {
+    expect(windowWetMm(null, NOON)).toBe(0)
+    expect(windowWetMm({ times: [], precips: [] }, NOON)).toBe(0)
+  })
+})
+
+describe('goWindowTooShort — steady rain, not just bursts (v2.20.0)', () => {
+  it('THE BUG: already wet + 1.6 mm of steady rain, no slot at 1.5 → now escalates', () => {
+    expect(WINDOW_WET_MM).toBe(1.0)
+    expect(goWindowTooShort('go', null, 1.6, true)).toBe(true)
+    expect(goWindowTooShort('light', null, 1.6, true)).toBe(true)
+  })
+  it('DRY now with rain later in the window keeps its usable window', () => {
+    // The anti-crying-wolf gate: dry now + rain arriving at minute 40 means you
+    // genuinely have 40 minutes. Only a BURST overrides that.
+    expect(goWindowTooShort('go', null, 1.6, false)).toBe(false)
+    expect(goWindowTooShort('go', 40, 1.6, false)).toBe(true)   // burst still wins
+  })
+  it('a burst still escalates on its own, with no accumulation at all', () => {
+    expect(goWindowTooShort('go', 24, 0, false)).toBe(true)
+  })
+  it('a passing shower under the accumulation bar still reads GO', () => {
+    expect(goWindowTooShort('go', null, 0.45, true)).toBe(false)
+    expect(goWindowTooShort('go', null, 0.99, true)).toBe(false)
+    expect(goWindowTooShort('go', null, 1.0, true)).toBe(true)   // boundary inclusive
+  })
+  it('WAIT/STUCK are still never escalated by accumulation', () => {
+    expect(goWindowTooShort('wait', null, 5.0, true)).toBe(false)
+    expect(goWindowTooShort('stuck', null, 5.0, true)).toBe(false)
+  })
+  it('null-safe on a trend with no accumulation field', () => {
+    expect(goWindowTooShort('go', null, undefined, true)).toBe(false)
+  })
+})
+
+describe('getStatus — steady-rain escalation names the amount, not a countdown', () => {
+  it('steady rain, no burst → BLEIB DRIN with the window sub (no false countdown)', () => {
+    const s = getStatus(0.1, [], null, makeT(), NOON,
+      { downpourSoonWideMin: null, windowWetMm: 1.6 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('window_wet_sub')
+  })
+  it('a burst still gets the countdown sub, not the amount sub', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { downpourSoonWideMin: 24, windowWetMm: 1.6 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('short_window_sub')
+  })
+})
+
+describe('the 0.1-0.2 dead band must not claim "no rain" (v2.20.0)', () => {
+  it('THE BUG: gauge reading exactly 0.1 said "no rain right now"', () => {
+    // Nonntal, 2026-08-17: ground 0.1, code 61. currentPrecip 0.1 is NOT < 0.1 so it
+    // never reached the dry branch, but IS < LIGHT_MIN so it fell into GO with
+    // s_dry_generic — the app telling a user standing in drizzle there is no rain.
+    const s = getStatus(0.1, [], null, makeT(), NOON, { windowWetMm: 0 })
+    expect(s.type).toBe('go')                  // state unchanged — anti-flicker, litigated
+    expect(s.sub).toBe('s_barely_drizzle')     // wording no longer lies
+  })
+  it('genuinely dry still gets the dry sub', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { windowWetMm: 0 })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_dry_generic')
+  })
+  it('0.19 still GO (a 0.1 tip must not flip GEMMA RAUS ↔ GO ANYWAY)', () => {
+    const s = getStatus(0.19, [], null, makeT(), NOON, { windowWetMm: 0 })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_barely_drizzle')
+  })
+  it('0.2 earns the light state as before', () => {
+    const s = getStatus(0.3, [], null, makeT(), NOON, { windowWetMm: 0 })
+    expect(s.type).toBe('light')
   })
 })
 

@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.20.0] — 2026-08-17 — Gemma Raus just got better: steady rain counts too 🌦
+
+*Same morning, same spot: the gauge was measuring rain on you and Gemma Raus said "no rain right now". That one was simply wrong, and it's fixed.*
+
+**What happened**
+
+Two things, both showing up in the same five minutes in Nonntal.
+
+The first: there's a narrow band of very light rain — around a tenth of a millimetre — where the app counted it as "not dry" for its own maths but still described it to you as *no rain right now*. Going out in it is genuinely fine, so the verdict was fair. Telling you it wasn't raining, while the gauge measured rain, was not.
+
+The second is bigger. Gemma Raus only ever asked one question about rain ahead: *how hard is the heaviest moment?* It never asked *how much is going to land on me while I'm out?* So a sharp burst held you back, but an hour of steady light rain sailed straight through — even though you end up just as wet. That morning the radar showed 1.6 mm falling steadily across the next 45 minutes, not one moment of it heavy enough to count, and the app said go.
+
+**What's new for you**
+
+- **Very light drizzle is now described as drizzle**, not as "no rain". The verdict is unchanged — it's still a green light, because it genuinely is fine — but the words match what's landing on you.
+- **Steady rain now counts.** If it's already raining on you and a real amount is going to keep falling through the next 45 minutes, that's BLEIB DRIN, even when no single moment is dramatic. Getting wet slowly is still getting wet.
+- **A dry stretch ahead of you is still yours.** This only applies when it's already raining. If you're dry now and rain arrives in forty minutes, you have forty minutes, and Gemma Raus still says so.
+
 ## [2.19.0] — 2026-08-17 — Gemma Raus just got better: "go out" now means you have time to 🚪
 
 *You stood in Nonntal in a light drizzle and Gemma Raus said GEMMA RAUS — while quietly noting, underneath, that heavy rain was 24 minutes away. Technically it was dry. It still wasn't a moment to head out.*

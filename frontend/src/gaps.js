@@ -1,4 +1,4 @@
-export const DRY_THRESHOLD = 0.1
+﻿export const DRY_THRESHOLD = 0.1
 const MIN_GAP_SLOTS = 2
 const LOOK_AHEAD = 3 * 3600
 
@@ -352,9 +352,39 @@ export function firstDownpourMin(nowcast, nowSec, windowMin = DOWNPOUR_WINDOW_MI
 // own kind of lie. Only GO / GO ANYWAY escalate — WAIT and STUCK already keep you in.
 export const GO_MIN_WINDOW = 45
 
-export function goWindowTooShort(type, downpourMin) {
+// v2.20.0 — peak intensity was the wrong (only) measure. Live follow-up the same
+// morning: the storm was re-forecast DOWN (12:15 went 3.43 → 0.40 between two
+// nowcast issues), so no single slot reached DOWNPOUR_MM and nothing escalated —
+// yet the radar showed 0.65 + 0.40 + 0.55 = 1.6 mm falling steadily across the next
+// 45 min at every city point, with the gauge already reading 0.1. Sustained light
+// rain soaks you exactly as well as one hard burst; the app simply couldn't see it,
+// because it only ever asked "how hard is the worst slot" and never "how much lands
+// while I'm out". This adds the second question.
+export const WINDOW_WET_MM = 1.0
+
+// Total precipitation expected across the window — the accumulation you'd actually
+// walk through. Trace noise (0.01 carpets) sums to nothing, so no extra guard needed.
+export function windowWetMm(nowcast, nowSec, windowMin = GO_MIN_WINDOW) {
+  if (!nowcast?.times?.length) return 0
+  const lim = nowSec + windowMin * 60
+  let sum = 0
+  for (let i = 0; i < nowcast.times.length; i++) {
+    const tt = nowcast.times[i]
+    if (tt >= nowSec && tt <= lim) sum += nowcast.precips?.[i] ?? 0
+  }
+  return sum
+}
+
+// `wetNow` gates the accumulation arm on purpose. A BURST escalates whichever way —
+// 14 mm/h in 24 min isn't worth starting anything for, dry or not. But steady rain is
+// only disqualifying when there is no dry window to use: if it's dry now and the rain
+// arrives at minute 40, you HAVE 40 minutes, and taking that away would be exactly the
+// crying-wolf failure this rule was gated against in v2.19.0. The reported case is
+// "already wet AND it keeps going" — gauge 0.1 with 1.6 mm still to fall.
+export function goWindowTooShort(type, downpourMin, wetMm = 0, wetNow = false) {
   if (type !== 'go' && type !== 'light') return false
-  return typeof downpourMin === 'number' && downpourMin <= GO_MIN_WINDOW
+  if (typeof downpourMin === 'number' && downpourMin <= GO_MIN_WINDOW) return true
+  return !!wetNow && (wetMm ?? 0) >= WINDOW_WET_MM
 }
 
 export function detectGaps(times, precips) {
@@ -690,11 +720,18 @@ export function getStatus(
   // state machine means the map dots and the popup notices get it too, so the map
   // can't contradict the headline where you stand — and it's unit-testable.
   const goOrLight = (isDry || gapNow) ? 'go' : (currentPrecip < LIGHT_MAX ? 'light' : null)
-  if (goOrLight && goWindowTooShort(goOrLight, trend.downpourSoonWideMin)) {
+  if (goOrLight && goWindowTooShort(goOrLight, trend.downpourSoonWideMin, trend.windowWetMm,
+                                    currentPrecip >= DRY_THRESHOLD)) {
+    // Two ways to be too wet to go out, two different sentences. A burst gets a
+    // countdown ("heavy rain in ~X min"); steady rain has no single moment to count
+    // down TO, so it names the amount instead — a countdown to "now" reads broken.
+    const burst = typeof trend.downpourSoonWideMin === 'number'
     return {
       type: 'stuck',
       headline: t('STUCK'),
-      sub: t('short_window_sub', { min: trend.downpourSoonWideMin }),
+      sub: burst
+        ? t('short_window_sub', { min: trend.downpourSoonWideMin })
+        : t('window_wet_sub', { min: GO_MIN_WINDOW }),
       weather: weatherNote,
       weatherEmoji,
       moto: false,
@@ -792,9 +829,17 @@ export function getStatus(
   }
 
   // Trace drizzle (< 0.2 mm) → still GO. A 0.1 mm tip must not flip GEMMA RAUS ↔
-  // GO ANYWAY; only a genuine ≥0.2 mm drizzle earns the light state.
+  // GO ANYWAY; only a genuine ≥0.2 mm drizzle earns the light state (litigated, kept).
   if (currentPrecip < LIGHT_MIN) {
-    const sub = t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
+    // v2.20.0: the STATE stays GO (anti-flicker, as above) but the SUB must not lie.
+    // DRY_THRESHOLD..LIGHT_MIN (0.1–0.2) is a real reading — the gauge is measuring
+    // rain — and this branch was answering it with `s_dry_generic`, literally "no
+    // rain right now". Reported from Nonntal with the gauge at exactly 0.1: "now it
+    // says no rain at my spot and gemma raus whyyyy". Dry-enough to go is a fair
+    // verdict; "no rain" is not a fair description of 0.1 mm falling on you.
+    const sub = currentPrecip >= DRY_THRESHOLD
+      ? t('s_barely_drizzle')
+      : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, weatherEmoji, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 

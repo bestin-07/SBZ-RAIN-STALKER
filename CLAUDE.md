@@ -1,4 +1,4 @@
-# CLAUDE.md — Gemma Raus (SBZ-RAIN-STALKER)
+﻿# CLAUDE.md — Gemma Raus (SBZ-RAIN-STALKER)
 
 ## Project Overview
 
@@ -190,11 +190,15 @@ Thresholds (`gaps.js`): dry `0.1` · gap `≥30 min` (2 slots) · `SOON_MIN 5` �
 ```
 currentPrecip === null → CHECKING (loading)
 
-USABLE-WINDOW RULE (v2.19) — checked BEFORE the GO/light branches:
-  would-be GO or GO ANYWAY, AND a downpour (≥1.5) lands within GO_MIN_WINDOW (45 min)
-    → BLEIB DRIN / STUCK, sub `short_window_sub` ("heavy rain in ~X min — too tight")
-  (WAIT/STUCK never escalate — they already keep you in. Gated on a DOWNPOUR, never
-   on any rain: "rain in 40 min" is true most Salzburg afternoons and would cry wolf.)
+USABLE-WINDOW RULE (v2.19) — checked BEFORE the GO/light branches. Two arms:
+  (a) BURST — a downpour (≥DOWNPOUR_MM) lands within GO_MIN_WINDOW (45 min).
+      Fires whether or not it's raining now → sub `short_window_sub` (countdown).
+  (b) STEADY (v2.20.0) — it is ALREADY wet (currentPrecip ≥ DRY_THRESHOLD) AND
+      ≥WINDOW_WET_MM (1.0) falls across the window → sub `window_wet_sub` (names
+      the window, NOT a countdown — steady rain has no moment to count down to).
+  Either arm → BLEIB DRIN / STUCK. WAIT/STUCK never escalate (already keeping you in).
+  `wetNow` gates arm (b) ONLY: dry now + rain at minute 40 means you really do have
+  40 minutes, and taking that away is the crying-wolf failure (a) is gated against.
 
 isDry (<0.1) OR gapNow → GO (GEMMA RAUS):
   downpourSoonMin != null → "heavy rain in ~X min" (s_downpour_soon)  ← TOP PRIORITY
@@ -284,7 +288,7 @@ Stability mechanisms (why "when" never jumps around — **reduce noise is the de
 The intended logic is encoded as an executable contract; **run both suites before and after touching gaps.js, the App.jsx blend, or the backend filter/push logic**:
 
 ```bash
-cd frontend && npm test            # 194 tests: detectGaps, getStatus (all 4 states,
+cd frontend && npm test            # 210 tests: detectGaps, getStatus (all 4 states,
                                    # thresholds, downpour warning, night/evening voice,
                                    # weather notes, notice voice), firstDownpourMin
 python backend/test_logic.py      # 23 tests: _filter_virga contract (heavy-pass!),
@@ -305,6 +309,10 @@ Rules:
 ### Logic change log
 Every change that alters the verdict or the data feeding it — newest first. Behavioural boundaries only; cosmetic/UI omitted.
 
+- **2026-08 · v2.20.0 · Peak intensity was the wrong (only) question + the 0.1–0.2 band stopped claiming "no rain" (`windowWetMm`, `WINDOW_WET_MM 1.0`, `s_barely_drizzle`).** Same-morning follow-up to v2.19.0, reported within the hour: "now it says no rain at my spot and gemma raus whyyyy". Deploy was confirmed live first (`sw.js` stamp 202608170951 vs a 09:46 push) — not a stale build, and not v2.19.0 misfiring. Live `/api/ambient` at 11:51: **ground 0.1, code 61**, nowcast **12:00=0.65, 12:15=0.40, 12:30=0.55** at Altstadt (0.27/0.48/0.88 Aigen, 0.62/0.43/0.64 Gneis). Between two nowcast issues the storm had been re-forecast DOWN — 12:15 went **3.43 → 0.40** — so no slot reached `DOWNPOUR_MM` and v2.19.0's burst arm correctly found nothing. **Two separate defects:**
+  **(1) The app only ever asked "how hard is the worst slot", never "how much lands while I'm out".** 0.65+0.40+0.55 = **1.6 mm across the next 45 min**, falling steadily at every city point, with the gauge already wet. Sustained light rain soaks you exactly as well as one burst. New pure `windowWetMm(nowcast, nowSec, windowMin)` sums the window; `goWindowTooShort` gains a second arm. **Gated on `wetNow`** (`currentPrecip >= DRY_THRESHOLD`) so it means "already wet and it keeps going" — dry now with rain at minute 40 keeps its genuine 40-minute window, which is precisely the crying-wolf failure the burst arm was gated against. Distinct sub (`window_wet_sub`) because steady rain has no single moment to count down TO; a countdown to "now" reads broken.
+  **(2) `DRY_THRESHOLD ≤ p < LIGHT_MIN` (0.1–0.2) answered a measuring gauge with "no rain right now".** `isDry` is `p < 0.1`, so 0.1 is not dry; but `p < LIGHT_MIN` returns early as GO with `s_dry_generic`. A user standing in drizzle with the gauge reading exactly 0.1 was told there was no rain. **The STATE is unchanged** — the v1.x "a 0.1 mm tip must not flip GEMMA RAUS ↔ GO ANYWAY" anti-flicker decision is litigated and kept — but the SUB now uses `s_barely_drizzle` ("faintest drizzle — as good as dry") whenever `p >= DRY_THRESHOLD`. Dry-enough-to-go is a fair verdict; "no rain" is not a fair description of 0.1 mm falling on you. Genuinely dry (p < 0.1) keeps `s_dry_generic`, pinned.
+  Tests: 194 → 210, including the live nowcast replayed at 1.6 mm and both boundary directions of the wetNow gate.
 - **2026-08 · v2.19.0 · The usable-window rule: a GO headline must promise time you can actually use (`goWindowTooShort`, `GO_MIN_WINDOW 45`) — STATE change, in `getStatus`.** Live incident (2026-08-17, ~11:36, Nonntal), cross-checked against `/api/ambient` before any code was touched: gauges **0.0**, radar trace **0.01**, code **61** — a genuine light drizzle — with **1.53 mm at 12:00 and 3.43 mm/15min (~14 mm/h) at 12:15**. `currentPrecip` 0.01 < `DRY_THRESHOLD` → `isDry` → the headline read **GEMMA RAUS** with "heavy rain in ~24 min" underneath, because `downpourSoonMin` was deliberately built as *additive wording that never touches the state*. Maintainer: "it doesn't seem like you can go out right at this moment … better to say bleib drin", then, correctly, "it is almost drizzling not heavy rain but soon its gonna rain."
   **The app already disagreed with itself.** At that same moment the motorbike glance (`motoSafe`, `MOTO_SAFE_MIN 30`, v2.11.0) was returning **false** — "don't take the bike, rain in 24 min" — while the headline said GEMMA RAUS. The judgment existed; it had simply never been applied to the verdict.
   **Rejected the proposed mechanism, with evidence.** The ask was to raise the dry-gap requirement to 45–60 min. `MIN_GAP_SLOTS` governs how long a gap *between rain* must be to count; here it is dry NOW, so `getStatus` takes the `isDry → GO` branch and never consults it. Raising it would have made WAIT stricter during rain and left this case **completely unchanged** — right instinct, wrong lever. Documented so it isn't re-proposed.
