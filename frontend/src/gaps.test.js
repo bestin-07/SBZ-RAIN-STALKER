@@ -11,6 +11,7 @@ import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot,
   aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
+  goWindowTooShort, GO_MIN_WINDOW,
   showGhost, GHOST_MIN_FACTOR, hoursLabel,
   modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
@@ -220,20 +221,33 @@ describe('getStatus — LIGHT (PASST SCHON / GO ANYWAY)', () => {
 })
 
 describe('getStatus — imminent-downpour warning (the Nonntal soaking fix)', () => {
-  it('dry now but downpour in 12 min → GO with TOP-PRIORITY heavy-rain sub', () => {
+  // v2.19 CHANGED THE INTENT HERE. These used to assert GO / GO ANYWAY with a
+  // heavy-rain SUB. In production that combination no longer occurs: a downpour
+  // inside DOWNPOUR_WINDOW_MIN (30) is necessarily inside GO_MIN_WINDOW (45) too,
+  // so downpourSoonWideMin is always set alongside downpourSoonMin and the
+  // usable-window rule escalates to BLEIB DRIN before these subs are reached.
+  // The old sub path is kept in gaps.js purely as a fallback for a trend object
+  // that lacks the wide value (a stale cached trend, the initial empty state), and
+  // is exercised as such below — never as the shape real data produces.
+
+  it('dry now but downpour in 12 min → BLEIB DRIN (was GO + heavy-rain sub)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { dryEndsOpen: true, downpourSoonMin: 12, downpourSoonWideMin: 12 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('short_window_sub')
+  })
+
+  it('drizzling now + downpour in 8 min → BLEIB DRIN (was GO ANYWAY + warning)', () => {
+    const s = getStatus(0.3, [], null, makeT(), NOON,
+      { downpourSoonMin: 8, downpourSoonWideMin: 8 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('short_window_sub')
+  })
+
+  it('FALLBACK ONLY (no wide value in trend): old GO + heavy-rain sub still works', () => {
     const s = getStatus(0, [], null, makeT(), NOON, { dryEndsOpen: true, downpourSoonMin: 12 })
     expect(s.type).toBe('go')
     expect(s.sub).toBe('s_downpour_soon')   // outranks "clear for hours"
-  })
-
-  it('drizzling now + downpour in 8 min → GO ANYWAY but warns, not the casual sub', () => {
-    const s = getStatus(0.3, [], null, makeT(), NOON, { downpourSoonMin: 8 })
-    expect(s.type).toBe('light')
-    expect(s.sub).toBe('s_downpour_soon')
-  })
-
-  it('notice (map popup voice) also carries the downpour warning', () => {
-    const s = getStatus(0, [], null, makeT(), NOON, { dryEndsOpen: true, downpourSoonMin: 12 })
     expect(s.notice.sub).toBe('n_downpour_soon')
   })
 })
@@ -687,6 +701,98 @@ describe('aromeSlotSeries — AROME hours projected onto the 15-min grid', () =>
   })
 })
 
+// ---- v2.19.0: a GO headline must promise a window you can actually use -----------
+
+describe('goWindowTooShort — the usable-window predicate', () => {
+  it('only GO and GO ANYWAY escalate — WAIT/STUCK already keep you in', () => {
+    expect(goWindowTooShort('go', 24)).toBe(true)
+    expect(goWindowTooShort('light', 24)).toBe(true)
+    expect(goWindowTooShort('wait', 24)).toBe(false)
+    expect(goWindowTooShort('stuck', 24)).toBe(false)
+    expect(goWindowTooShort('loading', 24)).toBe(false)
+  })
+  it('no downpour in the window → no escalation', () => {
+    expect(goWindowTooShort('go', null)).toBe(false)
+    expect(goWindowTooShort('go', undefined)).toBe(false)
+  })
+  it('the boundary is GO_MIN_WINDOW inclusive', () => {
+    expect(GO_MIN_WINDOW).toBe(45)
+    expect(goWindowTooShort('go', 45)).toBe(true)
+    expect(goWindowTooShort('go', 46)).toBe(false)
+  })
+})
+
+describe('firstDownpourMin — windowMin parameter (v2.19)', () => {
+  it('default window is unchanged at 30 min', () => {
+    const nc = { times: [NOON + 40 * 60], precips: [3.4] }
+    expect(firstDownpourMin(nc, NOON)).toBeNull()             // 40 min > 30
+    expect(firstDownpourMin(nc, NOON, DOWNPOUR_WINDOW_MIN)).toBeNull()
+  })
+  it('a wider window sees the same downpour', () => {
+    const nc = { times: [NOON + 40 * 60], precips: [3.4] }
+    expect(firstDownpourMin(nc, NOON, GO_MIN_WINDOW)).toBe(40)
+  })
+  it('still requires DOWNPOUR_MM — light rain never escalates', () => {
+    const nc = { times: [NOON + 20 * 60], precips: [0.9] }
+    expect(firstDownpourMin(nc, NOON, GO_MIN_WINDOW)).toBeNull()
+  })
+})
+
+describe('the Nonntal short-window incident (2026-08-17, 11:36)', () => {
+  // Live radar that morning at Altstadt: trace 0.01 now, then 1.53 at 12:00 and
+  // 3.43 (~14 mm/h) at 12:15. Gauges 0.0, code 61 — a genuine light drizzle with a
+  // downpour ~40 min out. The headline read GEMMA RAUS.
+  const nowcast = {
+    times:   [NOON, NOON + 15 * 60, NOON + 24 * 60, NOON + 39 * 60],
+    precips: [0.01, 0.0,            1.53,           3.43],
+  }
+
+  it('THE BUG: dry-now + downpour inside the window no longer says GEMMA RAUS', () => {
+    const wide = firstDownpourMin(nowcast, NOON, GO_MIN_WINDOW)
+    expect(wide).toBe(24)
+    const s = getStatus(0.01, [], null, makeT(), NOON,
+      { downpourSoonMin: 24, downpourSoonWideMin: wide })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('short_window_sub')
+    expect(s.moto).toBe(false)
+  })
+
+  it('the sub names the time so the countdown promise is kept', () => {
+    const t = makeT()
+    getStatus(0.01, [], null, t, NOON, { downpourSoonMin: 24, downpourSoonWideMin: 24 })
+    expect(t.varsFor('short_window_sub').min).toBe(24)
+  })
+
+  it('a light drizzle with the same downpour ahead also escalates (GO ANYWAY case)', () => {
+    const s = getStatus(0.3, [], null, makeT(), NOON,
+      { downpourSoonMin: 24, downpourSoonWideMin: 24 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('short_window_sub')
+  })
+
+  it('REGRESSION GUARD: a downpour beyond the window still reads GEMMA RAUS', () => {
+    // The dry window is the product — this must not swallow a genuinely usable
+    // afternoon just because rain exists somewhere on the timeline.
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { downpourSoonWideMin: null, nextRainAt: NOON + 3 * 3600 })
+    expect(s.type).toBe('go')
+  })
+
+  it('REGRESSION GUARD: plain light rain ahead (no downpour) still reads GEMMA RAUS', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { downpourSoonWideMin: null, nextRainAt: NOON + 30 * 60, rainProb: 80 })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_rain_soon')
+  })
+
+  it('an already-raining WAIT verdict is untouched by the new rule', () => {
+    const gaps = [{ startsAt: NOON + 60 * 60, durationMinutes: 60, opensEnded: false }]
+    const s = getStatus(2.0, gaps, null, makeT(), NOON,
+      { downpourSoonMin: 10, downpourSoonWideMin: 10 })
+    expect(s.type).toBe('wait')
+  })
+})
+
 describe('modelsAgree — the disagreement max() used to hide', () => {
   it('THE LIVE CASE (2026-08-06, 21:15): ICON-EU 2.2 vs AROME 0.20 → disagree', () => {
     // ICON-EU replaying the storm ~2 h late, against AROME and radar both saying it
@@ -837,7 +943,7 @@ describe('RainViewer approach — the "blue on the map while the app said dry" g
     expect(s.sub).toBe('s_rain_soon')
   })
 
-  it('downpour warning still outranks everything', () => {
+  it('downpour warning still outranks everything (fallback sub path, no wide value)', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
       { dryEndsOpen: true, rvApproachMin: 20, downpourSoonMin: 12 })
     expect(s.sub).toBe('s_downpour_soon')
@@ -1009,7 +1115,7 @@ describe('getStatus — trace echo acknowledgment (wording only, GEMMA RAUS stay
     expect(s.sub).toBe('s_model_rain_far')
   })
 
-  it('downpour warning still outranks trace echo', () => {
+  it('downpour warning still outranks trace echo (fallback sub path, no wide value)', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
       { dryEndsOpen: true, traceEcho: true, downpourSoonMin: 12 })
     expect(s.sub).toBe('s_downpour_soon')

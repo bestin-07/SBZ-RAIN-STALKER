@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.19.0] — 2026-08-17 — Gemma Raus just got better: "go out" now means you have time to 🚪
+
+*You stood in Nonntal in a light drizzle and Gemma Raus said GEMMA RAUS — while quietly noting, underneath, that heavy rain was 24 minutes away. Technically it was dry. It still wasn't a moment to head out.*
+
+**What happened**
+
+Gemma Raus was answering the wrong question. It was checking "is it dry right now?" — and it was, barely — when the question you're actually asking is "can I go out?" Those come apart badly when rain is close. It knew about the downpour; the radar had it clearly, and it wrote it in the small print. But the big word on the screen still said go.
+
+Awkwardly, the app was already disagreeing with itself. The motorbike line, which asks for half an hour of dry weather before it says a ride is fine, was saying **no** at that exact moment. The right instinct was already in there, applied to bikes and not to the headline.
+
+**What's new for you**
+
+- **A "go out" verdict now means the window is actually usable.** If heavy rain is landing within 45 minutes, the headline says BLEIB DRIN and tells you how long you've got — instead of inviting you out and whispering a warning underneath.
+- **This only triggers for real downpours, not for any rain at all.** Rain forty minutes away is true on half the afternoons here, and a warning that fires constantly is one you stop reading. It takes properly heavy rain to hold you back.
+- **A genuinely long dry stretch is still a green light.** If the rain is more than 45 minutes out, or it's just light rain coming, nothing changes — you'll get GEMMA RAUS exactly as before. The dry window is still the whole point.
+- **The map agrees with the headline.** The rule lives in the shared decision logic, so tapping a neighbourhood tells you the same thing as the banner.
+
 ## [2.18.1] — 2026-08-07 — Gemma Raus just got better: one thunderstorm, one message ⛈️
 
 *Since yesterday you'd have seen the same thunderstorm announced twice — once by us, once by an official warning you had to close by hand.*

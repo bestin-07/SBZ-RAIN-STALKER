@@ -323,14 +323,38 @@ export function tracePhantom(code, rv) {
 // DOWNPOUR_WINDOW_MIN, or null. Shared by loadData + computeStatusAt so your live
 // verdict and the town dots warn identically. Runs on the (virga-filtered) nowcast,
 // so it fires only on genuine heavy rain — never on light echo the model rejects.
-export function firstDownpourMin(nowcast, nowSec) {
+// windowMin is a parameter since v2.19.0 — the SUB-line warning keeps its 30-min
+// window (unchanged wording behaviour), while the headline escalation below looks
+// GO_MIN_WINDOW ahead. Same detector, two horizons, one place to get it right.
+export function firstDownpourMin(nowcast, nowSec, windowMin = DOWNPOUR_WINDOW_MIN) {
   if (!nowcast) return null
-  const lim = nowSec + DOWNPOUR_WINDOW_MIN * 60
+  const lim = nowSec + windowMin * 60
   for (let i = 0; i < nowcast.times.length; i++) {
     const tt = nowcast.times[i], p = nowcast.precips[i] ?? 0
     if (tt >= nowSec && tt <= lim && p >= DOWNPOUR_MM) return Math.max(0, Math.round((tt - nowSec) / 60))
   }
   return null
+}
+
+// ---- The usable-window rule (v2.19.0) --------------------------------------------
+// "GEMMA RAUS" is a promise that you have time to actually GO somewhere, not merely
+// an observation that this instant is dry. Live incident (2026-08-17, ~11:36, Nonntal):
+// gauges 0.0, radar trace 0.01, code 61 — genuinely a light drizzle — with 3.43 mm/15min
+// (~14 mm/h) arriving at 12:15. The headline read GEMMA RAUS with "heavy rain in ~24 min"
+// underneath, because downpourSoonMin was built as additive wording that never touches
+// the state. The app already applied exactly this judgment elsewhere and disagreed with
+// its own headline: the motorbike glance (`motoSafe`, MOTO_SAFE_MIN 30) was returning
+// FALSE at that same moment. This lifts that judgment to the headline, with a longer
+// window because a walk commits you for longer than a ride.
+//
+// Gated on a real DOWNPOUR (>= DOWNPOUR_MM), never on any rain: "rain in 40 min" is true
+// on half of all Salzburg afternoons and escalating on it would cry wolf, which is its
+// own kind of lie. Only GO / GO ANYWAY escalate — WAIT and STUCK already keep you in.
+export const GO_MIN_WINDOW = 45
+
+export function goWindowTooShort(type, downpourMin) {
+  if (type !== 'go' && type !== 'light') return false
+  return typeof downpourMin === 'number' && downpourMin <= GO_MIN_WINDOW
 }
 
 export function detectGaps(times, precips) {
@@ -659,6 +683,24 @@ export function getStatus(
   const weatherOpts = { night, evening, raining: !(isDry || gapNow), rainSoon }
   const weatherNote = getWeatherNote(weather, t, weatherOpts)
   const weatherEmoji = getWeatherEmoji(weather, weatherOpts)
+
+  // ---- Usable-window rule (v2.19.0) — see goWindowTooShort above ----
+  // Lives HERE rather than in App.jsx's display layer (where redWarning/stormImminent
+  // sit) because this IS a rain decision, not an external alert: putting it in the
+  // state machine means the map dots and the popup notices get it too, so the map
+  // can't contradict the headline where you stand — and it's unit-testable.
+  const goOrLight = (isDry || gapNow) ? 'go' : (currentPrecip < LIGHT_MAX ? 'light' : null)
+  if (goOrLight && goWindowTooShort(goOrLight, trend.downpourSoonWideMin)) {
+    return {
+      type: 'stuck',
+      headline: t('STUCK'),
+      sub: t('short_window_sub', { min: trend.downpourSoonWideMin }),
+      weather: weatherNote,
+      weatherEmoji,
+      moto: false,
+      notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
+    }
+  }
 
   // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {

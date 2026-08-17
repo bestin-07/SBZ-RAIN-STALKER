@@ -183,10 +183,18 @@ const downpourSoonMin = firstDownpourMin(nowcast, nowSec)  // ≥1.5mm within 30
 ### Status Logic (`getStatus`) — 4 states + live narrative
 `getStatus(currentPrecip, gaps, weather, t, nowSec, trend)`. `currentPrecip` is `displayPrecip` (= `effectivePrecip`; the old hysteresis hold was removed). `nowSec` is a per-minute ticker (`tickNow`). `trend` carries `{ nextRainAt, dryEndsOpen, rvRainActive, rainProb, recentRain, maxSoon, downpourSoonMin }`. Every returned status also carries a `notice` `{head, sub}` — the passive third-person wording for the MAP POPUPS (`n_*` strings), separate from the first-person brand headline/sub (used only on the big banner).
 
-Thresholds (`gaps.js`): dry `0.1` · gap `≥30 min` (2 slots) · `SOON_MIN 5` · `RAIN_SHOW_MIN 10` · `ALMOST_MIN 10` · `LIGHT_MIN 0.2` · `LIGHT_MAX 0.5` · `RAIN_PROB_MIN 50` · `RAIN_SOON_NOTE 90`. Downpour-warning thresholds live in `App.jsx`: `DOWNPOUR_MM 1.5` within `DOWNPOUR_WINDOW_MIN 30` (`firstDownpourMin`).
+Thresholds (`gaps.js`): dry `0.1` · gap `≥30 min` (2 slots) · `SOON_MIN 5` · `RAIN_SHOW_MIN 10` · `ALMOST_MIN 10` · `LIGHT_MIN 0.2` · `LIGHT_MAX 0.5` · `RAIN_PROB_MIN 50` · `RAIN_SOON_NOTE 90`. Downpour-warning thresholds live in `App.jsx`: `DOWNPOUR_MM 1.5` within `DOWNPOUR_WINDOW_MIN 30` (`firstDownpourMin`). `GO_MIN_WINDOW 45` (gaps.js, v2.19) is the usable-window horizon — the SAME detector at a wider window (`firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW)` → `trend.downpourSoonWideMin`).
+
+**Note on `s_downpour_soon`:** since v2.19 that sub is effectively unreachable in production — a downpour inside 30 min is necessarily inside 45, so the usable-window rule escalates to STUCK first. It is retained in `getStatus` as a fallback for a trend object without `downpourSoonWideMin` (stale cached trend / initial empty state) and is tested as such. Do not "clean it up" without restoring an equivalent guard.
 
 ```
 currentPrecip === null → CHECKING (loading)
+
+USABLE-WINDOW RULE (v2.19) — checked BEFORE the GO/light branches:
+  would-be GO or GO ANYWAY, AND a downpour (≥1.5) lands within GO_MIN_WINDOW (45 min)
+    → BLEIB DRIN / STUCK, sub `short_window_sub` ("heavy rain in ~X min — too tight")
+  (WAIT/STUCK never escalate — they already keep you in. Gated on a DOWNPOUR, never
+   on any rain: "rain in 40 min" is true most Salzburg afternoons and would cry wolf.)
 
 isDry (<0.1) OR gapNow → GO (GEMMA RAUS):
   downpourSoonMin != null → "heavy rain in ~X min" (s_downpour_soon)  ← TOP PRIORITY
@@ -235,7 +243,8 @@ The full precedence chain is a **strict one-way ladder**; each override has exac
 | **gapNow** | "gap already started" beats a still-wet gauge → GO (gauge RR lags ~10 min after rain stops) | blocked when RainViewer sees rain overhead or a drizzle was surfaced | ⚠️ SOFT SPOT ① |
 | **Virga cap** (backend) | low-prob (<50%) light echo capped to 0.4 | **echo ≥0.8 ALWAYS passes** (v2.17.0, was 1.5) — the lagging model can never veto real rain (v1.1.4, test-locked) | SOUND (was SOFT SPOT ②) |
 | **Model-now cap** (`modelNowValue`) | a reporting gauge owns the NOW magnitude; the hour-lagged model current is capped at 0.4 | **released when the model reads ≥1.5 AND radar/RV independently confirm rain is falling** (v2.17.0) — on the trailing edge, which is what the cap was built for, radar is already dry, so the guard still holds | SOUND (was the v2.17.0 incident) |
-| **Downpour warning** | imminent heavy radar beats every calm sub in GO/GO ANYWAY | runs on the FILTERED timeline → virga can't false-alarm it | SOUND |
+| **Usable window** (v2.19) | a downpour inside `GO_MIN_WINDOW` (45 min) beats a GO/GO-ANYWAY **state**, not just its sub → BLEIB DRIN | only GO/light escalate; requires a real downpour (≥`DOWNPOUR_MM`), never plain rain, so it can't cry wolf; runs on the FILTERED timeline like the warning it supersedes | SOUND |
+| **Downpour warning** | imminent heavy radar beats every calm sub in GO/GO ANYWAY | runs on the FILTERED timeline → virga can't false-alarm it | SUPERSEDED in practice by the usable-window rule (kept as fallback) |
 | **Probability softener** | model prob <50% softens countdown WORDING ("possible later") | wording only — never hides rain from ribbon/timeline | SOUND |
 | **Story / recentRain** | reframes wording ("rain back" vs "rain approaching") | wording only — state forcing was removed (caused dot/location divergence) | SOUND |
 | **Current-slot zeroing** | dry gauge zeroes the nowcast's CURRENT slot pre-gap-detection | only that slot — future rain untouched, onset still reported | SOUND |
@@ -256,7 +265,8 @@ Soft spot ① remains a documented trade-off to watch for. If a user report matc
 |---|---|
 | dry, rain coming (<90 min) | "rain in ~X min" (`s_rain_soon`) |
 | dry, rain coming (≥90 min) | "rain in about {1½/2/2½/3} h" (`s_rain_far` / low-conf `s_rain_far_maybe` — softened wording, time kept) |
-| downpour ≤30 min | "heavy rain in ~X min" (`s_downpour_soon`) — top priority |
+| downpour ≤45 min, dry/drizzling now | **BLEIB DRIN** + "heavy rain in ~X min — too tight to head out" (`short_window_sub`, v2.19) |
+| downpour ≤30 min (fallback, no wide value) | "heavy rain in ~X min" (`s_downpour_soon`) |
 | drizzling, clearing | "clearing in ~X min" (`s_light_clearing`) |
 | raining, break coming | "WAIT X MIN · break in X, lasts Y" |
 | raining, open-ended clearing | "rain ending in X" (`s_clearing`) |
@@ -274,7 +284,7 @@ Stability mechanisms (why "when" never jumps around — **reduce noise is the de
 The intended logic is encoded as an executable contract; **run both suites before and after touching gaps.js, the App.jsx blend, or the backend filter/push logic**:
 
 ```bash
-cd frontend && npm test            # 182 tests: detectGaps, getStatus (all 4 states,
+cd frontend && npm test            # 194 tests: detectGaps, getStatus (all 4 states,
                                    # thresholds, downpour warning, night/evening voice,
                                    # weather notes, notice voice), firstDownpourMin
 python backend/test_logic.py      # 23 tests: _filter_virga contract (heavy-pass!),
@@ -295,6 +305,13 @@ Rules:
 ### Logic change log
 Every change that alters the verdict or the data feeding it — newest first. Behavioural boundaries only; cosmetic/UI omitted.
 
+- **2026-08 · v2.19.0 · The usable-window rule: a GO headline must promise time you can actually use (`goWindowTooShort`, `GO_MIN_WINDOW 45`) — STATE change, in `getStatus`.** Live incident (2026-08-17, ~11:36, Nonntal), cross-checked against `/api/ambient` before any code was touched: gauges **0.0**, radar trace **0.01**, code **61** — a genuine light drizzle — with **1.53 mm at 12:00 and 3.43 mm/15min (~14 mm/h) at 12:15**. `currentPrecip` 0.01 < `DRY_THRESHOLD` → `isDry` → the headline read **GEMMA RAUS** with "heavy rain in ~24 min" underneath, because `downpourSoonMin` was deliberately built as *additive wording that never touches the state*. Maintainer: "it doesn't seem like you can go out right at this moment … better to say bleib drin", then, correctly, "it is almost drizzling not heavy rain but soon its gonna rain."
+  **The app already disagreed with itself.** At that same moment the motorbike glance (`motoSafe`, `MOTO_SAFE_MIN 30`, v2.11.0) was returning **false** — "don't take the bike, rain in 24 min" — while the headline said GEMMA RAUS. The judgment existed; it had simply never been applied to the verdict.
+  **Rejected the proposed mechanism, with evidence.** The ask was to raise the dry-gap requirement to 45–60 min. `MIN_GAP_SLOTS` governs how long a gap *between rain* must be to count; here it is dry NOW, so `getStatus` takes the `isDry → GO` branch and never consults it. Raising it would have made WAIT stricter during rain and left this case **completely unchanged** — right instinct, wrong lever. Documented so it isn't re-proposed.
+  **Rule:** `goWindowTooShort(type, downpourMin)` → true only for `type` `go`/`light` when a downpour (≥`DOWNPOUR_MM` 1.5) lands within `GO_MIN_WINDOW` (45). `firstDownpourMin` gained a `windowMin` parameter (defaulting to `DOWNPOUR_WINDOW_MIN`, so the existing 30-min sub-line wording is byte-identical); App.jsx calls it a second time at 45 → `trend.downpourSoonWideMin`, at BOTH call sites (`loadData` + `computeStatusAt`).
+  **Why in `getStatus` and not App.jsx's display layer** (where `redWarning` v2.14.0 and `stormImminent` v2.16.0 live): those are external alerts; this is a *rain* decision. In the state machine it also reaches the map dots and popup notices, so the map cannot contradict the headline where you stand (the countdown promise's last row), and it is unit-testable.
+  **Why it can't cry wolf:** gated on a real downpour, never on plain rain — "rain in 40 min" is true on half of all Salzburg afternoons. Regression-pinned both ways: a downpour beyond 45 min still reads GEMMA RAUS, and plain light rain 30 min out still reads GEMMA RAUS with `s_rain_soon`. WAIT/STUCK are untouched. The countdown promise is kept — `short_window_sub` names the minutes.
+  **Known consequence, deliberate:** `s_downpour_soon` under a GO/GO-ANYWAY headline is now unreachable with real data (a downpour inside 30 min is necessarily inside 45), so that combination — the thing this release exists to kill — can no longer be produced. The sub is retained as a fallback for a trend lacking the wide value and is tested as such; the four contract tests that asserted the old GO+sub shape were updated, not deleted, with the intent change spelled out inline. Tests: 182 → 194.
 - **2026-08 · v2.18.1 · No duplicate thunderstorm message: ZAMG Gewitter banner suppressed at the RENDER site (`WARN_TYPE_THUNDERSTORM`) — banner list only, source/push/override untouched.** Maintainer call: "since we already give thunderstorm warning (Thunderstorm in the region — conditions can change fast), we can skip the pop up closable warning from api … rest of the warnings are ok." Correct: `regionalThunder` (`areaPrecip.some(a => a.code >= 80)`) is always-on and undismissable, so the official Gewitter banner was a second message for one hazard. Filtered in the banner `.map()` chain only — **`warnings` still contains type 5**, so `redWarning` (RED → headline BLEIB DRIN, v2.14.0) and `_push_severe_warning` both still see it. That distinction is the whole point: v2.17.0's predecessor bug dropped type 5 at the SOURCE, which silently killed the override and the push as collateral; the backend AST pin (`test_thunderstorm_warnings_not_dropped`) stays green because the source is untouched. **Also corrects the v2.17.0 log entry's claim that "nothing covered it" during the 2026-08-06 storm** — the CAPE banner (≥1500 J/kg vs actual 200–260) indeed did not fire, but `regionalThunder` keys on weather code and *was* firing at codes 96/99. The hazard was on screen; what was missing was headline escalation. No verdict, threshold or wording change; other warning types unaffected.
 - **2026-08 · v2.18.0 · Ribbon confidence: say how sure the forecast lane is (`modelsAgree`, `probAt`, `radarSpanLabel`, `showGhost`) — DISPLAY LAYER ONLY, no verdict/state/threshold change.** User report: "I need consistent data around the 3 h mark, also the model has to be more confident." Investigated against the live 19:21 CEST snapshot during the 2026-08-06 storm; four distinct causes, all at the radar/model handoff:
   **(1) The band promised 3 h it never had.** `zone_radar` was the hardcoded string "RADAR · NEXT 3 H". Live, `radarUntil` was 22:00 at now-19:21 = **2 h 39**: the nowcast's 12 slots span 2 h 45 from their first slot, then age up to 15 min before the next issue, so the zone really breathes between ~2 h 30 and ~2 h 45. The boundary looked like it was drifting when it was the LABEL that was wrong. Now computed: `t('zone_radar', {h: radarSpanLabel(radarUntil, now)})`, reusing the countdowns' own ½-hour rounding (`hoursLabel`, now exported). Non-finite input falls back to "3" rather than rendering "Infinity H".
