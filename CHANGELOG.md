@@ -12,6 +12,26 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.23.0] — 2026-08-18 — Gemma Raus just got better: the rain ribbon has a shape again 📊
+
+*The bar chart had turned into a picket fence. Every bar roughly the same height, forty-nine of them, and the one thing you actually look for — the gap — drawn as a bump rather than a dip.*
+
+**What happened**
+
+The bars were scaled from nothing up to 5 mm in a straight line. But a quarter-hour of Salzburg rain is almost always somewhere between 0.1 and 1 mm, so all of it got squashed into the bottom sixth of the chart while the top three quarters sat empty, reserved for downpours that hardly ever come. A drizzle and five times as much rain looked five pixels apart.
+
+And the faintest trace of echo — the barely-there stuff below the reporting line — was drawn at a fixed height that happened to be *taller* than genuine light rain. So during this morning's rain, the 45-minute lull in the middle of it, the bit you'd have gone out in, was the tallest thing on that stretch of the ribbon. Exactly backwards.
+
+**What's new for you**
+
+- **Bars are scaled by how heavy the rain actually is.** Light, moderate, heavy and storm each get a proper quarter of the chart's height, matching the colours they already had. Now a heavier hour genuinely looks heavier, and a gap looks like a gap.
+- **Wisps of drizzle draw as a low hairline**, always shorter than real rain. Still there, still visible — no longer shouting over the thing next to it.
+- **One bar per half hour instead of every quarter hour.** Gemma Raus never promises a break shorter than 30 minutes anyway, so the finer bars were showing detail the answer can't use. The ribbon is now half as long and far easier to take in at a glance.
+- **The clock labels moved below the bars.** They used to be printed *behind* them, so a tall bar hid its own time. They also can't run off the end or collide with each other now.
+- **The "now" line sits where now actually is** within the first bar, and the zone captions can't spill past the boundary they describe.
+
+*No change to any verdict, countdown or threshold — this is purely what the chart looks like.*
+
 ## [2.22.0] — 2026-08-18 — Gemma Raus just got better: it stops changing its mind 🤞
 
 *"Bleib drin, no break for three hours" → "passt schon, go anyway" → "bleib drin" again, all within a few minutes. Nothing outside had changed. That's not a forecast, that's a coin toss, and it's the fastest way to lose your trust.*

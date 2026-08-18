@@ -3,6 +3,14 @@ import { showGhost, radarSpanLabel } from '../gaps'
 
 const SLOT_W = 46
 const SLOT_H = 52
+// v2.23: dedicated strip for the time labels UNDER the bars. They used to be drawn
+// inside the bar area at SLOT_H-6, so every bar taller than ~10px covered its own
+// timestamp — and with the rescaled bars below, essentially every wet bar does.
+const LABEL_H = 15
+// One bar per 30 minutes (was 15). The app never promises a break shorter than
+// 30 min (MIN_GAP_SLOTS = 2), so 15-min bars drew a resolution the verdict cannot
+// act on — and 49 of them across 12 h read as noise rather than as a shape.
+const BUCKET_S = 30 * 60
 // v2.6 zone band: thin labelled strip above the bars naming which instrument each
 // zone comes from — "radar · next 3h" (observed look-ahead) vs "forecast · model"
 // (estimate). The solid→dashed bar switch alone read as confusing; the band makes
@@ -47,10 +55,57 @@ function dryLabel(t, hasData, unstable, modelRainMin) {
   return t(unstable ? 'ribbon_dry_unstable' : 'ribbon_dry')
 }
 
+// Bar heights (v2.23). The old scale was linear over 0–5 mm, but a Salzburg 15-min
+// slot is almost always between 0.1 and 1.0 mm — so 90% of all real rain was squeezed
+// into the bottom sixth of the chart (0.14 mm drew 5 px, 0.70 mm drew 10 px) while the
+// top three quarters sat empty waiting for intensities that basically never arrive.
+// Every bar looked the same height, which is why the ribbon read as noise.
+//
+// Worse, the trace stub was a hardcoded 10 px while a real bar was computed — so on
+// 2026-08-18 the 0.02/0.04/0.07 mm LULL drew TALLER than the 0.14 mm of rain beside
+// it. The dry window, the one thing this app exists to find, was rendered as the
+// tallest thing in the middle of the ribbon.
+//
+// Now the height uses the SAME class stops as precipToColor (0.1 / 0.5 / 2 / 5), each
+// class getting an equal quarter of the range, so a band boundary is a colour change
+// AND a height step. Strictly ordered: dry < trace < any real reading.
+const DRY_H      = 4     // the gold "it's dry" baseline
+const TRACE_H    = 6     // sub-threshold echo: visible, never taller than real rain
+const MIN_REAL_H = 10    // any reporting reading is legibly "this is rain"
+const MAX_BAR_H  = SLOT_H - 6
+const HEIGHT_STOPS = [[DRY_THRESHOLD, 0], [0.5, 0.25], [2, 0.5], [5, 0.75], [15, 1]]
+
 function precipToHeight(p) {
-  if (p < DRY_THRESHOLD) return 4
-  const pct = Math.min(p / 5, 1)
-  return Math.round(4 + pct * (SLOT_H - 10))
+  if (p < DRY_THRESHOLD) return p > 0 ? TRACE_H : DRY_H
+  let f = 1
+  for (let i = 1; i < HEIGHT_STOPS.length; i++) {
+    const [hi, fHi] = HEIGHT_STOPS[i]
+    if (p > hi) continue
+    const [lo, fLo] = HEIGHT_STOPS[i - 1]
+    f = fLo + (fHi - fLo) * ((p - lo) / (hi - lo))
+    break
+  }
+  return Math.round(MIN_REAL_H + Math.min(1, f) * (MAX_BAR_H - MIN_REAL_H))
+}
+
+// Fold the 15-min series into 30-min bars. The bar takes the MAX of its two slots,
+// never the sum: the colour/height classes are calibrated per 15-min slot, and a max
+// can only ever over-state the intensity — the forgiven direction (v2.7's rationale
+// for the model union). agree/prob travel WITH the slot that won, so the confidence
+// shown always belongs to the reading being drawn rather than to its neighbour.
+function bucket30(slots) {
+  const out = []
+  let cur = null
+  for (const s of slots) {
+    const start = Math.floor(s.t / BUCKET_S) * BUCKET_S
+    if (!cur || cur.t !== start) {
+      cur = { t: start, end: start + BUCKET_S, p: s.p, agree: s.agree, prob: s.prob }
+      out.push(cur)
+    } else if (s.p > cur.p) {
+      cur.p = s.p; cur.agree = s.agree; cur.prob = s.prob
+    }
+  }
+  return out
 }
 
 export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
@@ -65,14 +120,14 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
 
     // agree/prob are carried on the slot itself — `i` here is the index into the
     // forecast arrays, which no longer matches the slot index after filter+slice.
-    const slots = times
+    const slots = bucket30(times
       .map((t, i) => ({
         t, p: precips[i] ?? 0,
         agree: forecast.modelAgree?.[i],
         prob:  forecast.modelProb?.[i],
       }))
       .filter(s => s.t >= now - 300)
-      .slice(0, MAX_SLOTS)
+      .slice(0, MAX_SLOTS))
 
     if (!slots.length) return
 
@@ -84,7 +139,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // renders as a silently blank canvas on iOS.
     const cssW = slots.length * SLOT_W
     const dpr  = Math.max(1, Math.min(window.devicePixelRatio || 1, 8192 / cssW))
-    const cssH = BAND_H + SLOT_H
+    const cssH = BAND_H + SLOT_H + LABEL_H
     canvas.width  = Math.round(cssW * dpr)
     canvas.height = Math.round(cssH * dpr)
     canvas.style.width  = cssW + 'px'
@@ -105,11 +160,15 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // (isNowcast) — otherwise the bars themselves ARE the model already.
     const mTimes = forecast.isNowcast !== false ? (forecast.modelTimes ?? []) : []
     const mPrecips = forecast.modelPrecips ?? []
-    const modelAt = (tt) => {
-      let best = null, bd = 8 * 60
+    const modelAt = (t0, t1) => {
+      // A 30-min bar spans two model slots, so the ghost compares against the model's
+      // PEAK across the bar. Taking one instant would let a model spike in the second
+      // half go undrawn — the exact silent-drop v2.18's showGhost fix set out to end.
+      let best = null
       for (let i = 0; i < mTimes.length; i++) {
-        const d = Math.abs(mTimes[i] - tt)
-        if (d < bd) { bd = d; best = mPrecips[i] ?? 0 }
+        if (mTimes[i] < t0 - 8 * 60 || mTimes[i] > t1) continue
+        const v = mPrecips[i] ?? 0
+        if (best === null || v > best) best = v
       }
       return best
     }
@@ -121,8 +180,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // band must say "forecast", never claim a radar zone that doesn't exist.
     const modelOnly  = forecast.isNowcast === false
     const radarUntil = modelOnly ? -Infinity : (forecast.radarUntil ?? Infinity)
-    const splitIdx   = slots.findIndex(s => s.t > radarUntil)
+    // A 30-min bar that only PARTLY overlaps the radar horizon is not a radar bar —
+    // drawing it solid would claim a precision we don't have for half of it, so the
+    // split is taken on the bar's END. Errs toward "estimate", the honest direction.
+    const splitIdx   = slots.findIndex(s => s.end > radarUntil)
     const boundaryX  = splitIdx <= 0 ? null : splitIdx * SLOT_W
+    // …and the band's LABEL is derived from the same boundary, so "NEXT 2½ H" always
+    // names the zone actually drawn. v2.18 fixed this label drifting from the data
+    // once already; bucketing would have reintroduced it up to half an hour out.
+    const lastRadar  = splitIdx === -1 ? slots[slots.length - 1]
+                     : splitIdx > 0 ? slots[splitIdx - 1] : null
+    const radarSpanTs = Number.isFinite(radarUntil) && lastRadar ? lastRadar.end : radarUntil
 
     // Zone band (v2.6): radar zone tinted in the dry-gold family, forecast zone in
     // neutral grey — matching the "dimmer = estimate" language of the bars below.
@@ -130,6 +198,19 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const bandFcst  = theme === 'light' ? 'rgba(87,84,77,0.14)'    : 'rgba(156,163,175,0.12)'
     const radarEnd  = splitIdx === -1 ? cssW : splitIdx * SLOT_W
     ctx.font = 'bold 9px "JetBrains Mono", monospace'
+    // Both band captions are clipped to their own band and skipped outright when the
+    // band is too narrow to hold them — a zone label bleeding across the boundary (or
+    // off the end of the canvas) mislabels the very thing it exists to name.
+    const bandLabel = (text, x0, x1, pad) => {
+      const room = x1 - x0
+      if (!text || room < 24) return
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(x0, 0, room, BAND_H - 2)
+      ctx.clip()
+      if (ctx.measureText(text).width + pad <= room) ctx.fillText(text, x0 + pad, BAND_H - 4)
+      ctx.restore()
+    }
     if (!modelOnly && radarEnd > 0) {
       ctx.fillStyle = bandRadar
       ctx.fillRect(0, 0, radarEnd, BAND_H - 2)
@@ -138,20 +219,20 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       // slots cover 2h45 from their first slot and then age up to 15 min before the
       // next issue, so the radar zone really reaches ~2½ h — saying "3 H" made the
       // boundary look like it was drifting when it was the label that was wrong.
-      ctx.fillText(t ? t('zone_radar', { h: radarSpanLabel(radarUntil, now) }) : 'radar', 6, BAND_H - 4)
+      bandLabel(t ? t('zone_radar', { h: radarSpanLabel(radarSpanTs, now) }) : 'radar', 0, radarEnd, 6)
     }
     if (radarEnd < cssW) {
       ctx.fillStyle = bandFcst
       ctx.fillRect(radarEnd, 0, cssW - radarEnd, BAND_H - 2)
       ctx.fillStyle = labelCol
-      ctx.fillText(t ? t('zone_forecast') : 'forecast · model', radarEnd + (modelOnly ? 6 : 4), BAND_H - 4)
+      bandLabel(t ? t('zone_forecast') : 'forecast · model', radarEnd, cssW, modelOnly ? 6 : 4)
     }
     // Bars keep their own SLOT_H coordinate system — shift the origin below the band.
     ctx.translate(0, BAND_H)
 
     slots.forEach((slot, i) => {
       const x = i * SLOT_W
-      const beyondRadar = slot.t > radarUntil
+      const beyondRadar = slot.end > radarUntil
 
       ctx.fillStyle = beyondRadar
         ? (theme === 'light' ? '#DEDBD3' : '#0B0D11')   // subtly dimmer — "estimate" zone
@@ -201,7 +282,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         // v2.18: was gated on radar being bone-dry (< 0.1), so a 0.14 radar reading
         // hid a 2.2 mm model expectation entirely while 0.09 would have drawn it full
         // height — a 0.05 mm cliff, sitting right at the end of the radar zone.
-        const mp = modelAt(slot.t)
+        const mp = modelAt(slot.t, slot.end)
         if (showGhost(slot.p, mp)) {
           const gh = precipToHeight(mp)
           ctx.save()
@@ -230,18 +311,25 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         ctx.save()
         ctx.globalAlpha = beyondRadar ? 0.25 : (forecast.tracePhantom ? 0.12 : 0.45)
         ctx.fillStyle = pal.light
-        ctx.fillRect(x, SLOT_H - 10, SLOT_W - 1, 10)
+        ctx.fillRect(x, SLOT_H - TRACE_H, SLOT_W - 1, TRACE_H)
         ctx.restore()
       }
 
-      // label at :00 and :30 boundaries
+      // Time labels live in their own strip BELOW the bars (v2.23). They used to be
+      // painted inside the bar area, so any bar taller than the text covered its own
+      // timestamp. Only on the hour: at 30-min bars a label on every bar would sit
+      // 46 px apart for ~36 px of text, which is legible but reads as a wall of
+      // numbers — hourly gridlines are enough to place a bar in time.
       const d = new Date(slot.t * 1000)
-      const m = d.getMinutes()
-      if (m === 0 || m === 30) {
+      if (d.getMinutes() === 0) {
+        ctx.save()
         ctx.fillStyle = labelCol
         ctx.font = 'bold 12px "JetBrains Mono", monospace'
-        const label = `${String(d.getHours()).padStart(2, '0')}:${m === 0 ? '00' : '30'}`
-        ctx.fillText(label, x + 3, SLOT_H - 6)
+        const label = `${String(d.getHours()).padStart(2, '0')}:00`
+        // Never let the last label overhang the canvas edge.
+        const w = ctx.measureText(label).width
+        if (x + 3 + w <= cssW) ctx.fillText(label, x + 3, SLOT_H + LABEL_H - 4)
+        ctx.restore()
       }
     })
 
@@ -256,15 +344,20 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.lineWidth = 1
       ctx.beginPath()
       ctx.moveTo(boundaryX, -BAND_H)
-      ctx.lineTo(boundaryX, SLOT_H)
+      ctx.lineTo(boundaryX, SLOT_H + LABEL_H)
       ctx.stroke()
       ctx.restore()
     }
 
     // "now" marker — through the zone band too, so "now" and "radar zone" visibly
-    // start together.
+    // start together. v2.23: positioned WITHIN the first bar rather than pinned to
+    // x=0. Bars are aligned to :00/:30, so the first one can begin up to 30 min in
+    // the past — at 15-min slots that error was ≤5 min and invisible, at 30-min bars
+    // a marker nailed to the left edge would claim "now" for a time already gone.
+    const nowX = Math.max(0, Math.min(SLOT_W - 2,
+      Math.round(((now - slots[0].t) / BUCKET_S) * SLOT_W)))
     ctx.fillStyle = nowCol
-    ctx.fillRect(0, -BAND_H, 2, BAND_H + SLOT_H)
+    ctx.fillRect(nowX, -BAND_H, 2, BAND_H + SLOT_H + LABEL_H)
 
   }, [forecast, theme, t])
 
@@ -371,8 +464,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           style={{ display: 'block' }}
         />
         {(allDry || !hasData) && (
+          // Centred on the BARS, not the whole canvas — the zone band above and the
+          // time strip below are chrome, and letting them pull the label off-centre
+          // drifts it toward the bars it is meant to sit clear of.
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
-               style={{ paddingTop: BAND_H }}>
+               style={{ paddingTop: BAND_H, paddingBottom: LABEL_H }}>
             <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
               {/* Honest attribution, in priority order: the MODEL disagreeing with a
                   radar all-clear beats everything (frontal rain the radar can't see
