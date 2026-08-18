@@ -176,7 +176,10 @@ function RibbonGuide({ t }) {
     { h: 19, c: 'var(--c-light)', dash: true },
   ]
   return (
-    <svg viewBox="0 0 320 82" className="w-full h-auto text-primary mb-4"
+    // w-full alone let the 320-wide viewBox stretch to the full panel on desktop —
+    // ~6x scale, so the 7px zone captions rendered larger than the headings. Capped at
+    // roughly its natural size: fills the width on a phone, stays a diagram on a laptop.
+    <svg viewBox="0 0 320 82" className="w-full max-w-[360px] h-auto text-primary mb-4"
          role="img" aria-label={t('guide_ribbon_title')}>
       {/* zone band */}
       <rect x="0" y="0" width={SPLIT} height="12" fill="var(--c-go)" opacity="0.22" />

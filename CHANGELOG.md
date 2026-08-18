@@ -12,6 +12,10 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.24.2] — 2026-08-18 — Ribbon guide: sized properly on desktop 🖥
+
+- The little ribbon diagram in the help panel stretched to the full width of the panel on a big screen, blowing its tiny time and zone captions up larger than the headings around them. It's now capped at its natural size — full width on a phone, a diagram on a laptop.
+
 ## [2.24.1] — 2026-08-18 — Gemma Raus just got better: the ribbon explains itself 📖
 
 *The rain ribbon carries a lot of information, and none of it was written down anywhere. Now the help panel shows you how to read it.*
