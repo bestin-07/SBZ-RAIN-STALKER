@@ -651,7 +651,9 @@ After `git push origin main`, wait ~2–3 min, fetch `https://www.gemmaraus.at/s
 
 ### Dev-machine quirks
 - PowerShell **5.1**: no `&&`, no `??`/`?.`; multiline commit messages via file + `git commit -F`; avoid `2>$null` on native exes.
-- Machine TZ is **IST (UTC+5:30)**, Salzburg is CEST (UTC+2 summer) — convert unix timestamps explicitly, never trust local wall-clock.
+- Machine TZ is **CEST (UTC+2)** — same as Salzburg (verified 2026-08-18; the older "IST (UTC+5:30)" note was wrong). Still convert unix timestamps explicitly rather than trusting wall-clock, and beware two specific traps:
+  - **PowerShell 5.1 `Get-Date -UFormat %s` returns LOCAL time as an epoch**, i.e. 2 h ahead of the real Unix epoch here. It silently shifts every downstream calculation by two hours. Use `[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()`, or `date +%s` in the Bash tool.
+  - When replaying `/api/ambient` offline, anchor "now" to the snapshot's own **`ts`** field (server-generated, ≤5 min old) instead of the local clock — it is authoritative and removes the whole class of error. Note `detectGaps` reads `Date.now()` internally, so an offline replay must use a fresh snapshot or its gap output will not match the `nowSec` you pass to `getStatus`.
 - Backend tests: `python backend/test_logic.py` (**no pytest module**). No `gh` / `railway` CLIs — GitHub via anonymous `api.github.com`.
 - `RAIN_LOGIC.md` and `docs/` exports are **local-only by choice** — unstage them if `git add -A` sweeps them in.
 
