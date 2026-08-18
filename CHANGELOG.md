@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.25.1] — 2026-08-18 — The map can recover on its own now 🗺
+
+*Reported from an iPhone running Gemma Raus as an installed app: sometimes the map just doesn't load at all, and stays that way.*
+
+**What happened**
+
+Leaflet, the map library, never retries a tile that failed to load. One failed request and that square stays empty until something makes it ask again — and nothing in the app ever did.
+
+That matters most in exactly the situation reported. iOS suspends installed web apps aggressively, and when one wakes up its image requests can fail in the first moment before the network is properly back. Every other part of Gemma Raus recovers by itself on the five-minute refresh. The map had no such path, so a single unlucky wake-up left it blank until the app was force-quit.
+
+**What's new for you**
+
+- **The map redraws itself when you come back to the app.** Switching away and returning, or unlocking your phone, now prompts it to re-request anything that didn't arrive.
+- **A failed tile gets a second chance.** One retry a couple of seconds later, batched so a whole screen of failures costs one attempt, not dozens.
+- **One less way for the map to fail outright.** A browser feature the map setup depended on is now optional instead of required — if it's missing, the map still builds.
+
+*Nothing about the forecast changed.*
+
 ## [2.25.0] — 2026-08-18 — Gemma Raus just got better: "the rain is ending" now has to mean it 🌤
 
 *"Bleib drin — rain going away in about 2½ hours." It wasn't going away. It was dipping for an hour and then coming straight back.*

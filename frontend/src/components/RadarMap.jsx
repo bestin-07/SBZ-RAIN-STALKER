@@ -111,6 +111,31 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const statusCacheRef = useRef(new Map())   // key "lat,lon" → { status, ts }
   const currentPopupRef = useRef(null)       // the open popup (for re-render on lang switch)
   const openArgsRef     = useRef(null)       // args of the open popup
+  const tileRetryRef    = useRef(null)       // coalesced tile-retry timer
+
+  // ---- Tile recovery (v2.25.1) ----
+  // Leaflet never retries a tile that failed: the request errors once and that
+  // square stays blank until something forces a re-request. On an installed iOS PWA
+  // that means a permanently blank map — iOS suspends the page aggressively and
+  // image requests can fail the instant it resumes, before the network is back.
+  // Every other part of the app recovers on its own 5-min refresh; the map had no
+  // equivalent path, so one unlucky resume killed it until a force-quit.
+  const redrawTiles = useCallback(() => {
+    try { mapRef.current?.invalidateSize() } catch {}
+    try { baseTileRef.current?.redraw() } catch {}
+    rvLayersRef.current.forEach(l => { try { l.redraw() } catch {} })
+  }, [])
+
+  // One delayed retry per failed batch, coalesced — a whole screen of failed tiles
+  // costs a single redraw rather than one per tile. `tileerror` is a GridLayer
+  // event, NOT a Map event, so this is bound to the layer where it's created.
+  const onTileError = useCallback(() => {
+    if (tileRetryRef.current) return
+    tileRetryRef.current = setTimeout(() => {
+      tileRetryRef.current = null
+      redrawTiles()
+    }, 2000)
+  }, [redrawTiles])
   const [radarFrame, setRadarFrame] = useState(null)  // { time, forecast } of the shown frame
   useEffect(() => { computeRef.current = computeStatusAt }, [computeStatusAt])
 
@@ -180,16 +205,30 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     // The flex-mounted container can report a stale/zero size when Leaflet
     // initialises (sibling banners settle height after first paint), which
     // leaves the base tiles blank. Re-measure once mounted and on any resize.
-    const resizeObs = new ResizeObserver(() => {
-      try { mapRef.current?.invalidateSize() } catch {}
-    })
-    resizeObs.observe(containerRef.current)
+    // Guarded: this runs AFTER mapRef is assigned, so an environment without
+    // ResizeObserver used to throw here and take the whole map-init effect with
+    // it — no tile layers, no dots, a permanently blank map.
+    let resizeObs = null
+    try {
+      if (typeof ResizeObserver === 'function') {
+        resizeObs = new ResizeObserver(() => {
+          try { mapRef.current?.invalidateSize() } catch {}
+        })
+        resizeObs.observe(containerRef.current)
+      }
+    } catch {}
     requestAnimationFrame(() => { try { map.invalidateSize() } catch {} })
 
+    // ---- Tile recovery (v2.25.1), see redrawTiles above ----
+    // Resume is the moment that actually matters: a suspended PWA coming back.
+    const onVisible = () => { if (!document.hidden) redrawTiles() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('pageshow', onVisible)   // iOS bfcache restore
+
     // ---- RainViewer animated overlay ----
-    // maxNativeZoom:9 ensures Leaflet requests z=9 tiles with z=9 coordinates
-    // (no zoom/coordinate mismatch). The zoomend listener hides them above
-    // RV_MAX_ZOOM as a belt-and-suspenders guard.
+    // maxNativeZoom is 7 (see the note at the tileLayer below — z8+ returns a
+    // "Zoom Level Not Supported" placeholder image, not an empty tile). The
+    // zoomend listener hides the layers above RV_MAX_ZOOM as a second guard.
     const rvVisible = () => !!mapRef.current && mapRef.current.getZoom() <= RV_MAX_ZOOM
 
     const syncRvOpacity = () => {
@@ -277,7 +316,10 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
 
     return () => {
       map.off('zoomend', syncRvOpacity)
-      resizeObs.disconnect()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('pageshow', onVisible)
+      if (tileRetryRef.current) { clearTimeout(tileRetryRef.current); tileRetryRef.current = null }
+      resizeObs?.disconnect()
       clearInterval(animRefreshRef.current)
       if (animTimerRef.current) clearInterval(animTimerRef.current)
       rvLayersRef.current.forEach(l => { try { l.remove() } catch {} })
@@ -298,7 +340,9 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       detectRetina: true,
       zIndex: 1,
     }).addTo(mapRef.current)
-  }, [theme])
+    // Bound on the LAYER — tileerror is a GridLayer event and does not reach the map.
+    baseTileRef.current.on('tileerror', onTileError)
+  }, [theme, onTileError])
 
   // Location pin
   useEffect(() => {
