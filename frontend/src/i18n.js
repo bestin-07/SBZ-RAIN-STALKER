@@ -116,6 +116,10 @@ const translations = {
     compass_w: 'W',
     s_stuck_ease: ['Noch keine Pause in Sicht — dürfte in etwa {min} Min. nachlassen', 'Zäher Regen gerade, sollte aber in etwa {min} Min. nachlassen', 'Noch keine Lücke am Radar — Nachlassen in etwa {min} Min. erwartet'],
     s_stuck_ease_far: ['Noch keine Pause in Sicht — dürfte in etwa {h} Std. nachlassen', 'Zäher Regen gerade, sollte aber in etwa {h} Std. nachlassen', 'Noch keine Lücke am Radar — Nachlassen in etwa {h} Std. erwartet'],
+    // v2.26.0 — Radar sieht, wann der Regen auf Niesel zurückgeht (nicht auf null).
+    s_stuck_easing:       ['Noch kräftiger Regen — sollte in etwa {min} Min. auf Niesel zurückgehen', 'Gerade noch nass, in etwa {min} Min. wird es deutlich leichter', 'Radar zeigt: in etwa {min} Min. nur noch Niesel'],
+    s_stuck_storm_easing: ['Gewitter — der Regen sollte in etwa {min} Min. nachlassen', 'Blitz und Donner, aber in etwa {min} Min. wird der Regen leichter', 'Gewitter über Salzburg — in etwa {min} Min. lässt der Regen nach'],
+    n_stuck_easing: 'in etwa {min} Min. nur noch Niesel',
     n_stuck_ease: 'dürfte in etwa {min} Min. nachlassen',
     n_stuck_ease_far: 'dürfte in etwa {h} Std. nachlassen',
     // v2.22.0 — gehaltenes BLEIB DRIN: der Regen lässt nach, aber noch ist kein
@@ -405,6 +409,10 @@ const translations = {
     compass_w: 'W',
     s_stuck_ease: ['no break in sight yet — should ease in about {min} min', 'stubborn rain right now, but it should ease in about {min} min', 'no gap on radar yet — easing expected in about {min} min'],
     s_stuck_ease_far: ['no break in sight yet — should ease in about {h} h', 'stubborn rain right now, but it should ease in about {h} h', 'no gap on radar yet — easing expected in about {h} h'],
+    // v2.26.0 — radar can see when the rain drops to a drizzle (not to nothing).
+    s_stuck_easing:       ['heavy for now — should drop to a drizzle in about {min} min', 'wet right now, but it gets much lighter in about {min} min', 'radar says: down to a drizzle in about {min} min'],
+    s_stuck_storm_easing: ['thunderstorm — the rain should ease in about {min} min', 'lightning about, but the rain eases in about {min} min', 'storm overhead — rain lets up in about {min} min'],
+    n_stuck_easing: 'down to a drizzle in about {min} min',
     n_stuck_ease: 'should ease in about {min} min',
     n_stuck_ease_far: 'should ease in about {h} h',
     // v2.22.0 — a HELD stuck verdict: the rain is easing but no usable window is

@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, settleStuckHold, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, easesToGoableMin, settleStuckHold, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -511,7 +511,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, downpourSoonWideMin: firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW), windowWetMm: windowWetMm(nowcast, nowSec, GO_MIN_WINDOW), noUsableWindow: !hasUsableWindow(gapTimeline.times, gapPrecips, nowSec), modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, downpourSoonWideMin: firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW), windowWetMm: windowWetMm(nowcast, nowSec, GO_MIN_WINDOW), noUsableWindow: !hasUsableWindow(gapTimeline.times, gapPrecips, nowSec), easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -842,7 +842,7 @@ export default function App() {
           wind: data?.current?.wind_speed_10m ?? null,
           code: data?.current?.weather_code ?? null,
         }
-        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !hasUsableWindow(gapTimeline.times, gapPrecips, nowSec), modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
+        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !hasUsableWindow(gapTimeline.times, gapPrecips, nowSec), easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
 
         // Resolve the verdict here (not in render) purely so we know whether to keep
         // carrying the hold. getStatus is pure, so the render below recomputes the

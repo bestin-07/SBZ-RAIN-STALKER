@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.26.0] — 2026-08-18 — Gemma Raus just got better: it can tell you when it lets up 🌦
+
+*"It's kind of a gap now - and it makes me sad that we can't see that coming and tell people."*
+
+**What happened**
+
+Gemma Raus knew the word for *dry* and the word for *raining*, and nothing in between. A "break" meant the rain stopping completely. So on an afternoon that went from a downpour to two and a half hours of light drizzle - the sort you walk through without thinking - it counted zero breaks and told you there was no break in sight.
+
+The forecast was right there on the ribbon the whole time. The app simply had no way to say *"much lighter soon"*.
+
+**What's new for you**
+
+- **"Down to a drizzle in about 20 minutes."** When the radar shows the rain dropping to something you could walk in - and staying there for at least three quarters of an hour - Gemma Raus now tells you when, instead of a flat "no break in sight".
+- **Thunderstorms stop hiding the timing.** During a storm you used to get "thunder and lightning, stay put" and nothing else. The storm still comes first, because that is a safety thing and not a question of how hard it is raining - but you now also get when the rain is due to ease.
+- **It is still bleib drin.** This tells you when to look again. It never tells you to head out into a storm.
+
+*Checked live during the thunderstorm it came from: every neighbourhood in the city went from "rain right through the next 45 minutes" to a real number.*
+
 ## [2.25.1] — 2026-08-18 — The map can recover on its own now 🗺
 
 *Reported from an iPhone running Gemma Raus as an installed app: sometimes the map just doesn't load at all, and stays that way.*

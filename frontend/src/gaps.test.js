@@ -13,7 +13,7 @@ import {
   aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
   goWindowTooShort, GO_MIN_WINDOW, windowWetMm, WINDOW_WET_MM,
   dryWindowOpen, settleStuckHold, CALM_DWELL_MS, HOLD_STALE_MS, HOLD_MAX_MS,
-  hasUsableWindow, GO_MIN_SLOTS,
+  hasUsableWindow, GO_MIN_SLOTS, easesToGoableMin,
   showGhost, GHOST_MIN_FACTOR, hoursLabel,
   modelEaseAt, MODEL_EASE_MIN_DRY, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
@@ -608,6 +608,79 @@ describe('surfaceDrizzle — catch what the gauges miss, reject unsupported RV-o
 
   it('RV_SOLID_COVERAGE contract: 0.4 of the block (change only with a CLAUDE.md log entry)', () => {
     expect(RV_SOLID_COVERAGE).toBe(0.4)
+  })
+})
+
+// ---- easesToGoableMin — a word for "much lighter, not zero" (v2.26.0) ------------
+
+describe('easesToGoableMin — the gap we could see but could not say', () => {
+  it('THE INVISIBLE GAP (2026-08-18, 16:20, thunderstorm): 2.5 h walkable, 0 dry slots', () => {
+    // Live radar at Altstadt. Nothing ever drops below DRY_THRESHOLD, so detectGaps
+    // finds zero gaps and the verdict read "no break in sight for 3 hours" over a
+    // two-and-a-half-hour window you could comfortably walk in.
+    const t = timeline(NOON, [2.12, 0.70, 0.20, 0.13, 0.17, 0.19, 0.18, 0.23, 0.26, 0.26])
+    expect(detectGaps(t.times, t.precips).gaps).toHaveLength(0)   // the old blind spot
+    expect(easesToGoableMin(t.times, t.precips, NOON)).toBe(30)   // 3rd slot = +30 min
+  })
+
+  it('needs a RUN — one light slot between heavy ones is not an easing', () => {
+    const t = timeline(NOON, [2.0, 0.3, 2.0, 2.0, 2.0, 2.0])
+    expect(easesToGoableMin(t.times, t.precips, NOON)).toBeNull()
+  })
+
+  it('uses LIGHT_MAX, the app\'s own "you could still go out" line', () => {
+    const under = timeline(NOON, [3.0, 0.49, 0.49, 0.49, 3.0])
+    const over  = timeline(NOON, [3.0, 0.51, 0.51, 0.51, 3.0])
+    expect(easesToGoableMin(under.times, under.precips, NOON)).toBe(15)
+    expect(easesToGoableMin(over.times, over.precips, NOON)).toBeNull()
+  })
+
+  it('never eases within the window → null', () => {
+    const t = timeline(NOON, new Array(12).fill(2.5))
+    expect(easesToGoableMin(t.times, t.precips, NOON)).toBeNull()
+  })
+
+  it('no timeline → null (says nothing rather than guessing)', () => {
+    expect(easesToGoableMin(null, null, NOON)).toBeNull()
+    expect(easesToGoableMin([], [], NOON)).toBeNull()
+  })
+})
+
+describe('getStatus — STUCK can finally say when it lets up', () => {
+  it('names the minutes instead of a bare "no break in sight"', () => {
+    const t = makeT()
+    const s = getStatus(2.5, [], null, t, NOON, { easeSoonMin: 24 })
+    expect(s.type).toBe('stuck')                       // state unchanged — wording only
+    expect(s.sub).toBe('s_stuck_easing')
+    expect(t.varsFor('s_stuck_easing')).toEqual({ min: 25 })   // rounded to 5
+    expect(s.notice.sub).toBe('n_stuck_easing')
+  })
+
+  it('THUNDER NO LONGER SWALLOWS THE TIMING — storm named AND minutes given', () => {
+    // The live case: code 95/96 with the rain visibly easing on radar, and the thunder
+    // sub outranked everything so the user was told nothing about the letting-up.
+    const t = makeT()
+    const s = getStatus(2.5, [], { code: 96 }, t, NOON, { easeSoonMin: 24 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('s_stuck_storm_easing')
+    expect(t.varsFor('s_stuck_storm_easing')).toEqual({ min: 25 })
+  })
+
+  it('thunder with no easing keeps the plain storm line', () => {
+    expect(getStatus(2.5, [], { code: 96 }, makeT(), NOON, {}).sub).toBe('s_stuck_storm')
+  })
+
+  it('radar easing outranks the model second opinion (radar owns the next 3 h)', () => {
+    const s = getStatus(2.5, [], null, makeT(), NOON, {
+      easeSoonMin: 30, modelEaseAt: NOON + 60 * 60,
+    })
+    expect(s.sub).toBe('s_stuck_easing')
+  })
+
+  it('no easing → every earlier fallback still behaves exactly as before', () => {
+    expect(getStatus(2.5, [], null, makeT(), NOON, { modelEaseAt: NOON + 60 * 60 }).sub)
+      .toBe('s_stuck_ease')
+    expect(getStatus(2.5, [], null, makeT(), NOON, {}).sub).toBe('s_stuck')
   })
 })
 
@@ -1792,5 +1865,6 @@ describe('tracePhantom — dual-key phantom-trace guard (v2.8)', () => {
     expect(tracePhantom(0, { ...quietRV, now: null })).toBe(false)   // tile read failed
   })
 })
+
 
 

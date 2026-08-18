@@ -469,6 +469,38 @@ export function hasUsableWindow(times, precips, nowSec) {
   return seen === 0
 }
 
+// ---- "It's easing" (v2.26.0) -----------------------------------------------------
+// Live report (2026-08-18, ~16:20, during a thunderstorm): "now it is kind of a gap,
+// and I am a bit sad we can't see this gap into the future and tell people hey look a
+// gap came." The radar could see it perfectly — 2.12 mm/15min now, then 0.20 / 0.13 /
+// 0.17 / 0.19 straight through the next 2½ h. What it could not do is SAY it: a gap is
+// defined as slots below DRY_THRESHOLD, nothing dropped below 0.1 all afternoon, so
+// there were zero gaps and the verdict read "no break in sight for 3 hours" over a
+// two-and-a-half-hour walkable window.
+//
+// The missing idea is not foresight, it is vocabulary: we had no word for "much
+// lighter, though not zero". LIGHT_MAX is already the app's own line for "you could
+// still go out" (it is what PASST SCHON means), so a run of GO_MIN_SLOTS slots below
+// it is, by our own existing standard, a window you could use. Same two constants as
+// everywhere else — nothing new to calibrate.
+//
+// Wording only. The state stays STUCK until the easing actually arrives, so this can
+// never send anyone out into rain; it tells them when to look again.
+export function easesToGoableMin(times, precips, nowSec) {
+  if (!times?.length) return null
+  const slots = times
+    .map((t, i) => ({ t, p: precips?.[i] ?? 0 }))
+    .filter(s => s.t >= nowSec - 900 && s.t <= nowSec + LOOK_AHEAD)
+  for (let i = 0; i < slots.length; i++) {
+    if (slots[i].p >= LIGHT_MAX) continue
+    let run = 1
+    while (i + run < slots.length && slots[i + run].p < LIGHT_MAX) run++
+    if (run >= GO_MIN_SLOTS) return Math.max(0, Math.round((slots[i].t - nowSec) / 60))
+    i += run
+  }
+  return null
+}
+
 export function goWindowTooShort(type, downpourMin, wetMm = 0, wetNow = false, noWindow = false) {
   if (type !== 'go' && type !== 'light') return false
   if (typeof downpourMin === 'number' && downpourMin <= GO_MIN_WINDOW) return true
@@ -818,7 +850,9 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
         : min >= GAP_FIRM_MIN ? t('n_break_likely', { min })
         : t('n_break_in', { min })
   } else {
-    if (trend.modelEaseAt) {
+    if (trend.easeSoonMin != null) {
+      sub = t('n_stuck_easing', { min: Math.max(5, Math.round(trend.easeSoonMin / 5) * 5) })
+    } else if (trend.modelEaseAt) {
       const m = Math.max(0, Math.round((trend.modelEaseAt - nowSec) / 60))
       sub = m >= FAR_RAIN_MIN ? t('n_stuck_ease_far', { h: hoursLabel(m) })
           : t('n_stuck_ease', { min: Math.max(5, Math.round(m / 5) * 5) })
@@ -899,6 +933,14 @@ export function getStatus(
     // to tell someone who is currently getting wet.
     const closing = trend.noUsableWindow && trend.nextRainAt != null &&
                     currentPrecip < DRY_THRESHOLD
+    // v2.26.0: this branch returns EARLY, so it never reached the easing wording below
+    // and answered a visibly slackening sky with "rain right through the next 45 min".
+    // Live case: 2.12 mm/15min dropping to 0.13–0.26 for two and a half hours — every
+    // one of those slots inside the band we ourselves call "go anyway" — and the app
+    // had nothing to say about it. The STATE is untouched (v2.24.0's decision stands,
+    // the conservative direction); only the sentence gets the timing it already knew.
+    const easeMin = trend.easeSoonMin != null
+      ? Math.max(5, Math.round(trend.easeSoonMin / 5) * 5) : null
     return {
       type: 'stuck',
       headline: t('STUCK'),
@@ -906,6 +948,9 @@ export function getStatus(
         ? t('short_window_sub', { min: trend.downpourSoonWideMin })
         : closing
         ? t('s_no_window', { min: Math.max(5, Math.round((trend.nextRainAt - nowSec) / 60 / 5) * 5) })
+        : easeMin != null
+        ? t(((weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99)
+            ? 's_stuck_storm_easing' : 's_stuck_easing', { min: easeMin })
         : t('window_wet_sub', { min: GO_MIN_WINDOW }),
       weather: weatherNote,
       weatherEmoji,
@@ -1075,9 +1120,20 @@ export function getStatus(
   // Model ease second-opinion (v2.1): STUCK means "radar sees no break" — if the
   // model shows the rain ending within 3 h, say so instead of a bare "stay in".
   // Wording only; the state (and colour) stays STUCK until radar confirms a gap.
+  // v2.26.0: the radar's own easing time, rounded like every other countdown. Beats
+  // the model second opinion below — radar owns the next 3 h, and this is observed
+  // echo rather than a model guess.
+  const easeMin = trend.easeSoonMin != null
+    ? Math.max(5, Math.round(trend.easeSoonMin / 5) * 5) : null
   let stuckSub
   if (isThunder) {
-    stuckSub = t('s_stuck_storm')
+    // Thunder still owns the sentence — it is a hazard, not a rain intensity, and
+    // "light enough to go" during lightning is not a thing we will ever say. But it
+    // no longer SWALLOWS the timing: the storm stays named, the easing gets its
+    // minutes, and the state stays BLEIB DRIN either way.
+    stuckSub = easeMin != null ? t('s_stuck_storm_easing', { min: easeMin }) : t('s_stuck_storm')
+  } else if (easeMin != null) {
+    stuckSub = t('s_stuck_easing', { min: easeMin })
   } else if (trend.modelEaseAt) {
     const m = Math.max(0, Math.round((trend.modelEaseAt - nowSec) / 60))
     stuckSub = m >= FAR_RAIN_MIN ? t('s_stuck_ease_far', { h: hoursLabel(m) })
