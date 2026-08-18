@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.25.0] — 2026-08-18 — Gemma Raus just got better: "the rain is ending" now has to mean it 🌤
+
+*"Bleib drin — rain going away in about 2½ hours." It wasn't going away. It was dipping for an hour and then coming straight back.*
+
+**What happened**
+
+When Gemma Raus can't see a break on radar, it takes a second opinion from the weather model — so that "no break in sight" doesn't get said when the rain genuinely is about to stop. Good idea. But it only ever looked three hours ahead, and it took the last quiet patch inside that window as *the end of the rain*, without ever checking what came next.
+
+So a stretch of quiet starting near the edge of that window got announced as the rain leaving, while the model itself had it raining again shortly afterwards — just past where the app was looking. And "quiet" was set low enough that the model's own rounding noise counted.
+
+**What's new for you**
+
+- **A break has to last before we'll call it the end.** At least an hour and a half of genuinely nothing, checked across the full forecast rather than stopping at an arbitrary edge. A one-hour lull between two bands of rain is a pause, not an ending, and it no longer gets to pretend otherwise.
+- **If we can't see far enough to be sure, we don't promise.** Better a plain "no break in sight" than a comforting sentence that turns out to be wrong.
+- **The verdict itself never changed.** It's bleib drin either way — this only removes an over-optimistic line underneath it.
+
+*Checked against the live afternoon it came from: nearly 18 mm of rain over three hours and not one dry minute on radar. No easing claim anywhere in the city now.*
+
 ## [2.24.2] — 2026-08-18 — Ribbon guide: sized properly on desktop 🖥
 
 - The little ribbon diagram in the help panel stretched to the full width of the panel on a big screen, blowing its tiny time and zone captions up larger than the headings around them. It's now capped at its natural size — full width on a phone, a diagram on a laptop.

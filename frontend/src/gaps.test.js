@@ -15,7 +15,7 @@ import {
   dryWindowOpen, settleStuckHold, CALM_DWELL_MS, HOLD_STALE_MS, HOLD_MAX_MS,
   hasUsableWindow, GO_MIN_SLOTS,
   showGhost, GHOST_MIN_FACTOR, hoursLabel,
-  modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
+  modelEaseAt, MODEL_EASE_MIN_DRY, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
@@ -1352,6 +1352,50 @@ describe('modelEaseAt + STUCK second-opinion — never a bare "no break" the mod
     expect(modelEaseAt(times, times.map(() => 0), NOON)).toBeNull()
   })
 
+  // ---- v2.25.0: the ease has to LAST ----
+
+  it('THE FALSE ALL-CLEAR (2026-08-18): a dip past the window edge is not "rain ending"', () => {
+    // User report: "bleib drin, rain going away in about 2½ h — is this even true?"
+    // It was not. The old loop stopped at +3 h, so a dry stretch starting near that
+    // edge was announced as the end while the model had rain resuming just outside it.
+    // Live shape: four slots of 0.03 (the model's noise floor, under our reporting
+    // line so it counts as dry), then straight back to 0.26–0.60 an hour later.
+    const long = Array.from({ length: 24 }, (_, i) => NOON + i * 900)   // 6 h of model
+    const p = long.map((_, i) => i < 10 ? 0.5 : i < 14 ? 0.03 : 0.30)
+    expect(modelEaseAt(long, p, NOON)).toBeNull()
+  })
+
+  it('a genuine clearance still reports — rain, then dry for good', () => {
+    const long = Array.from({ length: 24 }, (_, i) => NOON + i * 900)
+    const p = long.map((_, i) => i < 10 ? 0.5 : 0)
+    expect(modelEaseAt(long, p, NOON)).toBe(NOON + 10 * 900)
+  })
+
+  it('MODEL_EASE_MIN_DRY is exactly the bar: 90 min dry passes, 75 min does not', () => {
+    const long = Array.from({ length: 24 }, (_, i) => NOON + i * 900)
+    const easeIdx = 8                                   // ease at +120 min
+    const pass = long.map((_, i) => i < easeIdx ? 0.5 : i < easeIdx + 6 ? 0 : 0.4)
+    const fail = long.map((_, i) => i < easeIdx ? 0.5 : i < easeIdx + 5 ? 0 : 0.4)
+    expect(MODEL_EASE_MIN_DRY).toBe(2 * GO_MIN_WINDOW)
+    expect(modelEaseAt(long, pass, NOON)).toBe(NOON + easeIdx * 900)
+    expect(modelEaseAt(long, fail, NOON)).toBeNull()
+  })
+
+  it('a series too short to confirm the dry stretch makes no claim', () => {
+    // Declining an optimistic promise on unverifiable data is the safe direction.
+    const short = Array.from({ length: 8 }, (_, i) => NOON + i * 900)   // 2 h only
+    const p = short.map((_, i) => i < 4 ? 0.5 : 0)
+    expect(modelEaseAt(short, p, NOON)).toBeNull()
+  })
+
+  it('SUPPRESSION ONLY: the state is STUCK with or without the ease claim', () => {
+    const withEase = getStatus(1.8, [], null, makeT(), NOON, { modelEaseAt: NOON + 60 * 60 })
+    const without  = getStatus(1.8, [], null, makeT(), NOON, {})
+    expect(withEase.type).toBe('stuck')
+    expect(without.type).toBe('stuck')
+    expect(without.sub).toBe('s_stuck')                 // falls back to the honest line
+  })
+
   it('STUCK + model ease in ~60 min → "model expects easing", time kept, state stays STUCK', () => {
     const t = makeT()
     const s = getStatus(1.8, [], null, t, NOON, { modelEaseAt: NOON + 60 * 60 })
@@ -1748,4 +1792,5 @@ describe('tracePhantom — dual-key phantom-trace guard (v2.8)', () => {
     expect(tracePhantom(0, { ...quietRV, now: null })).toBe(false)   // tile read failed
   })
 })
+
 

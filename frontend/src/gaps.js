@@ -246,6 +246,20 @@ export function modelNextRainAt(omTimes, omPrecips, nowSec) {
 // start of the model's final dry stretch within 3 h, or null. Requires the model to
 // actually SHOW the rain first (≥1 wet slot before the ease point) — a model that's
 // dry the whole window is contradicting the present, not forecasting the end.
+// v2.25.0 — the ease has to LAST. User report (2026-08-18): "bleib drin, rain going
+// away in about 2½ h — is this even true?" It was not. The loop below only ever looked
+// 3 h ahead, so a dry stretch that began near the end of that window was announced as
+// the rain ending while the model had it raining again shortly AFTER the window — the
+// one place the old code was structurally blind. The live series showed exactly that:
+// four slots of 0.03 mm (the model's noise floor, under our reporting line, so it
+// counts as dry) and then straight back to 0.26–0.60 an hour later.
+//
+// So the dry stretch is now measured on the FULL model series rather than truncated at
+// the window edge, and must run at least MODEL_EASE_MIN_DRY. Why twice GO_MIN_WINDOW:
+// one usable window is a PAUSE, and radar already has its own wording for a pause
+// (breakSub). For this sentence to say the rain is *ending* it needs clearly more than
+// one window's worth, or it is over-promising. Suppression only — it can just remove an
+// optimistic sub-line, never delay a warning; the state stays STUCK either way.
 export function modelEaseAt(omTimes, omPrecips, nowSec) {
   if (!omTimes?.length || !omPrecips?.length) return null
   const lim = nowSec + 3 * 3600
@@ -257,7 +271,16 @@ export function modelEaseAt(omTimes, omPrecips, nowSec) {
     if (p >= DRY_THRESHOLD) { wetSeen = true; ease = null }
     else if (wetSeen && ease === null) ease = tt
   }
-  return wetSeen ? ease : null
+  if (!wetSeen || ease === null) return null
+  const until = ease + MODEL_EASE_MIN_DRY * 60
+  // Can't see far enough to confirm it lasts → don't claim it. Declining to make an
+  // optimistic promise on unverifiable data is the safe direction.
+  if (omTimes[omTimes.length - 1] < until) return null
+  for (let i = 0; i < omTimes.length; i++) {
+    const tt = omTimes[i]
+    if (tt >= ease && tt < until && (omPrecips[i] ?? 0) >= DRY_THRESHOLD) return null
+  }
+  return ease
 }
 
 // Approach direction from the RainViewer ring watch (v2.4.0). Given the list of
@@ -378,6 +401,12 @@ export function firstDownpourMin(nowcast, nowSec, windowMin = DOWNPOUR_WINDOW_MI
 // on half of all Salzburg afternoons and escalating on it would cry wolf, which is its
 // own kind of lie. Only GO / GO ANYWAY escalate — WAIT and STUCK already keep you in.
 export const GO_MIN_WINDOW = 45
+
+// How long the model's dry stretch must last before we call it the rain ENDING rather
+// than a pause (see modelEaseAt). Derived, not tuned: one GO_MIN_WINDOW is a usable
+// window — a pause — and radar already words those. Two is the smallest honest bar for
+// "it's going away".
+export const MODEL_EASE_MIN_DRY = 2 * GO_MIN_WINDOW   // 90 min
 
 // v2.20.0 — peak intensity was the wrong (only) measure. Live follow-up the same
 // morning: the storm was re-forecast DOWN (12:15 went 3.43 → 0.40 between two
