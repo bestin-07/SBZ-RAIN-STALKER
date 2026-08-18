@@ -12,6 +12,25 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.24.0] — 2026-08-18 — Gemma Raus just got better: a dry minute is not a dry afternoon 🚪
+
+*It was dry outside and Gemma Raus said gemma raus. It was also going to rain, without a proper break, for the next three hours. Both of those were true, and only one of them was useful.*
+
+**What happened**
+
+Until now the app asked two questions about the rain ahead: how hard does it get, and how much lands on me while I'm out. Reasonable questions. But on an afternoon of light, steady, never-quite-stopping rain, both answered "not much" — no single burst heavy enough to count, not enough millimetres in the next three quarters of an hour — and the headline sent you out into it.
+
+Nobody was asking the obvious third question: **is there actually any point starting something?**
+
+**What's new for you**
+
+- **If there's no proper break coming, you get bleib drin.** Gemma Raus now looks across the whole three-hour horizon for a dry stretch of at least 45 minutes. If there isn't one anywhere, it says so, even when this exact minute happens to be dry.
+- **It tells you what you've actually got.** Not a bare "stay in", but *"only ~20 min dry — then rain with no usable break"*. A stay-inside verdict under a clear sky needs to explain itself.
+- **A genuinely good window is still a good window.** Dry now, rain in forty minutes, clearing after? That's still gemma raus. The rule only fires when nothing usable opens up afterwards — otherwise it would be crying wolf on half the afternoons in Salzburg, which is its own way of being useless.
+- **Forty-five minutes now means one thing everywhere.** It's what makes a window worth going out for, what earns a stay-inside verdict its release, and now what counts as a break. One number, one meaning.
+
+*If the forecast goes missing, the rule stands down rather than keeping you in on no evidence.*
+
 ## [2.23.0] — 2026-08-18 — Gemma Raus just got better: the rain ribbon has a shape again 📊
 
 *The bar chart had turned into a picket fence. Every bar roughly the same height, forty-nine of them, and the one thing you actually look for — the gap — drawn as a bump rather than a dip.*

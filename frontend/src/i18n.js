@@ -172,6 +172,8 @@ const translations = {
     storm_danger_sub: 'Schwere Gewitterzelle bildet sich gerade über Salzburg — bleib drin',
     short_window_sub: 'Starkregen in ~{min} Min. — zu knapp, um jetzt loszugehen',
     window_wet_sub: 'Die nächsten {min} Min. durchgehend Regen — kein trockenes Fenster',
+    // v2.24: trocken, aber nur kurz — danach den ganzen Nachmittag kein Fenster.
+    s_no_window: 'Nur ~{min} Min. trocken — danach Regen ohne brauchbare Pause',
     s_barely_drizzle: ['Ganz leichter Nieselregen — praktisch trocken', 'Kaum messbarer Niesel — geht klar', 'Ein Hauch Niesel, mehr nicht'],
     uv_high:      'UV hoch — Sonnenschutz auftragen',
     uv_very_high: 'UV sehr hoch — direkte Sonne meiden',
@@ -449,6 +451,8 @@ const translations = {
     storm_danger_sub: 'Severe storm cell forming over Salzburg right now — stay inside',
     short_window_sub: 'Heavy rain in ~{min} min — too tight to head out now',
     window_wet_sub: 'Rain right through the next {min} min — no dry window',
+    // v2.24: dry, but only briefly — and nothing usable opens up afterwards.
+    s_no_window: 'only ~{min} min dry — then rain with no usable break',
     s_barely_drizzle: ['Faintest drizzle — as good as dry', 'Barely-there drizzle, you\'re fine', 'A touch of drizzle, nothing more'],
     uv_high:      'UV high — put on sunscreen before heading out',
     wind_warning: 'Strong wind — bad day for an umbrella',

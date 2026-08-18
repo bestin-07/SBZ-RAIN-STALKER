@@ -408,9 +408,42 @@ export function windowWetMm(nowcast, nowSec, windowMin = GO_MIN_WINDOW) {
 // arrives at minute 40, you HAVE 40 minutes, and taking that away would be exactly the
 // crying-wolf failure this rule was gated against in v2.19.0. The reported case is
 // "already wet AND it keeps going" — gauge 0.1 with 1.6 mm still to fall.
-export function goWindowTooShort(type, downpourMin, wetMm = 0, wetNow = false) {
+// v2.24.0 — the third question. The two arms above both ask about INTENSITY: how hard
+// is the worst moment (burst), and how much lands while I'm out (steady). Neither asks
+// "is there any point starting anything this afternoon?"
+//
+// Live case (2026-08-18, 14:39): dry right now, but only for ~21 min, then rain from
+// 15:00 climbing 0.19 → 0.78 mm/15min straight through 17:00 — 4 mm over three hours
+// with no break anywhere in it. Peak never reached DOWNPOUR_MM, the 45-min total was
+// 0.28, and the gauge read 0.0 so `wetNow` was false: all three escapes open, verdict
+// GEMMA RAUS. The ribbon plainly showed a wet afternoon.
+//
+// One run of GO_MIN_SLOTS dry slots, using the SAME DRY_THRESHOLD as everything else —
+// no new dryness test, no new constant. (Deliberately not dryWindowOpen: on this very
+// afternoon its averaging passed the window by a hair, 0.28 against 0.30 and a 0.19
+// peak against 0.20, so the rule would have missed the case it exists for.)
+export const GO_MIN_SLOTS = 3   // 3 × 15 min = GO_MIN_WINDOW
+
+// True when a usable dry stretch exists in the look-ahead — OR when we cannot tell.
+// No timeline means no grounds to keep anyone in: escalating on ignorance is how an
+// app starts crying wolf.
+export function hasUsableWindow(times, precips, nowSec) {
+  if (!times?.length) return true
+  let run = 0, seen = 0
+  for (let i = 0; i < times.length; i++) {
+    const t = times[i]
+    if (t < nowSec - 900 || t > nowSec + LOOK_AHEAD) continue
+    seen++
+    if ((precips?.[i] ?? 0) < DRY_THRESHOLD) { if (++run >= GO_MIN_SLOTS) return true }
+    else run = 0
+  }
+  return seen === 0
+}
+
+export function goWindowTooShort(type, downpourMin, wetMm = 0, wetNow = false, noWindow = false) {
   if (type !== 'go' && type !== 'light') return false
   if (typeof downpourMin === 'number' && downpourMin <= GO_MIN_WINDOW) return true
+  if (noWindow) return true
   return !!wetNow && (wetMm ?? 0) >= WINDOW_WET_MM
 }
 
@@ -825,16 +858,25 @@ export function getStatus(
   // can't contradict the headline where you stand — and it's unit-testable.
   const goOrLight = (isDry || gapNow) ? 'go' : (currentPrecip < LIGHT_MAX ? 'light' : null)
   if (goOrLight && goWindowTooShort(goOrLight, trend.downpourSoonWideMin, trend.windowWetMm,
-                                    currentPrecip >= DRY_THRESHOLD)) {
-    // Two ways to be too wet to go out, two different sentences. A burst gets a
-    // countdown ("heavy rain in ~X min"); steady rain has no single moment to count
-    // down TO, so it names the amount instead — a countdown to "now" reads broken.
+                                    currentPrecip >= DRY_THRESHOLD, trend.noUsableWindow)) {
+    // Three ways to be too wet to go out, three sentences. A burst gets a countdown
+    // ("heavy rain in ~X min"). A closing window keeps the countdown but says what it
+    // is — the minutes you have left, not the minutes until something. Steady rain has
+    // no single moment to count down TO, so it names the amount instead.
     const burst = typeof trend.downpourSoonWideMin === 'number'
+    // A BLEIB DRIN under a dry sky has to explain itself, or it just looks broken.
+    // Only when it is actually dry ON THE GROUND, though: the radar can read dry while
+    // the gauge is already measuring drizzle, and "only ~20 min dry" is a strange thing
+    // to tell someone who is currently getting wet.
+    const closing = trend.noUsableWindow && trend.nextRainAt != null &&
+                    currentPrecip < DRY_THRESHOLD
     return {
       type: 'stuck',
       headline: t('STUCK'),
       sub: burst
         ? t('short_window_sub', { min: trend.downpourSoonWideMin })
+        : closing
+        ? t('s_no_window', { min: Math.max(5, Math.round((trend.nextRainAt - nowSec) / 60 / 5) * 5) })
         : t('window_wet_sub', { min: GO_MIN_WINDOW }),
       weather: weatherNote,
       weatherEmoji,

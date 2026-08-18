@@ -13,6 +13,7 @@ import {
   aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
   goWindowTooShort, GO_MIN_WINDOW, windowWetMm, WINDOW_WET_MM,
   dryWindowOpen, settleStuckHold, CALM_DWELL_MS, HOLD_STALE_MS, HOLD_MAX_MS,
+  hasUsableWindow, GO_MIN_SLOTS,
   showGhost, GHOST_MIN_FACTOR, hoursLabel,
   modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
@@ -607,6 +608,95 @@ describe('surfaceDrizzle — catch what the gauges miss, reject unsupported RV-o
 
   it('RV_SOLID_COVERAGE contract: 0.4 of the block (change only with a CLAUDE.md log entry)', () => {
     expect(RV_SOLID_COVERAGE).toBe(0.4)
+  })
+})
+
+// ---- hasUsableWindow — "is there any point starting anything?" (v2.24.0) ---------
+
+describe('hasUsableWindow — the closing-window rule', () => {
+  const tl = ps => timeline(NOON, ps)
+
+  it('THE WET AFTERNOON (2026-08-18, 14:39): dry now, nothing usable after', () => {
+    // Served nowcast: ~21 min dry, then rain from 15:00 climbing straight through
+    // 17:00. Longest dry run is 2 slots. Peak never reached DOWNPOUR_MM, the 45-min
+    // total was 0.28 and the gauge read 0.0 — so all three earlier escapes were open
+    // and the verdict was GEMMA RAUS over a visibly wet afternoon.
+    const t = tl([0, 0, 0.19, 0.09, 0.17, 0.34, 0.50, 0.56, 0.66, 0.72, 0.78])
+    expect(hasUsableWindow(t.times, t.precips, NOON)).toBe(false)
+  })
+
+  it('NO CRYING WOLF: a genuine 40-min window with rain that later clears stays GO', () => {
+    // The failure v2.19.0 was explicitly gated against. Dry now, rain arrives, and a
+    // real dry stretch opens afterwards → this rule must keep its hands off.
+    const t = tl([0, 0, 0.8, 0.8, 0.8, 0, 0, 0, 0, 0, 0])
+    expect(hasUsableWindow(t.times, t.precips, NOON)).toBe(true)
+    const st = getStatus(0, [], null, makeT(), NOON, {
+      nextRainAt: NOON + 1800, noUsableWindow: false,
+    })
+    expect(st.type).toBe('go')
+    expect(st.sub).toBe('s_rain_soon')
+  })
+
+  it('exactly GO_MIN_SLOTS dry in a row is enough; one fewer is not', () => {
+    const three = tl([0.5, 0.5, 0, 0, 0, 0.5, 0.5, 0.5])
+    const two   = tl([0.5, 0.5, 0, 0, 0.5, 0.5, 0.5, 0.5])
+    expect(hasUsableWindow(three.times, three.precips, NOON)).toBe(true)
+    expect(hasUsableWindow(two.times, two.precips, NOON)).toBe(false)
+    expect(GO_MIN_SLOTS * 15).toBe(GO_MIN_WINDOW)   // one meaning of "usable", one number
+  })
+
+  it('never escalates on ignorance — no timeline, or nothing in range, reads usable', () => {
+    expect(hasUsableWindow([], [], NOON)).toBe(true)
+    expect(hasUsableWindow(null, null, NOON)).toBe(true)
+    const stale = { times: [NOON - 99999], precips: [0.5] }
+    expect(hasUsableWindow(stale.times, stale.precips, NOON)).toBe(true)
+  })
+
+  it('rain beyond the 3 h look-ahead cannot make the window "closing"', () => {
+    const t = timeline(NOON, new Array(20).fill(0))   // dry for 5 h
+    expect(hasUsableWindow(t.times, t.precips, NOON)).toBe(true)
+  })
+})
+
+describe('getStatus — the closing window keeps you in, and says why', () => {
+  it('dry right now, but BLEIB DRIN with the minutes you actually have', () => {
+    const t = makeT()
+    const st = getStatus(0, [], null, t, NOON, {
+      nextRainAt: NOON + 21 * 60, noUsableWindow: true,
+    })
+    expect(st.type).toBe('stuck')
+    expect(st.sub).toBe('s_no_window')
+    expect(t.varsFor('s_no_window')).toEqual({ min: 20 })   // rounded to 5, never 0
+  })
+
+  it('a burst still outranks it — the more urgent sentence wins', () => {
+    const st = getStatus(0, [], null, makeT(), NOON, {
+      nextRainAt: NOON + 21 * 60, noUsableWindow: true, downpourSoonWideMin: 12,
+    })
+    expect(st.sub).toBe('short_window_sub')
+  })
+
+  it('already drizzling with no window → names the wetness, not a countdown', () => {
+    const st = getStatus(0.3, [], null, makeT(), NOON, { noUsableWindow: true })
+    expect(st.type).toBe('stuck')
+    expect(st.sub).toBe('window_wet_sub')
+  })
+
+  it('gauge wet while radar reads dry → still the wetness line, not "X min dry"', () => {
+    // Live 2026-08-18 14:51 at Aigen: the radar slot read 0.08 so detectGaps offered a
+    // nextRainAt, but the ground gauge already had 0.1 on it. Telling someone standing
+    // in drizzle that they have 20 dry minutes is the wrong sentence.
+    const st = getStatus(0.4, [], null, makeT(), NOON, {
+      noUsableWindow: true, nextRainAt: NOON + 20 * 60,
+    })
+    expect(st.type).toBe('stuck')
+    expect(st.sub).toBe('window_wet_sub')
+  })
+
+  it('WAIT and STUCK are untouched — this only ever converts go/light', () => {
+    const gap = [{ startsAt: NOON + 3600, startsInMinutes: 60, durationMinutes: 45, opensEnded: false }]
+    expect(getStatus(2.0, gap, null, makeT(), NOON, { noUsableWindow: true }).type).toBe('wait')
+    expect(getStatus(2.0, [], null, makeT(), NOON, { noUsableWindow: true }).type).toBe('stuck')
   })
 })
 
@@ -1658,3 +1748,4 @@ describe('tracePhantom — dual-key phantom-trace guard (v2.8)', () => {
     expect(tracePhantom(0, { ...quietRV, now: null })).toBe(false)   // tile read failed
   })
 })
+
