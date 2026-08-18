@@ -9,9 +9,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
-  modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot,
+  modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot, gaugeSlotValue, GAUGE_SLOT_SCALE,
   aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
   goWindowTooShort, GO_MIN_WINDOW, windowWetMm, WINDOW_WET_MM,
+  dryWindowOpen, settleStuckHold, CALM_DWELL_MS, HOLD_STALE_MS, HOLD_MAX_MS,
   showGhost, GHOST_MIN_FACTOR, hoursLabel,
   modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
@@ -606,6 +607,205 @@ describe('surfaceDrizzle — catch what the gauges miss, reject unsupported RV-o
 
   it('RV_SOLID_COVERAGE contract: 0.4 of the block (change only with a CLAUDE.md log entry)', () => {
     expect(RV_SOLID_COVERAGE).toBe(0.4)
+  })
+})
+
+// ---- the BLEIB DRIN hold — leaving STUCK has to be earned (v2.22.0) --------------
+
+describe('dryWindowOpen — a window you could actually use', () => {
+  it('a real 45-min break opens the window (Bahnhof, 2026-08-18)', () => {
+    // Served nowcast through the lull: 0.02 / 0.04 / 0.07 then 0.14 returning.
+    expect(dryWindowOpen(timeline(NOON, [0.02, 0.04, 0.07, 0.14]), NOON)).toBe(true)
+  })
+
+  it('a continuous drizzle does NOT (Altstadt, same minute, 2 km away)', () => {
+    // 0.11 / 0.09 / 0.10 — the SAME physical break, and every slot within a hair of
+    // DRY_THRESHOLD. Per-slot logic called this "no gap at all" at one point and a
+    // clean 45-min gap at the other; on accumulation it is honestly still drizzling.
+    expect(dryWindowOpen(timeline(NOON, [0.11, 0.09, 0.10, 0.19]), NOON)).toBe(false)
+  })
+
+  it('one shower crossing an otherwise dry window does NOT open it', () => {
+    // The average alone would pass this (0.3 over four slots, well under the line) —
+    // but a single 0.3 slot is a shower crossing your route, so the peak vetoes it.
+    expect(windowWetMm(timeline(NOON, [0, 0.3, 0, 0]), NOON)).toBeCloseTo(0.3, 5)
+    expect(dryWindowOpen(timeline(NOON, [0, 0.3, 0, 0]), NOON)).toBe(false)
+  })
+
+  it('bone dry → open; no radar at all → NOT open (absence needs a witness)', () => {
+    expect(dryWindowOpen(timeline(NOON, [0, 0, 0, 0]), NOON)).toBe(true)
+    expect(dryWindowOpen(null, NOON)).toBe(false)
+    expect(dryWindowOpen({ times: [], precips: [] }, NOON)).toBe(false)
+  })
+})
+
+describe('settleStuckHold — the dwell clock', () => {
+  const MIN = 60 * 1000
+  const now = 1_700_000_000_000
+
+  it('no previous hold → nothing to hold', () => {
+    expect(settleStuckHold(null, { releaseOk: true, nowMs: now }).holding).toBe(false)
+  })
+
+  it('calm evidence alone does NOT release — it must hold for two cycles', () => {
+    const first = settleStuckHold({ ts: now - 5 * MIN, calmSince: null }, { releaseOk: true, nowMs: now })
+    expect(first.holding).toBe(true)          // clock only just started
+    expect(first.calmSince).toBe(now)
+    const later = settleStuckHold({ ts: now - 5 * MIN, calmSince: now - CALM_DWELL_MS }, { releaseOk: true, nowMs: now })
+    expect(later.holding).toBe(false)         // dwell met → released
+  })
+
+  it('THE FLAP (2026-08-18): one calm reading between two wet ones never releases', () => {
+    // stuck → (a reissue reads calm) → stuck. Without the clock this was
+    // BLEIB DRIN → PASST SCHON → BLEIB DRIN inside a few minutes.
+    const calm = settleStuckHold({ ts: now - 5 * MIN, calmSince: null }, { releaseOk: true, nowMs: now })
+    expect(calm.holding).toBe(true)
+    const wetAgain = settleStuckHold({ ts: now, calmSince: calm.calmSince },
+                                     { releaseOk: false, nowMs: now + 5 * MIN })
+    expect(wetAgain.holding).toBe(true)
+    expect(wetAgain.calmSince).toBeNull()     // clock RESET — not "calm at some point"
+  })
+
+  it('a long rainy afternoon stays held — staleness measures the HOLD, not the rain', () => {
+    // The record is rewritten every refresh, so three hours of rain is still fresh.
+    expect(settleStuckHold({ ts: now - 4 * MIN, calmSince: null }, { releaseOk: false, nowMs: now }).holding).toBe(true)
+  })
+
+  it('an app left closed resumes with NO hold (nobody checked that evidence since)', () => {
+    const r = settleStuckHold({ ts: now - 3 * 60 * MIN, calmSince: null }, { releaseOk: false, nowMs: now })
+    expect(r.holding).toBe(false)
+  })
+
+  it('THE VALVE: a jammed evidence gate cannot hold a calm reading forever', () => {
+    // The gate can jam shut while it is genuinely dry: the nowcast disappears, or INCA
+    // lays a sub-threshold trace carpet (v2.8.0) so no window ever reads "usable".
+    // A hold may DELAY good news; it must never CANCEL it.
+    const jammed = { ts: now, calmSince: null, easedSince: now - HOLD_MAX_MS }
+    expect(settleStuckHold(jammed, { releaseOk: false, easing: true, nowMs: now }).holding).toBe(false)
+    // …but only once the READING itself has been calm that long — still raining holds.
+    const stillWet = { ts: now, calmSince: null, easedSince: null }
+    expect(settleStuckHold(stillWet, { releaseOk: false, easing: false, nowMs: now }).holding).toBe(true)
+  })
+
+  it('the valve clock resets too — 19 dry minutes then rain does not bank credit', () => {
+    const r = settleStuckHold({ ts: now, calmSince: null, easedSince: now - 19 * MIN },
+                              { releaseOk: false, easing: false, nowMs: now })
+    expect(r.easedSince).toBeNull()
+    expect(r.holding).toBe(true)
+  })
+
+  it('the evidence path is FASTER than the valve — good evidence is rewarded', () => {
+    expect(CALM_DWELL_MS).toBeLessThan(HOLD_MAX_MS)
+  })
+
+  it('HOLD_STALE_MS / CALM_DWELL_MS contract (change only with a logic-log entry)', () => {
+    expect(CALM_DWELL_MS).toBe(10 * 60 * 1000)
+    expect(HOLD_STALE_MS).toBe(20 * 60 * 1000)
+  })
+})
+
+describe('getStatus — a held STUCK says what it sees', () => {
+  it('holds the headline instead of flashing GEMMA RAUS', () => {
+    const t = makeT()
+    const st = getStatus(0, [], null, t, NOON, { dryEndsOpen: true, heldStuck: true })
+    expect(st.type).toBe('stuck')
+    expect(st.headline).toBe('STUCK')
+    expect(st.moto).toBe(false)
+  })
+
+  it('the sub is honest about the improvement — never a silent hold', () => {
+    // The user asked for exactly this: "stuck inside, but soon there might be a gap".
+    const easing = getStatus(0.3, [], null, makeT(), NOON, { heldStuck: true, releaseOk: false })
+    expect(easing.sub).toBe('s_stuck_softening')
+    const clearing = getStatus(0, [], null, makeT(), NOON, { dryEndsOpen: true, heldStuck: true, releaseOk: true })
+    expect(clearing.sub).toBe('s_stuck_clearing')
+  })
+
+  it('ESCALATIONS ARE NEVER GATED — the hold only ever converts go/light', () => {
+    // A downpour landing while a hold is active must still read as the rain it is.
+    const wait = getStatus(2.0, [{ startsAt: NOON + 3600, startsInMinutes: 60, durationMinutes: 45, opensEnded: false }],
+                           null, makeT(), NOON, { heldStuck: true })
+    expect(wait.type).toBe('wait')            // untouched by the hold
+    const stuck = getStatus(2.0, [], null, makeT(), NOON, { heldStuck: true })
+    expect(stuck.type).toBe('stuck')
+    expect(stuck.sub).not.toBe('s_stuck_softening')   // real stuck wording, not the hold's
+  })
+
+  it('no hold → byte-identical to before (dots and first loads are unaffected)', () => {
+    const withoutFlag = getStatus(0, [], null, makeT(), NOON, { dryEndsOpen: true })
+    const withFalse   = getStatus(0, [], null, makeT(), NOON, { dryEndsOpen: true, heldStuck: false })
+    expect(withoutFlag.type).toBe('go')
+    expect(withFalse).toEqual(withoutFlag)
+  })
+})
+
+// ---- gaugeSlotValue — the gauge speaks in 10-min totals, the ladder in 15-min -----
+
+describe('gaugeSlotValue — unit correction (v2.21.0)', () => {
+  it('GAUGE_SLOT_SCALE contract: 1.5 (change only with a CLAUDE.md log entry)', () => {
+    expect(GAUGE_SLOT_SCALE).toBe(1.5)
+  })
+
+  it('THE MODERATE-RAIN-AS-DRIZZLE BUG (2026-08-18): 0.4 mm/10min is NOT the light band', () => {
+    // Live, city-wide rain. METAR LOWS reported RA / -RA continuously for 2.5 h
+    // (moderate at 10:20Z and 10:50Z) while the shared TAWES ground read 0.4 mm per
+    // 10 min — 2.4 mm/h, meteorologically MODERATE — and the raw value landed dead
+    // centre of the 0.2–0.5 "light drizzle, go anyway" band at all eleven points.
+    expect(0.4).toBeGreaterThanOrEqual(LIGHT_MIN)     // what the ladder used to see
+    expect(0.4).toBeLessThan(LIGHT_MAX)
+    expect(gaugeSlotValue(0.4)).toBeCloseTo(0.6, 5)   // what it means on the slot scale
+    expect(gaugeSlotValue(0.4)).toBeGreaterThanOrEqual(LIGHT_MAX)   // → out of "go anyway"
+  })
+
+  it('RAISE-ONLY: never returns less than it was given', () => {
+    for (const rr of [0, 0.05, 0.1, 0.2, 0.4, 1.8, 6.2]) {
+      expect(gaugeSlotValue(rr)).toBeGreaterThanOrEqual(rr)
+    }
+  })
+
+  it('sub-reporting readings pass through UNSCALED — groundDry must not move', () => {
+    // Lifting a sub-threshold reading over DRY_THRESHOLD would flip groundDry and
+    // silently disable drizzle surfacing (v1.1) — a real drizzle would fall back from
+    // GO ANYWAY to GEMMA RAUS. That is a lag; the doctrine does not forgive lags.
+    expect(gaugeSlotValue(0.09)).toBe(0.09)
+    expect(gaugeSlotValue(0.09)).toBeLessThan(DRY_THRESHOLD)
+    expect(gaugeSlotValue(0)).toBe(0)
+    // the first REPORTING tip still reads as barely-drizzle, not as light rain
+    expect(gaugeSlotValue(0.1)).toBeLessThan(LIGHT_MIN)
+  })
+
+  it('junk in → 0 (a broken gauge never invents rain)', () => {
+    expect(gaugeSlotValue(null)).toBe(0)
+    expect(gaugeSlotValue(undefined)).toBe(0)
+    expect(gaugeSlotValue(NaN)).toBe(0)
+    expect(gaugeSlotValue(-1)).toBe(0)
+  })
+
+  it('the 0.10-rounding guard still sees a dry gauge as exactly 0', () => {
+    // modelNowValue keys on stationPrecip === 0; scaling must not break that identity.
+    expect(modelNowValue(0.1, true, gaugeSlotValue(0))).toBe(0)
+  })
+
+  it('SCENARIO (2026-08-18 Altstadt): gauge 0.4 + model 0.7 → no longer "go anyway"', () => {
+    // Served values at 11:46 UTC: ground 0.4, Open-Meteo current 0.7, radar now 0.33.
+    // Old blend: modelNowValue capped 0.7 → 0.4, ground 0.4 → effectivePrecip 0.40,
+    // i.e. pinned to MODEL_NOW_CAP, dead centre of the light band → PASST SCHON.
+    const gauge = gaugeSlotValue(0.4)
+    const omForNow = modelNowValue(0.7, true, gauge, 0.33)
+    const groundPrecip = Math.max(omForNow, gauge)
+    expect(groundPrecip).toBeCloseTo(0.6, 5)
+    expect(groundPrecip).toBeGreaterThanOrEqual(LIGHT_MAX)   // out of the light band
+    const st = getStatus(groundPrecip, [], null, makeT(), NOON, { dryEndsOpen: false })
+    expect(st.type).toBe('stuck')
+  })
+
+  it('a genuine light drizzle still reads GO ANYWAY, not STUCK', () => {
+    // Regression guard on the v1.1 caution policy: 0.2 mm/10 min → 0.3 on the slot
+    // scale, still inside the light band. Scaling must not turn drizzle into STUCK.
+    const v = gaugeSlotValue(0.2)
+    expect(v).toBeGreaterThanOrEqual(LIGHT_MIN)
+    expect(v).toBeLessThan(LIGHT_MAX)
+    expect(getStatus(v, [], null, makeT(), NOON, noTrend).type).toBe('light')
   })
 })
 

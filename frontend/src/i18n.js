@@ -118,6 +118,11 @@ const translations = {
     s_stuck_ease_far: ['Noch keine Pause in Sicht — dürfte in etwa {h} Std. nachlassen', 'Zäher Regen gerade, sollte aber in etwa {h} Std. nachlassen', 'Noch keine Lücke am Radar — Nachlassen in etwa {h} Std. erwartet'],
     n_stuck_ease: 'dürfte in etwa {min} Min. nachlassen',
     n_stuck_ease_far: 'dürfte in etwa {h} Std. nachlassen',
+    // v2.22.0 — gehaltenes BLEIB DRIN: der Regen lässt nach, aber noch ist kein
+    // brauchbares Fenster bestätigt. Erst wenn es hält, wechselt die Überschrift.
+    s_stuck_softening: ['Es lässt nach — noch keine verlässliche Lücke', 'Wird schwächer, aber noch kein sicheres Fenster', 'Der Regen beruhigt sich langsam — noch kurz drinbleiben'],
+    s_stuck_clearing: ['Sieht nach Aufklaren aus — wir bestätigen es gerade', 'Gleich könnte sich eine Lücke auftun — noch kurz abwarten', 'Fast geschafft: trockenes Fenster in Sicht, wird noch geprüft'],
+    n_stuck_softening: 'lässt nach, noch keine verlässliche Lücke',
     update_note_title: 'Gemma Raus ist gerade besser geworden ✨',
     // war: „wo über Salzburg es gerade regnet" — falsche Wortstellung im Nebensatz.
     update_note_body: 'Die App sieht jetzt, aus welcher Richtung Regen aufzieht, wo es über Salzburg gerade regnet oder aufklart, und sagt ehrlich, wie sicher jede Angabe ist — für frühere Warnungen und verlässlichere Countdowns. Danke, dass du von Anfang an dabei bist und Feedback gibst — genau das macht die App besser. 💙',
@@ -393,6 +398,11 @@ const translations = {
     s_stuck_ease_far: ['no break in sight yet — should ease in about {h} h', 'stubborn rain right now, but it should ease in about {h} h', 'no gap on radar yet — easing expected in about {h} h'],
     n_stuck_ease: 'should ease in about {min} min',
     n_stuck_ease_far: 'should ease in about {h} h',
+    // v2.22.0 — a HELD stuck verdict: the rain is easing but no usable window is
+    // confirmed yet. The headline only changes once the calm actually holds.
+    s_stuck_softening: ['easing off — but no reliable gap yet', 'getting lighter, still no window worth trusting', 'the rain is settling down — sit tight a moment'],
+    s_stuck_clearing: ['looks like it\'s clearing — just confirming it holds', 'a window may be opening — give it a minute', 'nearly there: a dry stretch is in sight, checking it sticks'],
+    n_stuck_softening: 'easing, no reliable gap yet',
     update_note_title: 'Gemma Raus just got better ✨',
     update_note_body: "The app now sees which direction rain is coming from, where over Salzburg it's raining or clearing, and says honestly how sure each claim is — for earlier heads-ups and steadier countdowns. Thank you for being an early user and sharing feedback — that's exactly what makes it better. 💙",
     unsettled_note: 'unsettled air — showers can form fast today, windows may be short',

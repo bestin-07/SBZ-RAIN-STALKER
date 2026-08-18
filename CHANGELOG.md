@@ -12,6 +12,43 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.22.0] — 2026-08-18 — Gemma Raus just got better: it stops changing its mind 🤞
+
+*"Bleib drin, no break for three hours" → "passt schon, go anyway" → "bleib drin" again, all within a few minutes. Nothing outside had changed. That's not a forecast, that's a coin toss, and it's the fastest way to lose your trust.*
+
+**What happened**
+
+Every time the app refreshed, it worked the whole verdict out again from scratch, with no memory of what it had just told you. So when a number sat right on the line between two answers — and during steady rain, plenty of them do — a routine radar update could tip it across, and the headline would swing. Then swing back.
+
+**What's new for you**
+
+- **Bleib drin now has to be talked out of it.** Before the app tells you to head out, it wants a genuinely usable break: three quarters of an hour where the radar stays properly quiet — not just a lull between showers — plus the rain gauge agreeing it has actually stopped. And it wants to see that twice in a row, not once.
+- **Bad news still arrives instantly.** This patience runs one way only. Rain starting, a downpour on the way, a storm warning — all of that reaches you the moment we see it, exactly as before. We'll happily keep you in a few minutes longer than strictly necessary. We won't send you out a few minutes early.
+- **You get told what's happening in between.** Instead of jumping straight from *bleib drin* to *gemma raus*, you'll now see the middle: *"easing off — but no reliable gap yet"*, then *"looks like it's clearing — just confirming it holds"*. The app knows the rain is winding down before it's willing to promise you a window, and now it says so instead of sitting there looking stubborn.
+- **It can't get stuck being cautious.** If the radar drops out, or leaves a faint smear that never quite clears, a calm reading on its own releases the verdict anyway. Waiting is allowed to delay good news. It is never allowed to cancel it.
+
+*Your location never leaves your phone — this remembers a single timestamp, on your device, and forgets it if you move more than a kilometre or close the app for a while.*
+
+## [2.21.0] — 2026-08-18 — Gemma Raus just got better: the rain gauge finally speaks the same language 🌧
+
+*Proper, steady rain was being described to you as "just a light drizzle, go anyway". Not a close call, not a judgement you might disagree with — a unit mix-up hiding in plain sight since the beginning.*
+
+**What happened**
+
+Gemma Raus reads two very different instruments. The radar tells it how much rain falls in a **fifteen-minute** block. The rain gauges out at Freisaal and the airport report how much fell in the last **ten minutes**. Every threshold in the app — where drizzle ends, where "heavy" begins — was drawn for the radar's fifteen-minute blocks, and the gauge readings were being measured against them straight, without ever being converted.
+
+So the gauges were quietly under-reported by half again. A gauge reading that actually meant *moderate rain, you will get wet* landed exactly in the middle of the band the app calls "light drizzle, go anyway".
+
+This morning it showed. It rained across the whole city for over two hours — the airport's own weather station logged it as moderate at times — and five of the eleven neighbourhoods Gemma Raus tracks were telling you to head out.
+
+**What's new for you**
+
+- **A gauge reading now means what it says.** Ten-minute totals are converted onto the same scale as everything else before any verdict is made. This morning's rain reads as rain now, all across town.
+- **Nothing got twitchier.** The correction only ever moves a reading *up*, and only once the gauge is properly reporting. A genuine light drizzle is still a light drizzle, and still gets a *passt schon*.
+- **The faintest readings are untouched on purpose.** Right at the bottom of the scale, nudging a number upward would have switched off the drizzle-catching that finds rain the gauges are too coarse to feel. Rather not trade one blind spot for another.
+
+*Nothing else moved: same thresholds, same states, same countdowns. One instrument was speaking in a different unit, and now it isn't.*
+
 ## [2.20.1] — 2026-08-17 — Gemma Raus spricht jetzt ordentlich Deutsch ✍️
 
 *Die deutschen Texte waren stellenweise schlampig — kleingeschriebene Substantive, fehlende Kommas, und mit „labiler Luft" ein Fachbegriff, den außerhalb der Meteorologie kaum jemand verwendet.*

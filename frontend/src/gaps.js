@@ -63,6 +63,33 @@ export function isUnsettled(cape, maxProb, hour) {
     hour >= 11 && hour < 20
 }
 
+// ---- Gauge units (v2.21.0) --------------------------------------------------------
+// Every threshold on this page is calibrated on the nowcast's 15-MINUTE slots — read
+// as a rate they line up with the standard rain classes (LIGHT_MAX 0.5 = 2 mm/h, the
+// light/moderate boundary; DOWNPOUR_MM 1.5 = 6 mm/h). TAWES `RR`, however, is the
+// total over the last TEN minutes (the dataset is literally tawes-v1-10min), and it
+// was being compared against those thresholds raw — so every ground reading entered
+// the ladder 1.5x under-scaled. Live incident (2026-08-18, city-wide rain, METAR LOWS
+// reporting RA/-RA continuously for 2.5 h): the gauge read 0.4 mm/10 min — 2.4 mm/h,
+// meteorologically MODERATE rain — and landed dead centre of the "light drizzle, go
+// anyway" band. Five of the eleven city points said PASST SCHON while it rained.
+//
+// This is a unit correction, not a tuned constant: it puts the gauge on the same
+// scale as the thresholds it is measured against.
+export const GAUGE_SLOT_SCALE = 1.5
+
+// Sub-reporting readings are deliberately NOT scaled. Lifting a 0.07 across
+// DRY_THRESHOLD would flip `groundDry` and silently disable drizzle surfacing (v1.1) —
+// a real drizzle would drop from GO ANYWAY back to GEMMA RAUS, which is a LAG, the one
+// direction the doctrine does not forgive. Below the reporting line the value passes
+// through untouched, so `groundDry` and surfaceDrizzle behave exactly as before and
+// this function can only ever RAISE a value that already says "it is raining".
+export function gaugeSlotValue(rr) {
+  const v = typeof rr === 'number' && Number.isFinite(rr) && rr > 0 ? rr : 0
+  if (v < DRY_THRESHOLD) return v
+  return v * GAUGE_SLOT_SCALE
+}
+
 // Model-current contribution to the NOW blend (v2.0.1). Open-Meteo's
 // current.precipitation is a PRECEDING-HOUR value — after rain ends it stays high for
 // up to an hour, and it was out-shouting a reporting gauge (gauge 0.0, model 0.7 →
@@ -385,6 +412,83 @@ export function goWindowTooShort(type, downpourMin, wetMm = 0, wetNow = false) {
   if (type !== 'go' && type !== 'light') return false
   if (typeof downpourMin === 'number' && downpourMin <= GO_MIN_WINDOW) return true
   return !!wetNow && (wetMm ?? 0) >= WINDOW_WET_MM
+}
+
+// ---- Leaving BLEIB DRIN is a promise, not a reading (v2.22.0) ---------------------
+// Live incident (2026-08-18): "a sudden unreliable jump from stuck inside, no break
+// for three hours, to go anyways, to back to stuck inside". Every refresh recomputed
+// the verdict from zero, so a nowcast reissue that moved one number across one
+// threshold swung the headline — and the user, quite reasonably, stopped trusting it.
+//
+// The asymmetry is the whole design, and it is the doctrine rather than a compromise
+// of it: telling someone to stay in a few minutes longer than strictly necessary costs
+// them a few minutes. Telling them to go out a few minutes early costs them a soaking.
+// So this gate is ONE-DIRECTIONAL — it can only ever delay GOOD news:
+//
+//   * anything → wait/stuck        immediate, ungated, always (leads forgiven)
+//   * stuck    → wait              free — both keep you in, and WAIT carries a countdown
+//   * wait     → go/light          free — WAIT already PROMISED that break; reneging on
+//                                  a countdown we just showed is its own broken promise
+//   * stuck    → go/light          GATED (below): the one transition that says
+//                                  "you can head out now" out of nowhere
+//
+// Releasing STUCK needs a window you could actually USE, corroborated and held:
+//   1. dryWindowOpen  — the radar averages below the reporting line across the whole
+//                       GO_MIN_WINDOW and never spikes into the light band;
+//   2. the gauge agrees it has stopped (checked at the call site);
+//   3. it has stayed that way for CALM_DWELL_MS — two refresh cycles, so a single
+//      reissue cannot flip the headline.
+// Same 45 minutes v2.19.0 requires to ENTER a GO verdict, now symmetric on the way out.
+export const CALM_DWELL_MS = 10 * 60 * 1000   // ≈ two 5-min refresh cycles
+export const HOLD_STALE_MS = 20 * 60 * 1000   // a hold not REWRITTEN within this long is
+                                              // not continuity, it's a stale app — same
+                                              // cap the cached timelines use.
+export const HOLD_MAX_MS   = 20 * 60 * 1000   // hard ceiling: however jammed the evidence
+                                              // gate gets, a calm READING alone releases
+                                              // after this. See the valve below.
+
+// Accumulation AND peak, because they fail differently: three slots of 0.09 average out
+// dry but are a continuous drizzle, and one 0.4 spike inside an otherwise dry window is
+// a shower crossing your route. A usable window has neither.
+export function dryWindowOpen(nowcast, nowSec, windowMin = GO_MIN_WINDOW) {
+  if (!nowcast?.times?.length) return false   // no radar → absence cannot be corroborated
+  const lim = nowSec + windowMin * 60
+  let sum = 0, peak = 0, count = 0
+  for (let i = 0; i < nowcast.times.length; i++) {
+    const tt = nowcast.times[i]
+    if (tt < nowSec || tt > lim) continue
+    const p = nowcast.precips?.[i] ?? 0
+    sum += p; peak = Math.max(peak, p); count++
+  }
+  if (!count) return false                    // window off the end of the timeline
+  return sum < DRY_THRESHOLD * count && peak < LIGHT_MIN
+}
+
+// The dwell clock. `prev` is the hold record carried in the localStorage story
+// ({ ts, calmSince }), rewritten every refresh for as long as the verdict is STUCK —
+// so `ts` measures how fresh the HOLD is, not how long the rain has lasted. (A three
+// hour downpour must stay held throughout; an app that was closed for half an hour
+// must not resume holding on evidence nobody has checked since.) Returns whether the
+// hold still applies plus the updated clock. Pure so the whole gate is testable
+// without a browser: no Date.now(), no storage.
+export function settleStuckHold(prev, { releaseOk, easing, nowMs, stale = HOLD_STALE_MS } = {}) {
+  if (!prev || typeof prev.ts !== 'number' || !(nowMs - prev.ts <= stale)) {
+    return { holding: false, calmSince: null, easedSince: null }   // no hold, or too old
+  }
+  // The calm clock starts the first cycle the evidence appears and RESETS the moment
+  // it lapses — "45 dry minutes, twice in a row", not "45 dry minutes at some point".
+  const calmSince = releaseOk ? (typeof prev.calmSince === 'number' ? prev.calmSince : nowMs) : null
+  const dwellMet = calmSince != null && nowMs - calmSince >= CALM_DWELL_MS
+  // The safety valve. A hold may DELAY good news; it must never be able to CANCEL it.
+  // Two ways the evidence gate can jam shut while it is genuinely dry outside: the
+  // nowcast goes away entirely, or INCA lays down one of its documented sub-threshold
+  // trace carpets (v2.8.0) that keeps the window "not usable" for an hour. Either way
+  // the NOW reading is calm and the user is standing in the dry, so a second, longer
+  // clock releases on the reading alone. Without this the hold could lag indefinitely,
+  // which is the one failure the doctrine does not forgive.
+  const easedSince = easing ? (typeof prev.easedSince === 'number' ? prev.easedSince : nowMs) : null
+  const valveMet = easedSince != null && nowMs - easedSince >= HOLD_MAX_MS
+  return { holding: !(dwellMet || valveMet), calmSince, easedSince }
 }
 
 export function detectGaps(times, precips) {
@@ -736,6 +840,26 @@ export function getStatus(
       weatherEmoji,
       moto: false,
       notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
+    }
+  }
+
+  // ---- Held BLEIB DRIN (v2.22.0) — see settleStuckHold above ----
+  // We said "no break in sight" and the reading has now turned calm. Until that calm
+  // is a usable window, corroborated and held for two cycles, we do NOT flip the
+  // headline — but we say what we're seeing, because sitting silently on improving
+  // radar is its own kind of lie. The user's words: "I should have seen more like
+  // stuck inside, but soon there might be a gap or soon it might calm down a little".
+  // Only ever converts a go/light candidate; wait and stuck return untouched, so this
+  // can never delay an escalation.
+  if (goOrLight && trend.heldStuck) {
+    return {
+      type: 'stuck',
+      headline: t('STUCK'),
+      sub: t(trend.releaseOk ? 's_stuck_clearing' : 's_stuck_softening'),
+      weather: weatherNote,
+      weatherEmoji,
+      moto: false,
+      notice: { head: t('n_raining'), sub: t('n_stuck_softening') },
     }
   }
 

@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, DRY_THRESHOLD, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, settleStuckHold, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -447,7 +447,8 @@ export default function App() {
       omTimes, data?.minutely_15?.precipitation ?? [],
       data?.arome?.times, data?.arome?.precips)
     const measured  = data?.current?.precipitation ?? 0
-    const stationPrecip = stationData?.precip ?? 0
+    // TAWES RR is a 10-min total; the thresholds are 15-min slot values (v2.21.0).
+    const stationPrecip = gaugeSlotValue(stationData?.precip ?? 0)
     const nowSec = Math.floor(Date.now() / 1000)
     // Radar's own read at "now" — the independent witness that releases the v2.0.1
     // model cap during a live downpour (v2.17.0). Must precede the NOW blend, and
@@ -601,7 +602,12 @@ export default function App() {
         // - Open-Meteo current.precip   — model-measured last hour (can lag)
         // - GeoSphere TAWES nearest 6+airport — actual station obs, 10-min updates
         const measured      = data?.current?.precipitation ?? 0
-        const stationPrecip = stationData?.precip ?? 0
+        // TAWES RR is the total over the last TEN minutes, but every threshold it is
+        // weighed against is a FIFTEEN-minute slot value — so the ground reading was
+        // entering the ladder 1.5x under-scaled and moderate rain read as "light
+        // drizzle, go anyway" (v2.21.0, gaps.gaugeSlotValue). Raise-only: readings
+        // below the reporting line pass through, so groundDry is unchanged.
+        const stationPrecip = gaugeSlotValue(stationData?.precip ?? 0)
         const stationTemp   = stationData?.temp ?? null
         // RainViewer radar at your exact GPS pixel — { now, soon }. `now` is the
         // freshest is-it-raining signal we have (~5 min latency); `soon` is the
@@ -801,14 +807,6 @@ export default function App() {
         const displayPrecip = effectivePrecip
         const recentRain = lastWetAt > 0 && (nowMs - lastWetAt) < RECENT_RAIN_MS
 
-        try {
-          localStorage.setItem('story', JSON.stringify({
-            lat: location.lat, lon: location.lon, ts: nowMs, lastWetAt,
-          }))
-        } catch {}
-
-        setCurrentPrecip(displayPrecip)
-        setGaps(detectedGaps)
         // Model rain probability for the hour the onset falls in — lets getStatus
         // soften a radar countdown the model isn't confident about (radar over-read
         // / virga) vs a firm "rain in X min" when the probability backs it up.
@@ -823,13 +821,58 @@ export default function App() {
           }
           rainProb = typeof hProb[bi] === 'number' ? hProb[bi] : null
         }
-        setTrend({ nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
-        setTickNow(Math.floor(Date.now() / 1000))
-        setCurrentWeather({
+
+        // ---- The BLEIB DRIN hold (v2.22.0, gaps.settleStuckHold) ----
+        // Leaving STUCK is the one transition that sends someone out of the door on
+        // its own initiative, so it has to be EARNED: a usable 45-min window on radar,
+        // a gauge that agrees the rain has stopped, held across two refreshes. Every
+        // other transition — including every escalation — is untouched and immediate.
+        const holdRec = nearStory && story?.stuckHold ? story.stuckHold : null
+        // `easing` = the NOW reading is no longer real rain. `releaseOk` adds the radar's
+        // agreement that the calm is a WINDOW rather than a lull. With no nowcast at all
+        // we cannot ask that question — and an unavailable witness must never be read as
+        // evidence to keep suppressing (the v2.8.0 rule), so the gate stands down to the
+        // reading alone rather than jamming shut.
+        const easing = groundPrecip < LIGHT_MIN
+        const releaseOk = easing && (!nowcast || dryWindowOpen(nowcast, nowSec))
+        const settledHold = settleStuckHold(holdRec, { releaseOk, easing, nowMs })
+
+        const weatherNow = {
           temp: stationTemp ?? data?.current?.temperature_2m ?? null,
           wind: data?.current?.wind_speed_10m ?? null,
           code: data?.current?.weather_code ?? null,
-        })
+        }
+        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
+
+        // Resolve the verdict here (not in render) purely so we know whether to keep
+        // carrying the hold. getStatus is pure, so the render below recomputes the
+        // identical type from the identical inputs. An identity t() on purpose: the
+        // TYPE never depends on language, and taking the real one would drag `t` into
+        // loadData's dependencies and refetch the whole pipeline on a language toggle.
+        const settledType = getStatus(displayPrecip, detectedGaps, weatherNow, k => k, nowSec, trendNow).type
+        // Rewritten every cycle the verdict is STUCK, so `ts` measures how fresh the
+        // hold is rather than how long it has been raining — a long wet afternoon stays
+        // held throughout, while an app left closed for half an hour resumes with no
+        // hold at all (nobody has checked that evidence since).
+        // 'loading' (the pipeline momentarily has no usable timeline) is not evidence
+        // that the rain stopped — carry the record through untouched rather than
+        // dropping the hold, so a blip can't hand back the flip it was added to stop.
+        // Its own ts keeps ageing, so it still goes stale on schedule.
+        const stuckHold = settledType === 'stuck'
+          ? { ts: nowMs, calmSince: settledHold.calmSince, easedSince: settledHold.easedSince }
+          : settledType === 'loading' ? holdRec : null
+
+        try {
+          localStorage.setItem('story', JSON.stringify({
+            lat: location.lat, lon: location.lon, ts: nowMs, lastWetAt, stuckHold,
+          }))
+        } catch {}
+
+        setCurrentPrecip(displayPrecip)
+        setGaps(detectedGaps)
+        setTrend(trendNow)
+        setTickNow(Math.floor(Date.now() / 1000))
+        setCurrentWeather(weatherNow)
         // Severe storm potential — Alpine/Salzburg specific threshold.
         // CAPE > 1500 J/kg during afternoon hours (12-21h local) signals
         // extreme convective instability. Gap timings become unreliable
