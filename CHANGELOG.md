@@ -12,6 +12,15 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.24.1] — 2026-08-18 — Gemma Raus just got better: the ribbon explains itself 📖
+
+*The rain ribbon carries a lot of information, and none of it was written down anywhere. Now the help panel shows you how to read it.*
+
+- **A small worked example of the chart**, right in the guide, with the four things worth knowing: taller means heavier, a low flat stretch is your dry window, solid bars are radar and dashed ones are the model, and the line on the left is now.
+- **Drawn, not photographed.** It's built from the same colours the real ribbon uses, so it looks right in both light and dark mode and can't quietly go out of date the way a screenshot would.
+
+*German and English both. Nothing about the forecast itself changed.*
+
 ## [2.24.0] — 2026-08-18 — Gemma Raus just got better: a dry minute is not a dry afternoon 🚪
 
 *It was dry outside and Gemma Raus said gemma raus. It was also going to rain, without a proper break, for the next three hours. Both of those were true, and only one of them was useful.*

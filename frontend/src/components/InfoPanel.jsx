@@ -34,6 +34,17 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             <StatusRow color="var(--c-stuck)" badge={t('guide_ex_stuck')} desc={t('guide_red')} />
           </div>
 
+          {/* ── HOW TO READ THE RIBBON ── */}
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
+            {t('guide_ribbon_title')}
+          </div>
+          <RibbonGuide t={t} />
+          <div className="space-y-2 mb-5">
+            {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4'].map(k => (
+              <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
+            ))}
+          </div>
+
           <p className="font-mono text-xs text-muted leading-relaxed mb-5">
             {t('guide_weather')}
           </p>
@@ -144,6 +155,54 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
         </div>
       </div>
     </>
+  )
+}
+
+// A miniature of the real ribbon, drawn as SVG rather than shipped as a picture:
+// it reads the same CSS colour tokens the chart itself uses, so it stays correct in
+// both themes and cannot drift out of date the way a screenshot would.
+// Deliberately shows one story — raining, easing to a dry window, rain returning,
+// then the model zone — because that is the shape people need to recognise.
+function RibbonGuide({ t }) {
+  const W = 40, BASE = 66, SPLIT = 6 * W
+  const bars = [
+    { h: 28, c: 'var(--c-wait)'  },
+    { h: 19, c: 'var(--c-light)' },
+    { h: 6,  c: 'var(--c-light)', faint: true },   // trace: a hairline, never taller than real rain
+    { h: 4,  c: 'var(--c-go)'    },                // the dry window
+    { h: 4,  c: 'var(--c-go)'    },
+    { h: 19, c: 'var(--c-light)' },
+    { h: 28, c: 'var(--c-wait)',  dash: true },    // model zone
+    { h: 19, c: 'var(--c-light)', dash: true },
+  ]
+  return (
+    <svg viewBox="0 0 320 82" className="w-full h-auto text-primary mb-4"
+         role="img" aria-label={t('guide_ribbon_title')}>
+      {/* zone band */}
+      <rect x="0" y="0" width={SPLIT} height="12" fill="var(--c-go)" opacity="0.22" />
+      <rect x={SPLIT} y="0" width={320 - SPLIT} height="12" fill="var(--c-muted)" opacity="0.14" />
+      <text x="6" y="9" fontSize="7" fontFamily="monospace" fill="var(--c-muted)">RADAR</text>
+      <text x={SPLIT + 6} y="9" fontSize="7" fontFamily="monospace" fill="var(--c-muted)">
+        {t('guide_ribbon_lbl_model')}
+      </text>
+      {bars.map((b, i) => {
+        const x = i * W + 1, y = BASE - b.h
+        return b.dash
+          ? <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c} fillOpacity="0.18"
+                  stroke={b.c} strokeWidth="1.2" strokeDasharray="3 2" />
+          : <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c}
+                  fillOpacity={b.faint ? 0.45 : 1} />
+      })}
+      {/* radar → model divider */}
+      <line x1={SPLIT} y1="0" x2={SPLIT} y2={BASE + 14} stroke="var(--c-muted)"
+            strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
+      {/* "now" */}
+      <rect x="0" y="0" width="2" height={BASE + 14} fill="currentColor" />
+      {[0, 2, 4, 6].map((i, n) => (
+        <text key={i} x={i * W + 4} y="78" fontSize="8" fontFamily="monospace"
+              fill="var(--c-muted)">{15 + n}:00</text>
+      ))}
+    </svg>
   )
 }
 
