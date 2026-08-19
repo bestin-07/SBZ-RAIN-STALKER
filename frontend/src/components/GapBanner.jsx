@@ -1,3 +1,7 @@
+const ACTIVITY_EMOJI = {
+  swim: '🏊', run: '🏃', bike: '🚴', moto: '🏍️', picnic: '🧺',
+}
+
 const COLORS = {
   go:      '#D4A017',
   light:   '#6CD1EB',
@@ -7,7 +11,7 @@ const COLORS = {
   loading: '#6B7280',
 }
 
-export default function GapBanner({ status }) {
+export default function GapBanner({ status, blocked = [], t }) {
   if (!status) return null
 
   // Theme-aware colour via CSS var (light mode darkens these for contrast);
@@ -25,15 +29,23 @@ export default function GapBanner({ status }) {
       <div className="font-mono text-sm text-muted mt-2 leading-snug">
         {status.sub}
       </div>
-      {(status.weatherEmoji || status.moto) && (
-        <div
-          className="text-xl mt-1 leading-none"
-          title={[status.weather, status.moto && 'Dry for the next 30 min — good for a ride']
-            .filter(Boolean).join(' · ')}
-          aria-label={[status.weather, status.moto && 'Dry enough for a motorbike ride in the next 30 minutes']
-            .filter(Boolean).join(' — ')}
-        >
-          {[status.weatherEmoji, status.moto && '🏍️'].filter(Boolean).join(' ')}
+      {/* What the weather has taken off the table. An EMPTY row is the good news —
+          on a clear day nothing renders here at all. Each icon carries its own
+          label, so a screen reader hears "no swimming" rather than a bare emoji.
+          (The old row listed what you COULD do, with hardcoded English labels.) */}
+      {blocked.length > 0 && (
+        <div className="flex items-center gap-2 mt-2 leading-none">
+          {blocked.map(a => (
+            <span
+              key={a}
+              className="gr-no"
+              role="img"
+              title={t ? t('no_' + a) : a}
+              aria-label={t ? t('no_' + a) : a}
+            >
+              <span aria-hidden="true">{ACTIVITY_EMOJI[a]}</span>
+            </span>
+          ))}
         </div>
       )}
       {status.weather && (

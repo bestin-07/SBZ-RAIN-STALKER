@@ -120,6 +120,12 @@ const translations = {
     s_stuck_easing:       ['Noch kräftiger Regen — sollte in etwa {min} Min. auf Niesel zurückgehen', 'Gerade noch nass, in etwa {min} Min. wird es deutlich leichter', 'Radar zeigt: in etwa {min} Min. nur noch Niesel'],
     s_stuck_storm_easing: ['Gewitter — der Regen sollte in etwa {min} Min. nachlassen', 'Blitz und Donner, aber in etwa {min} Min. wird der Regen leichter', 'Gewitter über Salzburg — in etwa {min} Min. lässt der Regen nach'],
     n_stuck_easing: 'in etwa {min} Min. nur noch Niesel',
+    // v2.27.0 - was das Wetter dir gerade wegnimmt (durchgestrichene Symbole).
+    no_swim:   'Kein Schwimmen',
+    no_run:    'Kein Laufen',
+    no_bike:   'Kein Radfahren',
+    no_moto:   'Kein Motorrad',
+    no_picnic: 'Kein Picknick',
     n_stuck_ease: 'dürfte in etwa {min} Min. nachlassen',
     n_stuck_ease_far: 'dürfte in etwa {h} Std. nachlassen',
     // v2.22.0 — gehaltenes BLEIB DRIN: der Regen lässt nach, aber noch ist kein
@@ -413,6 +419,12 @@ const translations = {
     s_stuck_easing:       ['heavy for now — should drop to a drizzle in about {min} min', 'wet right now, but it gets much lighter in about {min} min', 'radar says: down to a drizzle in about {min} min'],
     s_stuck_storm_easing: ['thunderstorm — the rain should ease in about {min} min', 'lightning about, but the rain eases in about {min} min', 'storm overhead — rain lets up in about {min} min'],
     n_stuck_easing: 'down to a drizzle in about {min} min',
+    // v2.27.0 - what the weather is taking off the table (crossed-out icons).
+    no_swim:   'No swimming',
+    no_run:    'No running',
+    no_bike:   'No cycling',
+    no_moto:   'No motorbike',
+    no_picnic: 'No picnic',
     n_stuck_ease: 'should ease in about {min} min',
     n_stuck_ease_far: 'should ease in about {h} h',
     // v2.22.0 — a HELD stuck verdict: the rain is easing but no usable window is

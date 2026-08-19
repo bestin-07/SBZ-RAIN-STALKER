@@ -654,18 +654,64 @@ export function detectGaps(times, precips) {
   return { currentPrecip, gaps, nextRainAt, dryEndsOpen }
 }
 
-// Emoji cluster per comfort band, kept separate from the translated text (see
-// weatherNoteKey below) so the app can group ALL context emoji — comfort band +
-// motorbike glance — into one row (GapBanner), instead of embedding emoji inside
-// the sentence. Hazard bands (snow/thunder/storm/fog) deliberately have none —
-// those are warnings, not "here's what to do" invitations.
-const WEATHER_EMOJI = {
-  weather_scorching: '🏊🍦',
-  weather_hot: '🏊🧺',
-  weather_windy: '💨',
-  weather_freezing: '🧣',
-  weather_cold: '🧥',
-  weather_perfect: '🚶🏃🏊',
+// ---- What the weather takes off the table (v2.27.0) -------------------------------
+// The emoji row used to list what you COULD do — 🚶🏃🏊 on a perfect day. Inverted, it
+// lists what you can't, and a perfect day costs zero pixels: an empty row IS the good
+// news, and every icon that does appear is worth reading.
+//
+// Two rules keep it honest:
+//   1. Never duplicate the headline. There is no 🚶 here, because "can I walk" is
+//      precisely what GEMMA RAUS / BLEIB DRIN already answers.
+//   2. Only cross what the WEATHER took, not what the season took. "Too cold to swim"
+//      in January is not news, it is winter — and an icon that sits crossed for eight
+//      months is one nobody sees any more. So nothing here keys on temperature.
+export const ACTIVITIES = ['swim', 'run', 'bike', 'moto', 'picnic']
+
+// The one activity still ruled out after the rain stops: the grass stays wet. That is
+// why picnic earns a slot — it carries information in the exact state where the row
+// would otherwise be empty (GEMMA RAUS, twenty minutes after a shower). Deliberately
+// NOT RECENT_RAIN_MS (15 min): that constant is tuned for wording ("rain back soon"),
+// and reusing a constant tuned for another job is what produced the v2.17.0 and
+// v2.21.0 incidents. Starting value — expect to tune once it has seen real afternoons.
+export const WET_GROUND_MS = 90 * 60 * 1000
+
+// `moto` is the EXISTING motorbike glance (v2.11.0) — true when it is dry for the next
+// 30 min. Inverted it means "motorbike is off", and because every non-GO state already
+// hardcodes moto:false, WAIT and STUCK cross it out with no extra logic at all.
+export function blockedActivities({
+  code = -1, wind = 0, moto = false, state = 'go', night = false,
+  stormNearby = false, iceWarning = false, wetGround = false,
+} = {}) {
+  if (night) return []                       // nobody is deciding about swimming at 3am
+  const out = new Set()
+  const add = (...a) => a.forEach(x => out.add(x))
+
+  // DANGER is the one state where a wall of crosses IS the message.
+  if (state === 'danger') return [...ACTIVITIES]
+
+  // `stormNearby` is regionalFullStorm (code >= 95) or a dual-confirmed forming storm —
+  // NOT regionalThunder, which is code >= 80 and so includes ordinary rain showers.
+  // Crossing out swimming on every showery afternoon would make the row meaningless.
+  const lightning = (code >= 95 && code <= 99) || stormNearby
+  const hail      = code === 96 || code === 99
+  const snow      = (code >= 71 && code <= 77) || code === 85 || code === 86
+  const ice       = code === 66 || code === 67 || iceWarning
+  const gale      = (wind ?? 0) >= 50         // same threshold as the storm banner
+
+  if (lightning || hail) add('swim', 'run', 'bike', 'moto', 'picnic')
+  if (snow) add('bike', 'moto', 'picnic')
+  if (ice)  add('bike', 'moto')
+  if (gale) add('bike', 'moto', 'picnic')
+
+  // Rain tier — skipped in BLEIB DRIN, where "stay in" already says all of this and a
+  // full row of crosses would be noise rather than information. Hazards above still
+  // show, because they matter even for a dash to the car.
+  if (state !== 'stuck') {
+    if (!moto) add('moto', 'picnic')
+    if (wetGround) add('picnic')
+  }
+
+  return ACTIVITIES.filter(a => out.has(a))   // fixed order — icons never re-sort
 }
 
 // Shared band logic for both the translated note (getWeatherNote) and its emoji
@@ -715,10 +761,6 @@ function getWeatherNote(weather, t, opts) {
   const key = weatherNoteKey(weather, opts)
   if (!key) return null
   return t(key, { temp: Math.round(weather.temp), wind: Math.round(weather.wind ?? 0) })
-}
-
-function getWeatherEmoji(weather, opts) {
-  return WEATHER_EMOJI[weatherNoteKey(weather, opts)] ?? null
 }
 
 function precipByCode(code) {
@@ -871,7 +913,7 @@ export function getStatus(
   nowSec = Math.floor(Date.now() / 1000), trend = {},
 ) {
   if (currentPrecip === null) {
-    return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null, weatherEmoji: null, moto: false }
+    return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null, moto: false }
   }
 
   // Browser-local clock: 00:00–04:59 (12am–5am) → cozy night sub-lines (headline
@@ -912,7 +954,6 @@ export function getStatus(
     (trend.nextRainAt != null && (trend.nextRainAt - nowSec) <= RAIN_SOON_NOTE * 60)
   const weatherOpts = { night, evening, raining: !(isDry || gapNow), rainSoon }
   const weatherNote = getWeatherNote(weather, t, weatherOpts)
-  const weatherEmoji = getWeatherEmoji(weather, weatherOpts)
 
   // ---- Usable-window rule (v2.19.0) — see goWindowTooShort above ----
   // Lives HERE rather than in App.jsx's display layer (where redWarning/stormImminent
@@ -953,7 +994,6 @@ export function getStatus(
             ? 's_stuck_storm_easing' : 's_stuck_easing', { min: easeMin })
         : t('window_wet_sub', { min: GO_MIN_WINDOW }),
       weather: weatherNote,
-      weatherEmoji,
       moto: false,
       notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
     }
@@ -973,7 +1013,6 @@ export function getStatus(
       headline: t('STUCK'),
       sub: t(trend.releaseOk ? 's_stuck_clearing' : 's_stuck_softening'),
       weather: weatherNote,
-      weatherEmoji,
       moto: false,
       notice: { head: t('n_raining'), sub: t('n_stuck_softening') },
     }
@@ -1065,7 +1104,7 @@ export function getStatus(
         ? t('s_rain_eased')
         : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     }
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, weatherEmoji, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // Trace drizzle (< 0.2 mm) → still GO. A 0.1 mm tip must not flip GEMMA RAUS ↔
@@ -1080,7 +1119,7 @@ export function getStatus(
     const sub = currentPrecip >= DRY_THRESHOLD
       ? t('s_barely_drizzle')
       : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, weatherEmoji, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // ---- Light drizzle (0.2–0.5 mm): "you could still go" ----
@@ -1103,7 +1142,7 @@ export function getStatus(
     } else {
       sub = t('s_light')
     }
-    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, weatherEmoji, moto: false, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, moto: false, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   // ---- Raining now: narrate the break ahead ----
@@ -1113,7 +1152,7 @@ export function getStatus(
     const soon = clearInMin < SOON_MIN
     const headline = soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
     const sub = night ? t('s_night_raining') : breakSub(firstGap, nowSec, t)
-    return { type: 'wait', headline, sub, weather: weatherNote, weatherEmoji, moto: false, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'wait', headline, sub, weather: weatherNote, moto: false, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
   const isThunder = (weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99
@@ -1146,7 +1185,6 @@ export function getStatus(
     headline: t('STUCK'),
     sub: stuckSub,
     weather: weatherNote,
-    weatherEmoji,
     moto: false,
     notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
   }

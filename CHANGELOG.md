@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.27.0] — 2026-08-19 — Gemma Raus just got better: the icons tell you what is off 🚫
+
+*A perfect day now shows nothing at all. That is the whole idea.*
+
+**What happened**
+
+The little row of emoji under the headline used to advertise what you could do - a walker, a runner and a swimmer on a nice day. Pleasant, but it told you what you could already see for yourself, and on the days that actually needed care it said nothing useful.
+
+**What is new for you**
+
+- **The row now shows what the weather has taken away**, each icon struck through with a red ring. Thunderstorm: swimming, running and cycling are out. Snow: the bike is out. Rain, or rain within the next half hour: the motorbike is out.
+- **An empty row is the good news.** On a clear day nothing appears there at all - nothing has been taken from you.
+- **The picnic basket is the quiet clever one.** It stays crossed after the rain stops, because the grass is still wet. It is the only icon you will see on an otherwise perfect-looking afternoon that has just had a shower.
+- **Nothing shown at night**, and during bleib drin only genuine hazards - you already know you are staying in, so a wall of crosses would just be noise.
+- **Screen readers now say "no swimming"** instead of reading out a bare emoji, in your own language. The old labels were English-only regardless of the setting.
+
+*The jacket and scarf advice has not gone anywhere - it lives in the line of text underneath, where it always was.*
+
 ## [2.26.0] — 2026-08-18 — Gemma Raus just got better: it can tell you when it lets up 🌦
 
 *"It's kind of a gap now - and it makes me sad that we can't see that coming and tell people."*

@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, easesToGoableMin, settleStuckHold, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, easesToGoableMin, settleStuckHold, blockedActivities, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -21,6 +21,8 @@ const WARN_EMOJI = { 1: '💨', 2: '🌧', 3: '❄️', 4: '🧊', 5: '⛈', 6: 
 // `regionalThunder` note already tells the user a thunderstorm is in the region, and
 // two thunderstorm messages on one screen is one too many. See v2.18.1.
 const WARN_TYPE_THUNDERSTORM = 5
+// ZAMG hazard types: 1 storm, 2 rain, 3 snow, 4 black ice, 5 thunderstorm, 6 heat, 7 cold.
+const WARN_TYPE_BLACK_ICE = 4
 
 const REFRESH_MS = 5 * 60 * 1000
 // Pull-to-refresh (touch): distance (px) the content must be dragged down from
@@ -176,6 +178,7 @@ export default function App() {
   const regionalThunder = areaPrecip.some(a => a.code != null && a.code >= 80)
   const regionalFullStorm = areaPrecip.some(a => a.code != null && a.code >= 95)
   const windWarning     = currentWeather?.wind != null && currentWeather.wind >= 50
+
   const windStrong      = currentWeather?.wind != null && currentWeather.wind >= 70
   // "cloudy but dry — worth heading out" only when there's actually a dry window:
   // suppress if rain is imminent (would contradict a countdown) and only in daylight
@@ -203,6 +206,23 @@ export default function App() {
   // yet the headline stayed GEMMA RAUS because both signals were banner-only and
   // the ribbon's storm was still >30 min out (past DOWNPOUR_WINDOW_MIN).
   const stormImminent = stormCape != null && formingActive
+
+  // What the weather takes off the table (v2.27.0, gaps.blockedActivities). Computed
+  // HERE rather than inside getStatus because it needs the display-layer hazard flags
+  // (regionalFullStorm, stormImminent, the ZAMG black-ice warning) that the state
+  // machine never sees. `stormNearby` deliberately uses regionalFullStorm (code >= 95),
+  // NOT regionalThunder (code >= 80) — the latter includes ordinary rain showers, and
+  // crossing out swimming on every showery afternoon would make the row meaningless.
+  const blocked = blockedActivities({
+    code:  currentWeather?.code ?? -1,
+    wind:  currentWeather?.wind ?? 0,
+    moto:  !!status?.moto,
+    state: redWarning || stormImminent ? 'danger' : (status?.type ?? 'go'),
+    night: hourNow < 5,
+    stormNearby: regionalFullStorm || stormImminent,
+    iceWarning: warnings.some(w => w.type === WARN_TYPE_BLACK_ICE),
+    wetGround: !!trend.wetGround,
+  })
 
   // Tick every minute so the "rain in X" / "dry in X" countdown moves live
   // between the 5-minute data refreshes (re-synced on each refresh).
@@ -842,7 +862,7 @@ export default function App() {
           wind: data?.current?.wind_speed_10m ?? null,
           code: data?.current?.weather_code ?? null,
         }
-        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !hasUsableWindow(gapTimeline.times, gapPrecips, nowSec), easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
+        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !hasUsableWindow(gapTimeline.times, gapPrecips, nowSec), easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, wetGround: lastWetAt > 0 && (nowMs - lastWetAt) < WET_GROUND_MS, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
 
         // Resolve the verdict here (not in render) purely so we know whether to keep
         // carrying the hold. getStatus is pure, so the render below recomputes the
@@ -1310,7 +1330,7 @@ export default function App() {
             headline: t('STUCK'),
             sub: t('storm_danger_sub'),
             weather: null, weatherEmoji: null, moto: false,
-          } : status} />
+          } : status} blocked={blocked} t={t} />
           {showCloudyNote && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs leading-relaxed text-muted">

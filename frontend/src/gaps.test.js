@@ -14,6 +14,7 @@ import {
   goWindowTooShort, GO_MIN_WINDOW, windowWetMm, WINDOW_WET_MM,
   dryWindowOpen, settleStuckHold, CALM_DWELL_MS, HOLD_STALE_MS, HOLD_MAX_MS,
   hasUsableWindow, GO_MIN_SLOTS, easesToGoableMin,
+  blockedActivities, ACTIVITIES, WET_GROUND_MS,
   showGhost, GHOST_MIN_FACTOR, hoursLabel,
   modelEaseAt, MODEL_EASE_MIN_DRY, hasTraceEcho, traceAheadMin, tracePhantom,
   ringDirection, combineModelSeries,
@@ -319,32 +320,27 @@ describe('getStatus — weather notes (never contradict the verdict)', () => {
   it('perfect summer day (25°C, calm, clear, dry) → "made for going out"', () => {
     const s = getStatus(0, [], { temp: 25, wind: 5, code: 0 }, makeT(), NOON, { dryEndsOpen: true })
     expect(s.weather).toBe('weather_perfect')
-    expect(s.weatherEmoji).toBe('🚶🏃🏊')
   })
 
   it('same weather but rain <90 min away → comfort note SUPPRESSED', () => {
     const s = getStatus(0, [], { temp: 25, wind: 5, code: 0 }, makeT(), NOON,
       { nextRainAt: NOON + 30 * 60, rainProb: 80 })
     expect(s.weather).toBeNull()
-    expect(s.weatherEmoji).toBeNull()
   })
 
   it('raining → comfort notes suppressed entirely', () => {
     const s = getStatus(1.2, [], { temp: 25, wind: 5, code: 61 }, makeT(), NOON, noTrend)
     expect(s.weather).toBeNull()
-    expect(s.weatherEmoji).toBeNull()
   })
 
   it('thunder hazard ALWAYS shows, even while raining — but with no emoji (a warning, not an invitation)', () => {
     const s = getStatus(1.2, [], { temp: 18, wind: 20, code: 95 }, makeT(), NOON, noTrend)
     expect(s.weather).toBe('weather_thunder')
-    expect(s.weatherEmoji).toBeNull()
   })
 
   it('overcast 25°C is NOT "perfect" (needs clear sky, code ≤ 2)', () => {
     const s = getStatus(0, [], { temp: 25, wind: 5, code: 3 }, makeT(), NOON, { dryEndsOpen: true })
     expect(s.weather).not.toBe('weather_perfect')
-    expect(s.weatherEmoji).toBeNull()
   })
 })
 
@@ -390,19 +386,16 @@ describe('getStatus — comfort notes vs rain in sight (v2.6)', () => {
     const s = getStatus(0, [], { temp: 25, wind: 35, code: 0 }, makeT(), NOON,
       { dryEndsOpen: true, traceAheadMin: 25 })
     expect(s.weather).toBe('weather_windy')
-    expect(s.weatherEmoji).toBe('💨')
   })
 
   it('regression: NO signals + all-clear → perfect note still shows', () => {
     const s = getStatus(0, [], perfect, makeT(), NOON, { dryEndsOpen: true })
     expect(s.weather).toBe('weather_perfect')
-    expect(s.weatherEmoji).toBe('🚶🏃🏊')
   })
 
   it('regression: rain far away (nextRainAt in 3h, no radar signals) → note still shows', () => {
     const s = getStatus(0, [], perfect, makeT(), NOON, { nextRainAt: NOON + 180 * 60 })
     expect(s.weather).toBe('weather_perfect')
-    expect(s.weatherEmoji).toBe('🚶🏃🏊')
   })
 })
 
@@ -424,7 +417,6 @@ describe('getStatus — moto glance (v2.11): "dry enough for a 30-min ride NOW"'
     expect(s.type).toBe('go')
     // The 90-min rainSoon gate still (correctly) suppresses the "perfect, go enjoy" note...
     expect(s.weather).toBeNull()
-    expect(s.weatherEmoji).toBeNull()
     // ...but 45 min is still a genuinely safe 30-min ride window — the icon row
     // would show just 🏍️ alone, with no comfort emoji alongside it.
     expect(s.moto).toBe(true)
@@ -608,6 +600,73 @@ describe('surfaceDrizzle — catch what the gauges miss, reject unsupported RV-o
 
   it('RV_SOLID_COVERAGE contract: 0.4 of the block (change only with a CLAUDE.md log entry)', () => {
     expect(RV_SOLID_COVERAGE).toBe(0.4)
+  })
+})
+
+
+// ---- blockedActivities — what the weather takes off the table (v2.27.0) ----------
+
+describe('blockedActivities — an empty row is the good news', () => {
+  const B = o => blockedActivities(o)
+
+  it('A PERFECT DAY SHOWS NOTHING AT ALL', () => {
+    expect(B({ code: 0, wind: 5, moto: true, state: 'go' })).toEqual([])
+  })
+
+  it('thunderstorm crosses out everything exposed (the reported case)', () => {
+    expect(B({ code: 95, wind: 5, moto: false, state: 'stuck' }))
+      .toEqual(['swim', 'run', 'bike', 'moto', 'picnic'])
+  })
+
+  it('a storm NEARBY counts, but ordinary showers nearby do not', () => {
+    // stormNearby is regionalFullStorm (code >= 95). If it were regionalThunder
+    // (code >= 80) every showery afternoon would cross out swimming.
+    expect(B({ code: 61, moto: true, stormNearby: true })).toContain('swim')
+    expect(B({ code: 61, moto: true, stormNearby: false })).not.toContain('swim')
+  })
+
+  it('snow crosses the wheels, not the swim (the reported case)', () => {
+    expect(B({ code: 73, moto: true, state: 'go' })).toEqual(['bike', 'moto', 'picnic'])
+  })
+
+  it('rain crosses the motorbike (the reported case) — via the EXISTING moto glance', () => {
+    expect(B({ code: 61, moto: false, state: 'light' })).toEqual(['moto', 'picnic'])
+    expect(B({ code: 61, moto: true,  state: 'go' })).toEqual([])
+  })
+
+  it('strong wind crosses the wheels', () => {
+    expect(B({ code: 3, wind: 55, moto: true })).toEqual(['bike', 'moto', 'picnic'])
+    expect(B({ code: 3, wind: 45, moto: true })).toEqual([])
+  })
+
+  it('WET GROUND: still no picnic after the rain has stopped', () => {
+    // The only activity ruled out by rain that has already ended — and the only icon
+    // that shows in a state where the row would otherwise be empty.
+    expect(B({ code: 3, moto: true, state: 'go', wetGround: true })).toEqual(['picnic'])
+  })
+
+  it('NIGHT hides the row completely', () => {
+    expect(B({ code: 95, wind: 80, moto: false, night: true })).toEqual([])
+  })
+
+  it('BLEIB DRIN shows hazards only — "stay in" already says the rest', () => {
+    // Plain rain in STUCK adds nothing; a wall of crosses would be noise.
+    expect(B({ code: 61, moto: false, state: 'stuck' })).toEqual([])
+    // ...but a hazard still matters, even for a dash to the car.
+    expect(B({ code: 73, moto: false, state: 'stuck' })).toEqual(['bike', 'moto', 'picnic'])
+  })
+
+  it('DANGER crosses everything — the one place a wall of crosses IS the message', () => {
+    expect(B({ code: 0, moto: true, state: 'danger' })).toEqual(ACTIVITIES)
+  })
+
+  it('order is fixed, so icons never re-sort between refreshes', () => {
+    const out = B({ code: 96, moto: false })
+    expect(out).toEqual(ACTIVITIES.filter(a => out.includes(a)))
+  })
+
+  it('WET_GROUND_MS is its own constant, not RECENT_RAIN_MS', () => {
+    expect(WET_GROUND_MS).toBe(90 * 60 * 1000)
   })
 })
 

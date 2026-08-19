@@ -150,3 +150,39 @@ html.light .leaflet-control-attribution {
 html.light .leaflet-control-attribution a {
   color: #6B6860 !important;
 }
+
+/* Crossed-out activity (v2.27.0). A CSS overlay rather than the Unicode combining
+   enclosing circle (U+20E0), which renders as a stray box or nothing at all on a lot
+   of iOS and Android builds — and this app is mostly phones. The emoji itself is
+   greyed and faded so it recedes; the ring and slash carry the meaning. */
+.gr-no {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75em;
+  height: 1.75em;
+  font-size: 1.05rem;
+  line-height: 1;
+  flex: none;
+}
+.gr-no > span { opacity: 0.45; filter: grayscale(1); }
+.gr-no::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--c-danger);
+  border-radius: 50%;
+  opacity: 0.85;
+}
+.gr-no::after {
+  content: '';
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: calc(50% - 1px);
+  height: 2px;
+  background: var(--c-danger);
+  opacity: 0.85;
+  transform: rotate(-45deg);
+}
