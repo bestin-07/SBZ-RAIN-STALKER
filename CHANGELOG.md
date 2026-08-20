@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.28.0] — 2026-08-20 — Gemma Raus just got better: "15 km away" now means 15 km away 📏
+
+*Reported on a sunny morning: "it's already raining to the northwest (~15 km)" while Salzburg was clear. The rain was real — a band closing from Waging am See at about 27 km/h. The distance was not.*
+
+**What happened**
+
+Gemma Raus watches a ring of points around you for rain that has not arrived yet. That ring was supposed to sit 15 km out. It was actually sitting at 10.7 km — the maths behind it used the size of a radar pixel at the equator, and pixels get smaller the further north you go. At Salzburg's latitude they are about a third smaller than assumed.
+
+**What's new for you**
+
+- **The ring now really is 15 km.** You get a little more warning of rain that is on its way but not yet overhead, and the distance in the message is honest.
+- **One of the phrasings was overclaiming.** It sometimes said "nothing heading your way yet" — but that alert fires when rain is nearby *without a known arrival time*, which is not the same as it standing still. On the morning this came up it was heading straight for the city. It now says "no arrival time yet".
+- **The crossed-out activity icons are visible again.** They were being faded so far that only the red rings showed. The icon underneath now reads clearly.
+
+*More warning, sooner — which also means the motorbike icon crosses out a little earlier than before.*
+
 ## [2.27.0] — 2026-08-19 — Gemma Raus just got better: the icons tell you what is off 🚫
 
 *A perfect day now shows nothing at all. That is the whole idea.*

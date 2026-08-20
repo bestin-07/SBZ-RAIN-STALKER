@@ -396,13 +396,20 @@ function sampleRvFrameBlocks(host, framePath, z, tileX, tileY, blocks) {
   return Promise.race([imgPromise, new Promise(r => setTimeout(() => r(null), 5000))])
 }
 
-// Compass ring around the user's pixel, ~15 km out at z7 (1 px ≈ 1.2 km): the
-// "approach watch". Diagonals use 9px legs so all 8 points sit at a similar radius.
+// Compass ring around the user's pixel, ~15 km out at z7 (1 px ≈ 0.82 km at this
+// latitude): the "approach watch". Diagonal legs are chosen so all 8 points sit at a
+// similar radius. Blocks are clamped to the tile edge by sampleRvFrameBlocks, so a
+// point near a tile boundary samples a slightly lopsided ring rather than failing.
+// v2.28.0: 18 px cardinals / 13 px diagonals. The old 13/9 assumed 1.2 km per pixel,
+// which is the EQUATORIAL z7 resolution — Web Mercator shrinks with latitude, and the
+// real figure here is 156543.03 * cos(47.8) / 2^7 = 821 m/px. So the ring sat at
+// 10.7 km while the copy promised "~15 km". At 18 px it is 14.8 km, and the diagonals
+// at 13,13 give hypot = 18.4 px = 15.1 km — the claim is now true.
 const RING_DIRS = [
-  { d: 'n',  dx: 0,   dy: -13 }, { d: 'ne', dx: 9,  dy: -9 },
-  { d: 'e',  dx: 13,  dy: 0 },   { d: 'se', dx: 9,  dy: 9 },
-  { d: 's',  dx: 0,   dy: 13 },  { d: 'sw', dx: -9, dy: 9 },
-  { d: 'w',  dx: -13, dy: 0 },   { d: 'nw', dx: -9, dy: -9 },
+  { d: 'n',  dx: 0,   dy: -18 }, { d: 'ne', dx: 13,  dy: -13 },
+  { d: 'e',  dx: 18,  dy: 0 },   { d: 'se', dx: 13,  dy: 13 },
+  { d: 's',  dx: 0,   dy: 18 },  { d: 'sw', dx: -13, dy: 13 },
+  { d: 'w',  dx: -18, dy: 0 },   { d: 'nw', dx: -13, dy: -13 },
 ]
 
 // Read RainViewer at the user's exact lat/lon:

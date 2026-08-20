@@ -166,7 +166,9 @@ html.light .leaflet-control-attribution a {
   line-height: 1;
   flex: none;
 }
-.gr-no > span { opacity: 0.45; filter: grayscale(1); }
+/* Legible under the ring: the slash carries the meaning, so the icon only needs
+   enough desaturation to read as "off" — fully greyed at 45% it vanished on cream. */
+.gr-no > span { opacity: 0.85; filter: grayscale(0.35); }
 .gr-no::before {
   content: '';
   position: absolute;

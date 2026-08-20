@@ -78,7 +78,7 @@ const translations = {
     // „aus dem Norden / aus dem Westen" — mit Artikel, sonst klingt es wie ein Ortsname.
     s_rv_approach_dir: ['Regen zieht aus dem {dir} heran — in etwa {min} Min. bei dir', 'Radar: Regen aus dem {dir} im Anmarsch, etwa {min} Min. entfernt', 'Aus dem {dir} zieht Regen auf — kann in etwa {min} Min. da sein'],
     n_rv_approach_dir: 'Regen zieht aus dem {dir} heran (~{min} Min.)',
-    s_rv_nearby: ['Regen am Radar im {dir} — wir behalten es im Auge', 'Im {dir} regnet es bereits (~15 km) — wir haben die Lage im Blick', 'Regenzellen im {dir} in der Nähe — noch nichts im Anzug'],
+    s_rv_nearby: ['Regen am Radar im {dir} — wir behalten es im Auge', 'Im {dir} regnet es bereits (~15 km) — wir haben die Lage im Blick', 'Regenzellen im {dir} in der Nähe — noch keine Ankunftszeit'],
     n_rv_nearby: 'Regen in der Nähe im {dir} (~15 km)',
     dir_n: 'Norden', dir_ne: 'Nordosten', dir_e: 'Osten', dir_se: 'Südosten',
     dir_s: 'Süden', dir_sw: 'Südwesten', dir_w: 'Westen', dir_nw: 'Nordwesten',
@@ -377,7 +377,7 @@ const translations = {
     n_rv_approach: 'rain approaching on radar (~{min} min)',
     s_rv_approach_dir: ['rain moving in from the {dir} — about {min} min out', 'radar: rain approaching from the {dir}, roughly {min} min away', 'rain coming in from the {dir} — could reach you in about {min} min'],
     n_rv_approach_dir: 'rain moving in from the {dir} (~{min} min)',
-    s_rv_nearby: ['rain on the radar to the {dir} — keeping an eye on it', "it's already raining to the {dir} (~15 km) — watching it for you", 'rain cells nearby to the {dir} — nothing heading your way yet'],
+    s_rv_nearby: ['rain on the radar to the {dir} — keeping an eye on it', "it's already raining to the {dir} (~15 km) — watching it for you", 'rain cells nearby to the {dir} — no arrival time yet'],
     n_rv_nearby: 'rain nearby to the {dir} (~15 km)',
     dir_n: 'north', dir_ne: 'northeast', dir_e: 'east', dir_se: 'southeast',
     dir_s: 'south', dir_sw: 'southwest', dir_w: 'west', dir_nw: 'northwest',
