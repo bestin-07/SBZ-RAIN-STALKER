@@ -353,10 +353,21 @@ function getRainViewerMaps() {
 }
 
 // Sample ONE RainViewer frame's tile at one or more pixel blocks. Resolves an array
-// of wet-pixel COUNTS (0–25 per 5×5 block) — one per requested block — or null
-// (CORS/tile failure). The count is the spatial-extent signal (v2.4.1): a stuck
+// of { wet, heavy } pixel COUNTS (0–25 per 5×5 block) — one per requested block —
+// or null (CORS/tile failure). `wet` is the spatial-extent signal; `heavy` is the
+// INTENSITY signal (v2.29.0) — alpha alone cannot tell a trace echo from a
+// convective core, and reading it as binary made every RainViewer echo score 0.3. The count is the spatial-extent signal (v2.4.1): a stuck
 // clutter pixel lights 1–3 px, a real drizzle field blankets the block.
 // Reading extra blocks off the SAME canvas costs zero additional network.
+// Blue-channel cutoff separating the dark (heavy) end of the Universal Blue ramp
+// from the light/moderate end: 0,98,149 and darker qualify, 0,105,156 and lighter
+// do not. Palette-derived, not tuned — see the Logic change log (v2.29.0).
+const RV_HEAVY_BLUE_MAX = 150
+// Heavy pixels required in the 5×5 centre block (~6×6 km) before we call the echo
+// heavy. Terrain clutter lights 1–3 px (the v2.4.1 finding), so 3 keeps the
+// intensity key independent of the extent key (rvSolid) rather than duplicating it.
+const RV_HEAVY_PX = 3
+
 function sampleRvFrameBlocks(host, framePath, z, tileX, tileY, blocks) {
   const tileUrl = `${host}${framePath}/256/${z}/${tileX}/${tileY}/2/1_1.png`
   const imgPromise = new Promise(resolve => {
@@ -379,11 +390,19 @@ function sampleRvFrameBlocks(host, framePath, z, tileX, tileY, blocks) {
           const block = ctx.getImageData(x0, y0, 5, 5).data
           // RainViewer Universal Blue scheme: transparent = no rain.
           // alpha > 30 = meaningful radar echo above noise floor.
-          let wet = 0
-          for (let i = 3; i < block.length; i += 4) {
-            if (block[i] > 30) wet++
+          let wet = 0, heavy = 0
+          for (let i = 0; i < block.length; i += 4) {
+            const r = block[i], b = block[i + 2], a = block[i + 3]
+            if (a <= 30) continue
+            wet++
+            // Universal Blue ramp, verified against the live tile during the
+            // 2026-08-21 shower: pale tan at partial alpha = trace, light cyan
+            // (136,221,238) darkening to deep blue (0,71,104) = rising intensity,
+            // yellow/orange/red = convective core. "Heavy" is the dark end of the
+            // blue ramp or above — the intensity the alpha channel alone cannot see.
+            if ((r > 200 && b < 100) || (r < 60 && b <= RV_HEAVY_BLUE_MAX)) heavy++
           }
-          return wet
+          return { wet, heavy }
         })
         resolve(out)
       } catch {
@@ -454,18 +473,23 @@ export function fetchRainViewerPrecip(lat, lon) {
       // the browser caches per frame path — dots and the live location share them).
       const soonPs = fcst.map(f =>
         sampleRvFrameBlocks(host, f.path, z, tileX, tileY, [{ px, py }])
-          .then(v => ({ time: f.time, v: v === null ? null : v[0] })))
+          .then(v => ({ time: f.time, v: v === null ? null : v[0].wet })))
       return Promise.all([nowP, Promise.all(soonPs)]).then(([nowArr, soons]) => {
         if (nowArr === null && soons.every(s => s.v === null)) return null
-        // Blocks resolve as wet-pixel counts (0–25). Centre count → binary echo value
-        // (compat with the mm-ish contract) + coverage fraction for the solid check.
-        const nowCount = nowArr === null ? null : nowArr[0]
+        // Blocks resolve as { wet, heavy } counts (0–25). Centre wet count → binary
+        // echo value (compat with the mm-ish contract) + coverage fraction for the
+        // solid check; centre heavy count → the intensity key.
+        const nowCount = nowArr === null ? null : nowArr[0].wet
         const now = nowCount === null ? null : (nowCount > 0 ? 0.3 : 0)
+        // v2.29.0: is a genuinely HEAVY echo sitting on the pixel? `now` above stays
+        // binary on purpose — every existing consumer keeps its exact contract; the
+        // magnitude is raised downstream by gaps.rvNowValue, which owns the guards.
+        const heavy = nowArr !== null && nowArr[0].heavy >= RV_HEAVY_PX
         // v2.4.1: wide echo across the ~6×6 km centre block = a FIELD, not a stuck
         // clutter pixel — lets RainViewer corroborate itself in gaps.surfaceDrizzle.
         const rvSolid = nowCount !== null && nowCount / 25 >= RV_SOLID_COVERAGE
         const wetDirs = nowArr === null ? [] :
-          RING_DIRS.filter((r, i) => nowArr[i + 1] > 0).map(r => r.d)
+          RING_DIRS.filter((r, i) => nowArr[i + 1].wet > 0).map(r => r.d)
         const nowSec = Date.now() / 1000
         let approachMin = null
         for (const s of soons) {                    // frames are chronological
@@ -476,7 +500,7 @@ export function fetchRainViewerPrecip(lat, lon) {
         }
         // Direction only means "approach/nearby" when the centre itself is dry.
         const fromDir = (now !== null && now < 0.1) ? ringDirection(wetDirs) : null
-        return { now, approachMin, fromDir, rvSolid }
+        return { now, approachMin, fromDir, rvSolid, heavy }
       })
     })
     .catch(() => null)

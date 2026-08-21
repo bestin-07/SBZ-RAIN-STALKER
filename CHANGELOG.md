@@ -12,6 +12,31 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.29.0] — 2026-08-21 — Gemma Raus just got better: it can tell a drizzle from a downpour ⛈️
+
+*Reported mid-storm, and fairly: "suddenly it started raining and we lagged — it still says go anyways."*
+
+**What happened**
+
+A shower came over the city fast. The airport went from calm and dry to 29-knot gusts and rain in half an hour. Gemma Raus kept saying **PASST SCHON — just a light drizzle, go anyway**, while you were getting soaked.
+
+Two of the three things the app uses to answer *"am I getting wet right now?"* are always a little late by nature. The rain gauges are tipping buckets — they have to physically fill before they report anything, and they were still reading 0.0 a full eight minutes after the rain started. The radar forecast is an extrapolation that is published about twenty minutes behind real time, so its "right now" slot still showed dry.
+
+The third one — the live radar picture — *did* see it, immediately and clearly. But we were only checking **whether** there was rain on the radar, never **how hard**. Every echo, from the faintest mist to a thunderstorm core, was recorded as the same small number. And that number happened to sit exactly in the middle of the "light drizzle, go anyway" range.
+
+So the one instrument that was not late was being quoted as saying "drizzle" no matter what it actually saw.
+
+**What's new for you**
+
+- **The radar picture now reports intensity, not just presence.** Heavy rain overhead reads as heavy rain.
+- **A heavy downpour can no longer be filed as "light drizzle".** When the radar shows genuinely heavy rain sitting on you and the gauges have not caught up yet, the app now says so — and the verdict can reach **BLEIB DRIN** instead of waving you out the door.
+- **On the storm that prompted this, it would have caught the rain about ten minutes earlier** — before the gauge felt a drop.
+- **Light rain is completely unaffected.** We replayed the whole afternoon frame by frame: every earlier, genuinely-light passage still reads exactly as it did before. Only the downpour changed.
+
+*Two independent checks have to agree before this fires — the rain must be heavy **and** cover a wide area — so a lone speck of radar clutter still cannot keep you indoors. A clear sky remains an absolute veto, exactly as before.*
+
+---
+
 ## [2.28.0] — 2026-08-20 — Gemma Raus just got better: "15 km away" now means 15 km away 📏
 
 *Reported on a sunny morning: "it's already raining to the northwest (~15 km)" while Salzburg was clear. The rain was real — a band closing from Waging am See at about 27 km/h. The distance was not.*

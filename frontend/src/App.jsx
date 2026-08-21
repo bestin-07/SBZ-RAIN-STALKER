@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, easesToGoableMin, settleStuckHold, blockedActivities, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, easesToGoableMin, settleStuckHold, blockedActivities, rvNowValue, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -450,7 +450,12 @@ export default function App() {
     const stationData = sRes.status === 'fulfilled' ? sRes.value : null
     const nowcast     = nRes.status === 'fulfilled' ? nRes.value : null
     const rv          = rvRes.status === 'fulfilled' && rvRes.value !== null ? rvRes.value : null
-    const rvPrecip    = rv?.now ?? 0
+    // v2.29.0: the sampler reports echo INTENSITY as well as extent, so a heavy,
+    // block-filling echo carries its real class instead of the old flat 0.3. Applied
+    // at the very top so every downstream consumer (surfacing, the no-gauge max,
+    // rvRainActive, the model-cap corroboration) sees ONE consistent NOW value.
+    const rvPrecip    = rvNowValue(rv?.now ?? 0, rv?.heavy ?? false, rv?.rvSolid ?? false,
+                                   data?.current?.weather_code)
     // Approaching: pixel clear NOW but a RainViewer forecast frame (observed echo
     // motion, 10-min steps) shows rain arriving in ~N min. Moving echo ≠ clutter.
     const rvApproachMin = rvPrecip < DRY_THRESHOLD ? (rv?.approachMin ?? null) : null
@@ -635,7 +640,12 @@ export default function App() {
         // guard. Null if the CORS tile read isn't available.
         const rv = rvResult?.status === 'fulfilled' && rvResult.value !== null
           ? rvResult.value : null
-        const rvPrecip = rv?.now ?? 0
+        // v2.29.0: the sampler reports echo INTENSITY as well as extent, so a heavy,
+        // block-filling echo carries its real class instead of the old flat 0.3. Applied
+        // at the very top so every downstream consumer (surfacing, the no-gauge max,
+        // rvRainActive, the model-cap corroboration) sees ONE consistent NOW value.
+        const rvPrecip = rvNowValue(rv?.now ?? 0, rv?.heavy ?? false, rv?.rvSolid ?? false,
+                                    data?.current?.weather_code)
         const rvApproachMin = rvPrecip < DRY_THRESHOLD ? (rv?.approachMin ?? null) : null
         const rvApproachDir = rvApproachMin != null ? (rv?.fromDir ?? null) : null
         const rvNearbyDir   = rvApproachMin == null ? (rv?.fromDir ?? null) : null

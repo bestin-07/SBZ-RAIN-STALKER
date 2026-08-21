@@ -20,6 +20,7 @@ import {
   ringDirection, combineModelSeries,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
+  rvNowValue, RV_HEAVY_MM,
 } from './gaps'
 
 // ---- helpers ---------------------------------------------------------------
@@ -1927,3 +1928,120 @@ describe('tracePhantom — dual-key phantom-trace guard (v2.8)', () => {
 
 
 
+
+
+// ---- v2.29.0: RainViewer intensity — the 2026-08-21 convective-onset miss --------
+//
+// Incident: a convective shower (METAR LOWS 15:50Z -SHRA, wind 7kt → 19G29kt) sat
+// over the city at ~17:50 CEST. TAWES read 0.0 at all 11 points (tipping bucket had
+// not tipped, still 0.0 eight minutes later); the served nowcast's current slot read
+// 0.00 (issued 17:45, radar-extrapolated from ~17:25). RainViewer was the ONLY
+// instrument that saw it — 25/25 wet px with deep-blue cores at the user's pixel —
+// but the sampler read only the alpha channel, so EVERY echo scored a flat 0.3,
+// which sits dead centre of the light band. Verdict: PASST SCHON, in a downpour.
+// The same 0.3 was produced by the 16:40 frame, which was pure trace.
+
+describe('rvNowValue — RainViewer echo carries its intensity, not a flat 0.3', () => {
+  it('THE CONVECTIVE-ONSET MISS (2026-08-21): heavy + solid echo → raised out of the light band', () => {
+    expect(rvNowValue(0.3, true, true, 61)).toBe(RV_HEAVY_MM)
+    // the whole point: it must be able to reach WAIT / BLEIB DRIN
+    expect(RV_HEAVY_MM).toBeGreaterThan(LIGHT_MAX)
+  })
+
+  it('heavy but NOT block-filling (a stuck clutter pixel) → stays the drizzle value', () => {
+    expect(rvNowValue(0.3, true, false, 61)).toBe(0.3)
+  })
+
+  it('block-filling but NOT heavy (a broad trace field) → stays the drizzle value', () => {
+    // this is the v2.4.1 drizzle case — it must keep surfacing as GO ANYWAY, not escalate
+    expect(rvNowValue(0.3, false, true, 3)).toBe(0.3)
+  })
+
+  it('clear sky is an absolute veto (the v1.1.5 sunny-clutter bug stays dead)', () => {
+    expect(rvNowValue(0.3, true, true, 0)).toBe(0.3)
+    expect(rvNowValue(0.3, true, true, 1)).toBe(0.3)
+    expect(rvNowValue(0.3, true, true, 2)).toBe(0.3)
+    // …but overcast / raining codes are not vetoed
+    expect(rvNowValue(0.3, true, true, 3)).toBe(RV_HEAVY_MM)
+  })
+
+  it('RAISE-ONLY invariant: can never return less than it was given', () => {
+    for (const rv of [0, 0.3, 0.9, 2.0]) {
+      for (const heavy of [true, false]) {
+        for (const solid of [true, false]) {
+          for (const code of [null, 0, 2, 3, 61, 95]) {
+            expect(rvNowValue(rv, heavy, solid, code)).toBeGreaterThanOrEqual(rv)
+          }
+        }
+      }
+    }
+  })
+
+  it('an already-heavier reading is never dragged DOWN to the constant', () => {
+    expect(rvNowValue(2.0, true, true, 61)).toBe(2.0)
+  })
+
+  it('defaults are inert — a bare call behaves exactly as the old binary value did', () => {
+    expect(rvNowValue(0.3)).toBe(0.3)
+    expect(rvNowValue(0)).toBe(0)
+  })
+})
+
+describe('surfaceDrizzle — the heavy branch (v2.29.0)', () => {
+  it('THE INCIDENT REPLAY: gauge dry, nowcast slot exactly 0.00, heavy solid RV → surfaced UNCAPPED', () => {
+    const v = surfaceDrizzle(0, 0, RV_HEAVY_MM, 61, true)
+    expect(v).toBe(RV_HEAVY_MM)
+    expect(v).toBeGreaterThan(LIGHT_MAX)   // NOT squeezed back into "go anyway"
+  })
+
+  it('what shipped the bug: the flat 0.3 lands mid light band (pinned as the contrast)', () => {
+    const v = surfaceDrizzle(0, 0, 0.3, 61, true)
+    expect(v).toBe(0.3)
+    expect(v).toBeGreaterThanOrEqual(LIGHT_MIN)
+    expect(v).toBeLessThan(LIGHT_MAX)
+  })
+
+  it('heavy echo under a CLEAR sky still does not surface', () => {
+    expect(surfaceDrizzle(0, 0, RV_HEAVY_MM, 0, true)).toBeNull()
+    expect(surfaceDrizzle(0, 0, RV_HEAVY_MM, 2, true)).toBeNull()
+  })
+
+  it('heavy but not solid → no escalation (falls through to the light-band rules)', () => {
+    expect(surfaceDrizzle(0, 0, RV_HEAVY_MM, 61, false)).toBeNull()
+  })
+
+  it('a reporting wet gauge still owns the NOW magnitude', () => {
+    expect(surfaceDrizzle(0.3, 0, RV_HEAVY_MM, 61, true)).toBeNull()
+  })
+
+  it('a heavy NOWCAST slot with no RV echo is UNCHANGED — still the ground dry call', () => {
+    // pinned so the new branch cannot be reached by the nowcast on its own
+    expect(surfaceDrizzle(0, 0.8, 0, 3, true)).toBeNull()
+    expect(surfaceDrizzle(0, 2.0, 0, 61, true)).toBeNull()
+  })
+})
+
+describe('END TO END — the 2026-08-21 verdict', () => {
+  // The served nowcast at 17:45 CEST, Altstadt (from /api/ambient): dry in the two
+  // current slots because the extrapolation had not caught the cell yet, rain from
+  // 18:15. Meanwhile RainViewer had a heavy, block-filling echo on the pixel.
+  const SERIES = [0, 0, 0.55, 1.14, 0.32, 0.18, 0.24, 0.18, 0.24, 0.2, 0.2, 0.2]
+
+  it('with the OLD flat 0.3 the app said GO ANYWAY (the reported bug)', () => {
+    const tl = liveTimeline(SERIES)
+    const { gaps } = detectGaps(tl.times, tl.precips)
+    const now = Math.floor(Date.now() / 1000)
+    const s = getStatus(0.3, gaps, null, makeT(), now, { rvRainActive: true })
+    expect(s.type).toBe('light')          // PASST SCHON — in a convective shower
+  })
+
+  it('with the heavy value surfaced it is no longer a go-outside verdict', () => {
+    const tl = liveTimeline(SERIES)
+    const { gaps } = detectGaps(tl.times, tl.precips)
+    const now = Math.floor(Date.now() / 1000)
+    const s = getStatus(RV_HEAVY_MM, gaps, null, makeT(), now, { rvRainActive: true })
+    expect(s.type).not.toBe('go')
+    expect(s.type).not.toBe('light')
+    expect(['wait', 'stuck']).toContain(s.type)
+  })
+})

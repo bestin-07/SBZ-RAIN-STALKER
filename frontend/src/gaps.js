@@ -21,9 +21,38 @@ export const DOWNPOUR_WINDOW_MIN = 30    // only warn about downpours arriving w
 // 24/25 px while gauge, INCA slot and model all read exact zero).
 export const RV_SOLID_COVERAGE = 0.4
 
+// v2.29.0 — the RainViewer NOW magnitude. `rvPrecip` arrives BINARY (0.3 for any
+// echo at all), because the sampler used to read only the alpha channel; intensity
+// lives in the RGB and is now carried separately as `rvHeavy`. A heavy echo that
+// also BLANKETS the block is real weather and gets its true class instead of the
+// drizzle constant — two independent keys, intensity AND extent, so neither a
+// stuck-clutter pixel (heavy but tiny) nor a broad trace field (wide but faint)
+// can escalate on its own. Clear sky stays an absolute veto, exactly as it is for
+// drizzle surfacing (v1.1.5/v2.4.1) — sunny-day anaprop off the Untersberg can be
+// intense as well as broad, and the "sunny but PASST SCHON" bug must stay dead.
+// Raise-only by construction: it can never return LESS than it was given.
+export function rvNowValue(rvPrecip, rvHeavy = false, rvSolid = false, code = null) {
+  const clearSky = code != null && code <= 2
+  if (rvHeavy && rvSolid && !clearSky) return Math.max(rvPrecip ?? 0, RV_HEAVY_MM)
+  return rvPrecip ?? 0
+}
+
 export function surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, code, rvSolid = false) {
   if (groundPrecip >= DRY_THRESHOLD) return null       // gauge already wet — not our case
   const drizzle = Math.max(rawNowSlot ?? 0, rvPrecip ?? 0)
+  // v2.29.0 — THE HEAVY BRANCH. Live incident 2026-08-21: a convective shower
+  // (METAR LOWS -SHRA, 7kt → 19G29kt) sat over the city while the gauge read 0.0
+  // (bucket not tipped) and the nowcast's current slot read 0.00 (issued 17:45,
+  // extrapolated from ~17:25) — RainViewer was the ONLY instrument that saw it, at
+  // 25/25 px with deep-blue cores. Because rvPrecip was a hardcoded 0.3 it landed
+  // mid light band and we said GO ANYWAY into it. A heavy, block-filling echo is
+  // now surfaced UNCAPPED so the verdict can reach WAIT/BLEIB DRIN. Note this is
+  // checked BEFORE the light-band return below — that return exists to stop radar
+  // manufacturing a false STUCK from a value it half-trusts, which is precisely
+  // NOT this case: here two independent RainViewer keys agree it is heavy AND wide.
+  if (rvSolid && (rvPrecip ?? 0) >= RV_HEAVY_MM && !(code != null && code <= 2)) {
+    return rvPrecip
+  }
   if (drizzle < DRY_THRESHOLD || drizzle >= LIGHT_MAX) return null  // nothing, or a heavier
                                                        // cell → the ground's dry call stands
   const nowcastEcho = (rawNowSlot ?? 0) >= DRY_THRESHOLD   // clutter-filtered source agrees
@@ -775,6 +804,12 @@ const ALMOST_MIN = 10  // raining but clearing this soon → "almost over, get r
 const SOON_MIN = 5     // clears in <5 min → too close to be precise; drop the number, go soft
 export const LIGHT_MIN = 0.2  // below this = go (dry-enough) — a 0.1mm tip must not flip GO↔GO-ANYWAY
 export const LIGHT_MAX = 0.5  // raining but below this = light/drizzle → "you could still go out"
+// v2.29.0 — the magnitude a HEAVY, wide RainViewer echo asserts when the gauge has
+// not tipped yet. Deliberately the same 0.8 as the backend's VIRGA_HEAVY_PASS, which
+// already encodes "echo at this strength is real weather, not virga": we are not
+// claiming a measured mm figure from a colour ramp, we are asserting a CLASS —
+// clearly past the light band, so the verdict can reach WAIT/BLEIB DRIN.
+export const RV_HEAVY_MM = 0.8
 const RAIN_PROB_MIN = 50  // model rain probability below this → soften the radar countdown
 const RAIN_SOON_NOTE = 90 // rain within this many min → drop the "go out & enjoy" weather notes
 const FAR_RAIN_MIN = 90   // rain ≥ this far out → speak in hours ("rain in about 2 h"),
