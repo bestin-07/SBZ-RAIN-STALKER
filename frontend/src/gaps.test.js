@@ -21,7 +21,7 @@ import {
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
   rvNowValue, RV_HEAVY_MM,
-  dayBuckets, bestWindow, preferWindow, weatherGroup, radarZoneEnd, LOOK_AHEAD, HOUR_TO_SLOT, DAY_BUCKETS, BEST_WINDOW_MIN_H,
+  dayBuckets, bestWindow, preferWindow, weatherGroup, radarZoneEnd, hasRadarZone, MIN_RADAR_ZONE_MIN, LOOK_AHEAD, HOUR_TO_SLOT, DAY_BUCKETS, BEST_WINDOW_MIN_H,
 } from './gaps'
 
 // ---- helpers ---------------------------------------------------------------
@@ -2343,5 +2343,48 @@ describe('v2.33 radarZoneEnd — the radar zone never outgrows the doctrine', ()
     expect(radarZoneEnd(undefined, now)).toBe(now)
     expect(radarZoneEnd(Infinity, now)).toBe(now)
     expect(radarZoneEnd(NaN, now)).toBe(now)
+  })
+})
+
+describe('v2.34 hasRadarZone — "the first 0 h are radar" is not a sentence', () => {
+  const now = 1757800800
+
+  it('a normal nowcast has a radar zone', () => {
+    expect(hasRadarZone(now + 2.66 * 3600, now, true)).toBe(true)
+  })
+
+  it('THE REPORT: a zone too thin to name is not a radar zone', () => {
+    // hoursLabel rounds to the nearest half hour, so anything under 15 min renders
+    // as "0" — and the caption read "the first 0 h are radar — what is actually
+    // falling", which is a sentence about nothing.
+    expect(hasRadarZone(now + 5 * 60, now, true)).toBe(false)
+    expect(hasRadarZone(now + 14 * 60, now, true)).toBe(false)
+    expect(hasRadarZone(now + MIN_RADAR_ZONE_MIN * 60, now, true)).toBe(true)
+  })
+
+  it('the threshold sits clear of the hoursLabel rounding edge', () => {
+    // Anything this predicate lets through must render as a non-zero span, or the
+    // bug comes straight back in a narrower band.
+    expect(MIN_RADAR_ZONE_MIN).toBeGreaterThan(15)
+    expect(radarSpanLabel(now + MIN_RADAR_ZONE_MIN * 60, now)).not.toBe('0')
+  })
+
+  it('a model-only fallback timeline never claims a radar zone', () => {
+    expect(hasRadarZone(now + 3 * 3600, now, false)).toBe(false)
+  })
+
+  it('an expired or unknown boundary claims nothing', () => {
+    expect(hasRadarZone(now - 600, now, true)).toBe(false)
+    expect(hasRadarZone(undefined, now, true)).toBe(false)
+    expect(hasRadarZone(Infinity, now, true)).toBe(false)
+    expect(hasRadarZone(now + 3 * 3600, NaN, true)).toBe(false)
+  })
+
+  it('agrees with radarZoneEnd across a full series matrix', () => {
+    // The two are used together: App.jsx clamps the boundary, the ribbon decides
+    // whether what is left is worth drawing as radar. A clamped 6 h series is still
+    // a real zone; a series that has run out is not.
+    expect(hasRadarZone(radarZoneEnd(now + 5.66 * 3600, now), now, true)).toBe(true)
+    expect(hasRadarZone(radarZoneEnd(now - 60, now), now, true)).toBe(false)
   })
 })

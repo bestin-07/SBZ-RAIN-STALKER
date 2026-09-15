@@ -172,20 +172,6 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             </a>
           </div>
 
-          {/* Impressum / Offenlegung. Legally required of an Austrian site
-              (ECG §5, MedienG §25) and deliberately kept to the minimum that
-              satisfies it: the name is not part of the app's voice anywhere else.
-              Not translated — a person's name and city are the same in both. */}
-          <div className="mb-10">
-            <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-2">
-              {t('imprint_title')}
-            </div>
-            <address className="font-mono text-xs text-muted leading-relaxed not-italic">
-              Bestin Antu<br />
-              Salzburg, AT
-            </address>
-          </div>
-
           <button
             onClick={onClose}
             className="font-display font-bold text-sm tracking-[0.15em] uppercase px-6 py-3 bg-primary text-bg transition-opacity hover:opacity-80"
@@ -193,7 +179,23 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             {t('close')}
           </button>
 
-          <p className="font-mono text-[11px] text-muted mt-8 opacity-70">
+          {/* Impressum / Offenlegung. Legally required of an Austrian site
+              (ECG §5, MedienG §25) and deliberately kept to the minimum that
+              satisfies it: the name is not part of the app's voice anywhere else.
+              Not translated — a person's name and city are the same in both.
+              v2.34: sits BELOW the close button with the version line — it is a
+              legal footer, not a section of the guide, and reading it was never a
+              step on the way out of the panel. */}
+          <div className="mt-8 opacity-70">
+            <div className="font-mono text-[11px] tracking-[0.12em] uppercase text-muted mb-1">
+              {t('imprint_title')}
+            </div>
+            <address className="font-mono text-[11px] text-muted leading-relaxed not-italic">
+              Bestin Antu · Salzburg, AT
+            </address>
+          </div>
+
+          <p className="font-mono text-[11px] text-muted mt-3 opacity-70">
             Gemma Raus v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}
           </p>
         </div>

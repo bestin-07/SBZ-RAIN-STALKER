@@ -209,6 +209,7 @@ export const translations = {
     days_title: 'Nächste 5 Tage',
     days_title_forecast: 'Kommende Tage · Prognose',
     zone_caption: 'Die ersten {h} h sind Radar — was wirklich fällt. Alles danach, und jeder der Tage unten, ist eine Prognose.',
+    zone_caption_model: 'Gerade kein Live-Radar — alles hier, und jeder der Tage unten, ist eine Prognose.',
     today_short: 'HEUTE',
     // Deliberately "Fenster", not "raus": this is a PLAN for another day, and it
     // must never read as permission to go out now — that sentence belongs to the
@@ -547,6 +548,7 @@ export const translations = {
     days_title: 'Next 5 days',
     days_title_forecast: 'Coming days · forecast',
     zone_caption: 'the first {h} h are radar — what is actually falling. everything after that, and every one of the days below, is a forecast.',
+    zone_caption_model: 'no live radar right now — everything here, and every one of the days below, is a forecast.',
     today_short: 'TODAY',
     best_window: 'best window: {day} {from}–{to}',
     best_window_none: 'no long dry window in sight',

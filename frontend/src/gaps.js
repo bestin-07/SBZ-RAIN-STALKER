@@ -242,6 +242,25 @@ export function probAt(hTimes, hProb, tt) {
 // hardcoded "NEXT 3 H" while the nowcast's 12 slots span 2h45 from their first slot
 // and then age up to 15 min before the next issue — so the promise was never once
 // what the data delivered, and the boundary visibly slid between refreshes.
+// A radar zone thinner than this is not a radar zone — it is a rounding artefact.
+// hoursLabel rounds to the nearest half hour, so anything under 15 min renders as a
+// literal "0" and the caption read "the first 0 h are radar". 20 min is deliberately
+// above that rounding edge: below it there is no meaningful observed span to name,
+// whatever the series claims.
+export const MIN_RADAR_ZONE_MIN = 20
+
+// Is there a radar zone worth drawing and naming at all? Three ways there isn't:
+// the timeline is a model fallback end to end (isNowcast === false), the boundary is
+// unknown, or the served nowcast has aged/shrunk until barely any of it is still
+// ahead of us. All three must produce the same answer for the band and the caption,
+// which is why this is one exported predicate rather than a test repeated at each
+// site (the v2.18.0 lesson: a label derived separately from the picture drifts).
+export function hasRadarZone(radarUntil, nowSec, isNowcast) {
+  if (isNowcast === false) return false
+  if (!Number.isFinite(radarUntil) || !Number.isFinite(nowSec)) return false
+  return (radarUntil - nowSec) / 60 >= MIN_RADAR_ZONE_MIN
+}
+
 export function radarSpanLabel(radarUntil, nowSec) {
   if (!Number.isFinite(radarUntil) || !Number.isFinite(nowSec)) return '3'  // never "Infinity H"
   const mins = Math.max(0, Math.round((radarUntil - nowSec) / 60))

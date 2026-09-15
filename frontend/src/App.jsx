@@ -368,8 +368,15 @@ export default function App() {
     // reintroduce the bug in a subtler form.
     const bar = document.querySelector('meta[name="theme-color"]')
     if (bar) bar.setAttribute('content', theme === 'light' ? '#F2F0EB' : '#08090B')
-    const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.content = theme === 'light' ? '#F2F0EB' : '#08090B'
+    // …and the colour SCHEME with it (v2.34). theme-color alone was not enough on
+    // Android: the status bar was the right colour but its clock and icons were not,
+    // because Chrome picks their contrast from the scheme the page resolves to — and
+    // a static "dark light" resolved to dark for anyone whose PHONE was in dark mode,
+    // however light the app itself was. index.css sets this per theme too; the meta
+    // is what the UA reads before any CSS or React has run, which is exactly the
+    // moment an installed app's system bars are decided.
+    const cs = document.querySelector('meta[name="color-scheme"]')
+    if (cs) cs.setAttribute('content', theme === 'light' ? 'light' : 'dark')
     try { localStorage.setItem('theme', theme) } catch {}
   }, [theme])
 
@@ -1244,7 +1251,7 @@ export default function App() {
           </div>
           <div
             ref={scrollRef}
-            className="h-full overflow-y-auto overscroll-contain flex flex-col gr-col"
+            className="h-full overflow-y-auto overscroll-contain scrollbar-none flex flex-col gr-col"
             style={{
               transform: pullDistance ? `translateY(${pullDistance}px)` : undefined,
               transition: pullActive ? 'none' : 'transform 0.2s ease',

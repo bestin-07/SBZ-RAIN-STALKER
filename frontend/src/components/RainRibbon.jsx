@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { showGhost, radarSpanLabel } from '../gaps'
+import { showGhost, radarSpanLabel, hasRadarZone } from '../gaps'
 
 const SLOT_W = 46
 // v2.32: 52 -> 88. Today is the one day you can act on, so it gets the height:
@@ -116,7 +116,6 @@ function bucket30(slots) {
 export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
   const canvasRef = useRef(null)
   const scrollRef = useRef(null)
-  const pausedUntilRef = useRef(0)
 
   useEffect(() => {
     if (!forecast || !canvasRef.current) return
@@ -183,7 +182,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // being an estimate rather than a radar-precise reading.
     // Fallback timelines (isNowcast === false) are model end-to-end — the whole
     // band must say "forecast", never claim a radar zone that doesn't exist.
-    const modelOnly  = forecast.isNowcast === false
+    // v2.34: also model-only when the radar zone has shrunk to nothing — a served
+    // nowcast whose last slot is nearly behind us leaves a sliver the band would
+    // tint gold and the caption would call "the first 0 h". One predicate decides
+    // it for both, so the picture and the sentence can never disagree.
+    const modelOnly  = !hasRadarZone(forecast.radarUntil, now, forecast.isNowcast)
     const radarUntil = modelOnly ? -Infinity : (forecast.radarUntil ?? Infinity)
     // A 30-min bar that only PARTLY overlaps the radar horizon is not a radar bar —
     // drawing it solid would claim a precision we don't have for half of it, so the
@@ -366,81 +369,12 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
 
   }, [forecast, theme, t])
 
-  // Auto-scroll the ribbon (v2.2) — a slow forward drift so mobile users who can't
-  // see all 12h at once still see the whole thing, then a quick rewind flourish back
-  // to "now" and repeat. Self-gates to when content actually overflows (desktop where
-  // the full ribbon fits does nothing), skips entirely under prefers-reduced-motion,
-  // and pauses for a few seconds the moment the user touches/scrolls/wheels it —
-  // never fights a manual read.
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  // v2.34: the ribbon no longer auto-scrolls. The drift existed so phone users
+  // would see all 12 h without knowing they could swipe, but it moved the bars out
+  // from under the reader's eye mid-glance — on an app whose whole promise is a
+  // fast decision, a chart that walks away is worse than one you have to nudge.
+  // It stays horizontally scrollable; only the self-driving part is gone.
 
-    const FORWARD_PX_S = 34   // slow enough to actually read the bars while it drifts
-    const REWIND_PX_S  = 900  // fast "launch back to start" flourish
-    const HOLD_END_MS  = 1800
-    const HOLD_START_MS = 600
-    const RESUME_AFTER_MS = 5000
-
-    let phase = 'forward'     // 'forward' | 'holdEnd' | 'rewind' | 'holdStart'
-    let holdUntil = 0
-    let lastTs = null
-    let rafId
-    // Position lives in a float, NOT in el.scrollLeft: iOS Safari rounds
-    // scrollLeft reads to whole pixels, so read-add-write of the sub-pixel
-    // forward step (34px/s ≈ 0.57px/frame) rounded back to the same value
-    // every frame — the ribbon sat frozen on iPhones while desktop browsers
-    // (fractional scrollLeft) drifted fine. null = resync from the DOM on the
-    // next frame (after a user drag or tab resume).
-    let pos = null
-
-    function frame(ts) {
-      rafId = requestAnimationFrame(frame)
-      if (lastTs == null) lastTs = ts
-      // Clamp dt: after a backgrounded tab resumes, ts jumps minutes ahead in
-      // one frame — unclamped that teleports the ribbon to the far end.
-      const dt = Math.min(0.1, (ts - lastTs) / 1000)
-      lastTs = ts
-
-      if (Date.now() < pausedUntilRef.current) { pos = null; return }   // user is interacting — hands off
-      const max = el.scrollWidth - el.clientWidth
-      if (max <= 4) return                               // fits on screen, nothing to do
-      if (pos == null) pos = el.scrollLeft               // resync after pause/resume
-
-      if (phase === 'holdEnd' || phase === 'holdStart') {
-        if (Date.now() >= holdUntil) phase = phase === 'holdEnd' ? 'rewind' : 'forward'
-        return
-      }
-      if (phase === 'forward') {
-        pos = Math.min(max, pos + FORWARD_PX_S * dt)
-        el.scrollLeft = pos
-        if (pos >= max - 1) { phase = 'holdEnd'; holdUntil = Date.now() + HOLD_END_MS }
-      } else {   // 'rewind'
-        pos = Math.max(0, pos - REWIND_PX_S * dt)
-        el.scrollLeft = pos
-        if (pos <= 1) { phase = 'holdStart'; holdUntil = Date.now() + HOLD_START_MS }
-      }
-    }
-    rafId = requestAnimationFrame(frame)
-
-    const pause = () => { pausedUntilRef.current = Date.now() + RESUME_AFTER_MS }
-    const onVis = () => { lastTs = null; pos = null }   // fresh timing after tab resume
-    el.addEventListener('pointerdown', pause, { passive: true })
-    el.addEventListener('wheel', pause, { passive: true })
-    el.addEventListener('touchstart', pause, { passive: true })
-    document.addEventListener('visibilitychange', onVis)
-
-    return () => {
-      cancelAnimationFrame(rafId)
-      el.removeEventListener('pointerdown', pause)
-      el.removeEventListener('wheel', pause)
-      el.removeEventListener('touchstart', pause)
-      document.removeEventListener('visibilitychange', onVis)
-    }
-  }, [forecast])
-
-  const isNowcast = forecast?.isNowcast !== false
   const pal = palOf(theme)
 
   // A flat all-dry ribbon looks identical to a failed/empty one — label it so a
@@ -457,6 +391,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // The radar span, in words, for the caption below. Derived from the same
   // forecast.radarUntil the canvas band is drawn from, so the sentence and the
   // picture can never name different boundaries (the v2.18.0 lesson).
+  const showRadarZone = hasRadarZone(forecast?.radarUntil, nowS, forecast?.isNowcast)
   const spanLabel = radarSpanLabel(forecast?.radarUntil, nowS)
   // A sub-threshold stub is only worth naming when one is actually drawn.
   const hasTrace = rslots.some(s => s.p > 0 && s.p < DRY_THRESHOLD)
@@ -467,7 +402,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // way for exactly that reason. v2.30.0 shipped this line unguarded and it threw a
   // TypeError on first paint, which unmounted the whole app — a blank page on every
   // device. Pinned by a render test that mounts this component with forecast={null}.
-  const hasModelZone = forecast?.isNowcast === false ||
+  const hasModelZone = !showRadarZone ||
     rslots.some(s => s.t > (forecast?.radarUntil ?? Infinity))
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
   // Trace slots only (all sub-threshold, at least one non-zero): the overlay must
@@ -486,7 +421,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         </span>
         <span className="font-mono text-[10px] text-muted ml-auto">
           {t('next_12h')}
-          {!isNowcast && <span className="ml-1 opacity-50">·&nbsp;est</span>}
+          {!showRadarZone && <span className="ml-1 opacity-50">·&nbsp;est</span>}
         </span>
       </div>
       <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none">
@@ -517,9 +452,15 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           that the near part is observed and everything after it (including every one
           of the days below) is a forecast. */}
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-2.5">
-        <span className="font-mono text-[10px] text-muted leading-relaxed">
-          {t('zone_caption', { h: spanLabel })}
-        </span>
+        {/* With no data at all there is nothing to attribute, so the sentence is
+            withheld rather than guessed. With data but no usable radar zone it says
+            so plainly — the alternative, and the bug this replaces, was promising
+            "the first 0 h are radar". */}
+        {hasData && (
+          <span className="font-mono text-[10px] text-muted leading-relaxed">
+            {showRadarZone ? t('zone_caption', { h: spanLabel }) : t('zone_caption_model')}
+          </span>
+        )}
         {hasDisagreement && (
           <span className="font-mono text-[10px] text-muted leading-relaxed">
             {t('legend_uncertain')}

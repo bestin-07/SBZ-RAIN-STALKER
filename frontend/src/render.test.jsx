@@ -94,13 +94,45 @@ for (const lang of ['de', 'en']) {
     })
 
     it('the today tile names its own radar span and says the rest is forecast', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
       const html = renderToStaticMarkup(
-        <RainRibbon forecast={{ times: [], precips: [] }} theme="light" t={t}
-                    unstable={false} modelRainMin={null} />)
+        <RainRibbon forecast={{ times, precips: times.map(() => 0), isNowcast: true,
+                                radarUntil: now + 2.66 * 3600 }}
+                    theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).toContain(t('today_short'))
       // The caption interpolates the SAME radarUntil the canvas band is drawn from,
       // so the sentence and the picture cannot name different boundaries.
-      expect(html).toContain(esc(t('zone_caption', { h: '3' }).slice(0, 20)))
+      expect(html).toContain(esc(t('zone_caption', { h: '2½' }).slice(0, 20)))
+    })
+
+    // v2.34. hoursLabel rounds to the nearest half hour, so a radar zone that had
+    // aged down to minutes — or a model-only fallback, whose radarUntil IS now —
+    // rendered as the literal sentence "the first 0 h are radar". A zone that thin
+    // is not a zone; the caption has to change its claim, not its number.
+    it('never says "the first 0 h are radar" when there is no radar zone', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      for (const forecast of [
+        { times, precips: times.map(() => 0), isNowcast: false, radarUntil: now },
+        { times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 300 },
+      ]) {
+        const html = renderToStaticMarkup(
+          <RainRibbon forecast={forecast} theme="light" t={t}
+                      unstable={false} modelRainMin={null} />)
+        expect(html).toContain(esc(t('zone_caption_model').slice(0, 20)))
+        expect(html).not.toContain(esc(t('zone_caption', { h: '0' }).slice(0, 20)))
+      }
+    })
+
+    // …and with no data at all it makes no attribution claim whatsoever, rather
+    // than describing a chart that has not been drawn.
+    it('withholds the source caption entirely when there is no data', () => {
+      const html = renderToStaticMarkup(
+        <RainRibbon forecast={{ times: [], precips: [] }} theme="light" t={t}
+                    unstable={false} modelRainMin={null} />)
+      expect(html).not.toContain(esc(t('zone_caption_model').slice(0, 20)))
+      expect(html).not.toContain(esc(t('zone_caption', { h: '3' }).slice(0, 20)))
     })
 
     it('DayStrip renders nothing without data', () => {

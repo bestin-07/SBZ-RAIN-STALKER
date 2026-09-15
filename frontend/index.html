@@ -9,7 +9,11 @@
          from this value — so the icons were contrasted against a colour that was not
          actually on screen, and disappeared. -->
     <meta name="theme-color" content="#F2F0EB" />
-    <meta name="color-scheme" content="dark light" />
+    <!-- The app's DEFAULT theme, rewritten by App.jsx on every theme change. Listing
+         "dark" first made the UA resolve the page as dark whenever the PHONE was in
+         dark mode, so Android put white status-bar icons over the cream light theme
+         and they vanished. This must name the scheme in USE, not the ones supported. -->
+    <meta name="color-scheme" content="light" />
     <!-- The app has its own DE/EN switch; stop Chrome auto-translating it
          (it was mangling the brand, e.g. "RAUS" -> "OUT"). -->
     <meta name="google" content="notranslate" />

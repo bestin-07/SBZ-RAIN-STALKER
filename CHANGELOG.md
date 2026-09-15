@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.34.0] - 2026-09-15 - Gemma Raus just got better: the chart holds still, and never says "0 hours" 🧭
+
+*Five things in one message, all of them fair.*
+
+**What's new for you**
+
+- **The rain chart no longer scrolls by itself.** It drifted forward so you'd notice there were twelve hours to see — but it moved the bars out from under you mid-glance, and that is annoying on an app whose whole job is a two-second look. Swipe it when you want more; otherwise it stays exactly where you left it.
+- **"The first 0 h are radar" is gone.** When live radar isn't reaching us — it happens, usually a rate limit on a busy mobile network — the chart quietly falls back to the forecast model. It was still introducing itself as radar, with a span of zero hours. It now says plainly: *no live radar right now — everything here is a forecast.* And with no data at all it says nothing rather than describing a chart it hasn't drawn.
+- **The status bar icons, properly this time.** Last release fixed the colour of the strip at the top of an installed app. The clock and wifi icons on it were still wrong in light mode — because your phone picks their contrast from the *scheme* the app declares, not its colour, and Gemma Raus was still declaring "dark" to anyone whose **phone** was in dark mode, however cream the app on screen was. It now declares what it is actually showing.
+- **Desktop sits on the left.** The reading column from last release was floating in the middle of wide screens. It's now anchored to the left edge, where the header already was, and the spare scrollbar next to it is gone.
+- **The imprint moved to the bottom.** It's a legal footer, so it now sits below the close button next to the version number, instead of standing between you and the way out of the guide.
+
+**Nothing about the verdict changed.** Every threshold, countdown and decision is untouched — this release only affects what is drawn and how it is labelled.
+
+---
+
 ## [2.33.0] - 2026-09-15 - Gemma Raus just got better: honest radar hours, readable status bar 📶
 
 *Two reports: "how is it next 5½ h on radar — did it jump from 2½?" and "in the installed app the top bar is dark and I can't see my wifi and signal icons."*
