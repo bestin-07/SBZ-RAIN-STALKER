@@ -10,8 +10,8 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
   "orientation": "portrait-primary",
-  "background_color": "#0E0F11",
-  "theme_color": "#0E0F11",
+  "background_color": "#F2F0EB",
+  "theme_color": "#F2F0EB",
   "categories": ["weather", "utilities"],
   "icons": [
     {

@@ -21,7 +21,7 @@ import {
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
   rvNowValue, RV_HEAVY_MM,
-  dayBuckets, bestWindow, preferWindow, weatherGroup, HOUR_TO_SLOT, DAY_BUCKETS, BEST_WINDOW_MIN_H,
+  dayBuckets, bestWindow, preferWindow, weatherGroup, radarZoneEnd, LOOK_AHEAD, HOUR_TO_SLOT, DAY_BUCKETS, BEST_WINDOW_MIN_H,
 } from './gaps'
 
 // ---- helpers ---------------------------------------------------------------
@@ -2309,5 +2309,39 @@ describe('v2.30.1 preferWindow — the drier day wins an equal window', () => {
     expect(preferWindow(null, w)).toBe(w)
     expect(preferWindow(w, null)).toBe(w)
     expect(preferWindow(null, null)).toBeNull()
+  })
+})
+
+describe('v2.33 radarZoneEnd — the radar zone never outgrows the doctrine', () => {
+  const now = 1757800800
+
+  it('LOOK_AHEAD is the single definition of how far radar is trusted', () => {
+    expect(LOOK_AHEAD).toBe(3 * 3600)
+  })
+
+  it('a normal 3 h nowcast passes straight through', () => {
+    const end = now + 2.66 * 3600
+    expect(radarZoneEnd(end, now)).toBe(end)
+  })
+
+  it('THE INCIDENT: a 6 h series is clamped to 3 h', () => {
+    // 2026-09-15: GeoSphere returned 24 slots (+5.66 h) for bahnhof and lehen while
+    // the other nine city points still returned 12. The band read "RADAR · NEXT 5½ H"
+    // at one address and 2½ h at the next.
+    expect(radarZoneEnd(now + 5.66 * 3600, now)).toBe(now + LOOK_AHEAD)
+  })
+
+  it('only ever shrinks the zone, never extends it', () => {
+    for (const h of [0, 0.5, 1, 2.5, 3, 4, 6, 12]) {
+      const end = now + h * 3600
+      expect(radarZoneEnd(end, now)).toBeLessThanOrEqual(end)
+      expect(radarZoneEnd(end, now)).toBeLessThanOrEqual(now + LOOK_AHEAD)
+    }
+  })
+
+  it('malformed input collapses the zone rather than inventing one', () => {
+    expect(radarZoneEnd(undefined, now)).toBe(now)
+    expect(radarZoneEnd(Infinity, now)).toBe(now)
+    expect(radarZoneEnd(NaN, now)).toBe(now)
   })
 })

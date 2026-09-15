@@ -1,6 +1,8 @@
 ﻿export const DRY_THRESHOLD = 0.1
 const MIN_GAP_SLOTS = 2
-const LOOK_AHEAD = 3 * 3600
+// Exported since v2.33: App.jsx caps the ribbon's RADAR zone to this same horizon,
+// so "how far ahead radar is trusted" has exactly one definition in the codebase.
+export const LOOK_AHEAD = 3 * 3600
 
 // Imminent-downpour warning thresholds (used by firstDownpourMin below; surfaced by
 // getStatus as the top-priority s_downpour_soon sub in the GO / light states).
@@ -1372,4 +1374,24 @@ export function preferWindow(a, b) {
   const rb = typeof b.rain === 'number' ? Math.round(b.rain) : Infinity
   if (ra !== rb) return ra < rb ? a : b
   return a    // caller feeds days in order, so `a` is the earlier one
+}
+
+// Where the ribbon's RADAR zone ends (v2.33): the served series' own end, but never
+// further ahead than LOOK_AHEAD — the horizon this app grants radar anywhere else.
+//
+// GeoSphere began returning 24-slot (+6 h) nowcasts for some Salzburg grid cells on
+// 2026-09-15 while neighbouring cells still returned 12, so the band read "RADAR ·
+// NEXT 5½ H" at one address and 2½ h at the next, and drew six hours of radar
+// EXTRAPOLATION as solid, measurement-grade bars. Three of those hours sit past the
+// point where every verdict function stops looking (detectGaps, hasUsableWindow,
+// easesToGoableMin and traceAheadMin are all bounded by LOOK_AHEAD), so the chart was
+// asserting a confidence the app itself declines to act on.
+//
+// Clamping only ever SHRINKS the zone — the slots beyond it are still drawn, in the
+// forecast zone, dashed like every other estimate. Nothing is hidden; it is relabelled
+// to what it actually is.
+export function radarZoneEnd(seriesEnd, nowSec) {
+  if (!Number.isFinite(nowSec)) return nowSec
+  if (!Number.isFinite(seriesEnd)) return nowSec
+  return Math.min(seriesEnd, nowSec + LOOK_AHEAD)
 }

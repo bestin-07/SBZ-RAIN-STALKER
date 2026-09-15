@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0E0F11" />
+    <!-- Must match the app's DEFAULT theme (light), and App.jsx rewrites it on every
+         theme change. A fixed dark value here painted a near-black status bar above a
+         cream app in the installed PWA, and Android picks its status-bar icon colour
+         from this value — so the icons were contrasted against a colour that was not
+         actually on screen, and disappeared. -->
+    <meta name="theme-color" content="#F2F0EB" />
     <meta name="color-scheme" content="dark light" />
     <!-- The app has its own DE/EN switch; stop Chrome auto-translating it
          (it was mangling the brand, e.g. "RAUS" -> "OUT"). -->
@@ -12,7 +17,11 @@
     <!-- PWA -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- "default", not "black-translucent": the latter draws the web page UNDER the
+         status bar with light content over it, which on the cream light theme meant
+         white icons on near-white. "default" gives an opaque bar that follows
+         theme-color, the same as Android. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Gemma Raus" />
     <link rel="manifest" href="/manifest.json" />
 

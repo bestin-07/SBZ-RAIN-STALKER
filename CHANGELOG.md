@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.33.0] - 2026-09-15 - Gemma Raus just got better: honest radar hours, readable status bar 📶
+
+*Two reports: "how is it next 5½ h on radar — did it jump from 2½?" and "in the installed app the top bar is dark and I can't see my wifi and signal icons."*
+
+**What happened**
+
+**The radar hours.** Our radar source normally reaches about 3 hours ahead. Today it started sending **six** hours for a couple of spots in the city while still sending three for the rest — so the chart announced "radar, next 5½ h" at one address and "2½ h" a street away, and drew six hours of it as solid, measured-looking bars.
+
+Radar that far out is an extrapolation, not an observation. Gemma Raus itself never looks past three hours when deciding what to tell you — so the chart was claiming a confidence the app doesn't act on. The radar part of the chart is now capped at three hours no matter how much the source sends. Nothing is hidden: the extra hours are still drawn, just in the forecast half where they belong.
+
+**The status bar.** In the installed app the strip at the top of your phone — clock, wifi, battery — was painted near-black while the app itself is cream. Your phone picks the colour of those icons to contrast with what the app declares, so it was contrasting them against a colour that wasn't actually on screen, and they vanished.
+
+The app had been declaring a dark colour since before it had a light theme at all, and nobody had noticed because it only shows once the app is installed. It now tells your phone the real colour, and updates it the moment you switch between light and dark.
+
+---
+
 ## [2.32.0] - 2026-09-15 - Gemma Raus just got better: today is a proper tile, and the desktop finally breathes 🗓
 
 *Two asks: "can we lose the boring rain ribbon and make today look like the day rows, only bigger" — and, from a 1900px screenshot, "it needs a margin to be readable."*

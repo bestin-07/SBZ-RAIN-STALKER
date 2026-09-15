@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, ambientDaily, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, easesToGoableMin, settleStuckHold, blockedActivities, rvNowValue, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, radarZoneEnd, easesToGoableMin, settleStuckHold, blockedActivities, rvNowValue, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -360,6 +360,14 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
+    // Keep the OS status bar in step with the app (v2.33). The installed PWA paints
+    // the status bar from this meta tag, and Android derives its ICON colour from the
+    // same value — so a stale one does not merely look wrong, it makes the clock and
+    // the signal bars illegible against a strip of colour the app is not using.
+    // Exactly the --c-bg tokens from index.css; a literal that drifts from them would
+    // reintroduce the bug in a subtler form.
+    const bar = document.querySelector('meta[name="theme-color"]')
+    if (bar) bar.setAttribute('content', theme === 'light' ? '#F2F0EB' : '#08090B')
     const meta = document.querySelector('meta[name="theme-color"]')
     if (meta) meta.content = theme === 'light' ? '#F2F0EB' : '#08090B'
     try { localStorage.setItem('theme', theme) } catch {}
@@ -784,11 +792,24 @@ export default function App() {
         // bars/second-opinions above) — zero extra API cost. radarUntil marks the
         // handoff point so the renderer can draw hours 3–12 as clearly "model" bars
         // rather than pretending radar precision that far out.
-        const radarUntil = ribbonTimeline.times[ribbonTimeline.times.length - 1] ?? nowSec
+        // Where the drawn series actually ends — this is what the model tail is
+        // appended AFTER, so the two never cover the same timestamps twice.
+        const seriesEnd = ribbonTimeline.times[ribbonTimeline.times.length - 1] ?? nowSec
+        // …and the RADAR ZONE is capped at LOOK_AHEAD regardless of how far the
+        // source reaches (v2.33). On 2026-09-15 GeoSphere began returning 24-slot
+        // (+6 h) nowcasts for some grid cells while others still returned 12, so the
+        // band read "RADAR · NEXT 5½ H" at one address and 2½ h at the next — and
+        // drew six hours of extrapolation as solid, measurement-grade bars. Three of
+        // those hours are past the point where EVERY verdict function stops looking
+        // (detectGaps, hasUsableWindow, easesToGoableMin and traceAheadMin are all
+        // bounded by LOOK_AHEAD), so the chart was claiming confidence the app does
+        // not itself act on. The extra slots are still DRAWN — they simply fall in
+        // the forecast zone, dashed, like every other estimate.
+        const radarUntil = radarZoneEnd(seriesEnd, nowSec)
         const horizon12h = nowSec + 12 * 3600
         const extTimes = [], extPrecips = []
         for (let i = 0; i < omTimes.length; i++) {
-          if (omTimes[i] > radarUntil && omTimes[i] <= horizon12h) {
+          if (omTimes[i] > seriesEnd && omTimes[i] <= horizon12h) {
             extTimes.push(omTimes[i]); extPrecips.push(omPrecips[i] ?? 0)
           }
         }
