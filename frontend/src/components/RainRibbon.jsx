@@ -2,7 +2,12 @@ import { useEffect, useRef } from 'react'
 import { showGhost, radarSpanLabel } from '../gaps'
 
 const SLOT_W = 46
-const SLOT_H = 52
+// v2.32: 52 -> 88. Today is the one day you can act on, so it gets the height:
+// the same bar language as the days below it, but read as a tile rather than a
+// strip. Taller bars also separate the light/moderate/heavy tiers visually, which
+// at 52px were only a few pixels apart (HEIGHT_STOPS is a ratio scale, so every
+// tier grows with it).
+const SLOT_H = 88
 // v2.23: dedicated strip for the time labels UNDER the bars. They used to be drawn
 // inside the bar area at SLOT_H-6, so every bar taller than ~10px covered its own
 // timestamp — and with the rescaled bars below, essentially every wet bar does.
@@ -449,6 +454,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // disagreeing about nothing is not a disagreement a user needs to see.
   const hasDisagreement = rslots.some(s => s.agree === false && s.p >= DRY_THRESHOLD)
   const hasData = rslots.length > 0
+  // The radar span, in words, for the caption below. Derived from the same
+  // forecast.radarUntil the canvas band is drawn from, so the sentence and the
+  // picture can never name different boundaries (the v2.18.0 lesson).
+  const spanLabel = radarSpanLabel(forecast?.radarUntil, nowS)
   // A sub-threshold stub is only worth naming when one is actually drawn.
   const hasTrace = rslots.some(s => s.p > 0 && s.p < DRY_THRESHOLD)
   // …and the "model (expected)" key only once the ribbon actually reaches past the
@@ -468,7 +477,18 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const traceOnly = allDry && rslots.some(s => s.p > 0) && forecast.tracePhantom !== true
 
   return (
-    <div className="border-t border-b border-border shrink-0">
+    <div className="border-t border-border shrink-0">
+      {/* Header row, styled exactly like the day-strip header below it, so the two
+          read as one block: today, then the days. */}
+      <div className="flex items-baseline gap-3 px-4 pt-2.5 pb-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+          {t('today_short')}
+        </span>
+        <span className="font-mono text-[10px] text-muted ml-auto">
+          {t('next_12h')}
+          {!isNowcast && <span className="ml-1 opacity-50">·&nbsp;est</span>}
+        </span>
+      </div>
       <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none">
         <canvas
           ref={canvasRef}
@@ -490,48 +510,21 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           </div>
         )}
       </div>
-      {/* Legend (v2.30): one ordered SCALE instead of five swatch+label pairs on two
-          wrapped lines. The ramp is ordered, so naming its two ends and drawing the
-          steps between carries the same information in a fifth of the height — and
-          the height it gives back goes to the day strip below.
-
-          The three qualifier chips are now conditional, the way v2.18 already made
-          the disagreement chip conditional: a permanent legend entry for something
-          not currently drawn is clutter, and on a plain dry day this collapses to
-          the scale and the span. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
-        <div className="flex items-center gap-1.5">
-          <span className="font-mono text-xs text-muted whitespace-nowrap">{t('dry')}</span>
-          <span className="flex" aria-hidden="true">
-            {[pal.dry, pal.light, pal.mod, pal.heavy, pal.storm].map((c, i) => (
-              <span key={i} className="block w-3 h-2.5" style={{ background: c }} />
-            ))}
-          </span>
-          <span className="font-mono text-xs text-muted whitespace-nowrap">{t('storm_rain')}</span>
-        </div>
-        {hasTrace && (
-          <div className="flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 shrink-0" style={{ background: pal.light, opacity: 0.45 }} />
-            <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_trace')}</span>
-          </div>
-        )}
-        {hasModelZone && (
-          <div className="flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 shrink-0 border border-dashed" style={{ borderColor: pal.light }} />
-            <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_model')}</span>
-          </div>
-        )}
-        {hasDisagreement && (
-          <div className="flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 shrink-0 border border-dotted opacity-50"
-                 style={{ borderColor: pal.light }} />
-            <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_uncertain')}</span>
-          </div>
-        )}
-        <span className="font-mono text-xs text-muted ml-auto">
-          {t('next_12h')}
-          {!isNowcast && <span className="ml-1 opacity-50">·&nbsp;est</span>}
+      {/* v2.32: the six-swatch colour key is gone from here and lives in the guide.
+          What replaces it is the one thing a reader cannot deduce from the picture —
+          WHICH INSTRUMENT each half comes from, in words. The canvas already draws
+          the zone band and the boundary line in the right place; this says, plainly,
+          that the near part is observed and everything after it (including every one
+          of the days below) is a forecast. */}
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-2.5">
+        <span className="font-mono text-[10px] text-muted leading-relaxed">
+          {t('zone_caption', { h: spanLabel })}
         </span>
+        {hasDisagreement && (
+          <span className="font-mono text-[10px] text-muted leading-relaxed">
+            {t('legend_uncertain')}
+          </span>
+        )}
       </div>
     </div>
   )

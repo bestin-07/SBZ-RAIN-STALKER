@@ -58,7 +58,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
           </div>
           <RibbonGuide t={t} />
           <div className="space-y-2 mb-5">
-            {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4'].map(k => (
+            {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4','guide_ribbon_5','guide_ribbon_6'].map(k => (
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
             ))}
           </div>

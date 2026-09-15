@@ -76,6 +76,17 @@ html.light {
 }
 
 @layer utilities {
+  /* The reading column (v2.32). At 1900px the app ran edge to edge: a rain chart
+     two thousand pixels wide, and day rows whose temperature sat a foot away from
+     the day it belonged to. Line length is the constraint, not screen width — so
+     the app centres in a column and the space outside it is left empty on purpose.
+     Below 980px this is inert, which is the case that matters most. */
+  .gr-col {
+    width: 100%;
+    max-width: 980px;
+    margin-inline: auto;
+  }
+
   .scrollbar-none {
     scrollbar-width: none;
     -ms-overflow-style: none;

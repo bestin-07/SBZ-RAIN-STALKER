@@ -78,6 +78,31 @@ for (const lang of ['de', 'en']) {
       expect(html).not.toContain(t('best_window_none'))
     })
 
+    it('skipToday drops the today row — today is the tile above, not a thin row', () => {
+      // v2.32: today is drawn as the tall tile from radar + model. Repeating it here
+      // would claim the same day twice, from two instruments, at two resolutions.
+      const full = renderToStaticMarkup(<DayStrip daily={daily()} theme="light" t={t} lang={lang} />)
+      const trimmed = renderToStaticMarkup(<DayStrip daily={daily()} theme="light" t={t} lang={lang} skipToday />)
+      expect((full.match(/<svg/g) || []).length).toBe(5)
+      expect((trimmed.match(/<svg/g) || []).length).toBe(4)
+      expect(full).toContain(t('today_short'))
+      expect(trimmed).not.toContain(t('today_short'))
+      // …and the section says plainly that what is left is all forecast.
+      expect(trimmed).toContain(esc(t('days_title_forecast')))
+      // the window headline is unaffected — it was always picked from tomorrow on
+      expect(trimmed).not.toContain(t('best_window_none'))
+    })
+
+    it('the today tile names its own radar span and says the rest is forecast', () => {
+      const html = renderToStaticMarkup(
+        <RainRibbon forecast={{ times: [], precips: [] }} theme="light" t={t}
+                    unstable={false} modelRainMin={null} />)
+      expect(html).toContain(t('today_short'))
+      // The caption interpolates the SAME radarUntil the canvas band is drawn from,
+      // so the sentence and the picture cannot name different boundaries.
+      expect(html).toContain(esc(t('zone_caption', { h: '3' }).slice(0, 20)))
+    })
+
     it('DayStrip renders nothing without data', () => {
       expect(renderToStaticMarkup(<DayStrip daily={null} theme="dark" t={t} lang={lang} />)).toBe('')
     })
@@ -130,7 +155,8 @@ for (const lang of ['de', 'en']) {
         <InfoPanel open={true} onClose={() => {}} onPrivacy={() => {}} t={t} />)
       for (const k of ['guide_sky_title', 'guide_sky', 'guide_lanes_title', 'guide_lanes_1',
                        'guide_lanes_2', 'guide_lanes_3', 'guide_days_title', 'guide_days_1',
-                       'guide_days_2', 'guide_days_3', 'src_daily']) {
+                       'guide_days_2', 'guide_days_3', 'guide_ribbon_5', 'guide_ribbon_6',
+                       'src_daily']) {
         expect(html).toContain(esc(t(k).slice(0, 24)))
       }
       expect(renderToStaticMarkup(

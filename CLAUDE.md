@@ -310,7 +310,7 @@ Stability mechanisms (why "when" never jumps around — **reduce noise is the de
 The intended logic is encoded as an executable contract; **run both suites before and after touching gaps.js, the App.jsx blend, or the backend filter/push logic**:
 
 ```bash
-cd frontend && npm test            # 337 tests in THREE files:
+cd frontend && npm test            # 341 tests in THREE files:
                                    #  i18n.test.js (6) — no duplicate keys, DE/EN key
                                    #    parity, matching {placeholders}. A duplicate key
                                    #    is legal JS and silently wins; nothing else catches it.
@@ -767,6 +767,31 @@ After `git push origin main`, wait ~2–3 min, fetch `https://www.gemmaraus.at/s
   - When replaying `/api/ambient` offline, anchor "now" to the snapshot's own **`ts`** field (server-generated, ≤5 min old) instead of the local clock — it is authoritative and removes the whole class of error. Note `detectGaps` reads `Date.now()` internally, so an offline replay must use a fresh snapshot or its gap output will not match the `nowSec` you pass to `getStatus`.
 - Backend tests: `python backend/test_logic.py` (**no pytest module**). No `gh` / `railway` CLIs — GitHub via anonymous `api.github.com`.
 - `RAIN_LOGIC.md` and `docs/` exports are **local-only by choice** — unstage them if `git add -A` sweeps them in.
+
+### The outlook block (v2.32.0) — today's tile + the coming days
+`RainRibbon` and `DayStrip` are two components but ONE block on screen, and the split
+between them is by INSTRUMENT, not by time:
+- **Today is the tile** (`RainRibbon`, `SLOT_H` 88): radar for its first ~2½ h, model
+  after that, drawn at a height that lets the intensity tiers separate. It carries its
+  own `TODAY` heading so it reads as the first row of the block.
+- **`DayStrip skipToday`**: the rows below start at TOMORROW. Today used to appear
+  twice — as the chart and as the first day row — which is the same day claimed by two
+  instruments at two resolutions, and the two can visibly disagree in today's first
+  hours. Heading reads `days_title_forecast`, because every row there is model output.
+- **`zone_caption`** states the radar/forecast boundary in words, interpolating
+  `radarSpanLabel(forecast.radarUntil)` — the SAME value the canvas band is drawn from,
+  so the sentence and the picture can never name different boundaries (the v2.18.0
+  lesson, applied to prose this time).
+- The **colour key was removed from under the chart** and lives in the guide
+  (`guide_ribbon_5`). The canvas drawing itself is untouched: bars, ghost bars, dashed
+  model zone, trace stubs and the boundary line are byte-identical, only taller.
+
+### The desktop reading column (v2.32.0)
+`.gr-col` (index.css) — `max-width: 980px; margin-inline: auto` — on the header row and
+the scrolling column. At 1900px the app ran edge to edge and the day rows put a
+temperature half a metre from its own day label. **Line length is the constraint, not
+screen width.** Below 980px the rule is inert, which is the case that matters: this is a
+phone app first, and the map still fills the column.
 
 ### UI layout contracts (v2.9.0 — don't regress these on "cleanup")
 - App shell is fixed-height (`h-full`/`100dvh` + overflow-hidden); the **main column scrolls** (`flex-1 min-h-0 overflow-y-auto overscroll-contain`) so stacked banners can never lock the page; RadarMap keeps `min-h-[320px]`.

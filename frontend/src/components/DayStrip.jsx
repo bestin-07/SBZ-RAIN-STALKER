@@ -38,7 +38,11 @@ function fmtHour(ts, lang) {
   }).format(new Date(ts * 1000))
 }
 
-export default function DayStrip({ daily, theme, t, lang }) {
+// `skipToday` (v2.32): today is drawn above as the tall tile, from radar + model,
+// so repeating it here as a thin row would be the same day claimed twice by two
+// different instruments at two different resolutions. The rows below are therefore
+// ALL forecast, which is exactly what the section label now says.
+export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
   if (!daily || !Array.isArray(daily.time) || daily.time.length < 2) return null
   const pal = palOf(theme)
   const hT = daily.htime || [], hP = daily.hprecip || []
@@ -55,6 +59,7 @@ export default function DayStrip({ daily, theme, t, lang }) {
       prob: typeof daily.pprob?.[i] === 'number' ? Math.round(daily.pprob[i]) : null,
       rain: typeof daily.psum?.[i] === 'number' ? daily.psum[i] : null,
       group: weatherGroup(daily.code?.[i] ?? null),
+      isToday: i === 0,
       shape: dayBuckets(hT, hP, start, end),
       // Sunrise/sunset bound the window search (v2.30.1). Absent on an older
       // snapshot → null → the whole day is considered, as before.
@@ -78,7 +83,7 @@ export default function DayStrip({ daily, theme, t, lang }) {
     <div className="border-b border-border shrink-0 px-4 py-2.5">
       <div className="flex items-baseline gap-3 mb-1.5">
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
-          {t('days_title')}
+          {t(skipToday ? 'days_title_forecast' : 'days_title')}
         </span>
         <span className="font-mono text-[10px] text-muted ml-auto text-right truncate">
           {best
@@ -91,16 +96,16 @@ export default function DayStrip({ daily, theme, t, lang }) {
         </span>
       </div>
 
-      {days.map((d, i) => (
+      {days.filter((_, i) => !(skipToday && i === 0)).map((d, i0) => (
         <div
           key={d.start}
-          className={'flex items-center gap-2.5 py-1.5' + (i === 0 ? '' : ' border-t border-border')}
+          className={'flex items-center gap-2.5 py-1.5' + (i0 === 0 ? '' : ' border-t border-border')}
         >
           <span
-            className={'font-mono text-[11px] w-12 shrink-0 tracking-wide' + (i === 0 ? ' font-bold' : '')}
-            style={i === 0 ? { color: 'var(--c-go)' } : undefined}
+            className={'font-mono text-[11px] w-12 shrink-0 tracking-wide' + (d.isToday ? ' font-bold' : '')}
+            style={d.isToday ? { color: 'var(--c-go)' } : undefined}
           >
-            {i === 0 ? t('today_short') : fmtDay(d.start, lang)}
+            {d.isToday ? t('today_short') : fmtDay(d.start, lang)}
           </span>
 
           <span className="w-5 shrink-0 flex justify-center">

@@ -1223,7 +1223,7 @@ export default function App() {
           </div>
           <div
             ref={scrollRef}
-            className="h-full overflow-y-auto overscroll-contain flex flex-col"
+            className="h-full overflow-y-auto overscroll-contain flex flex-col gr-col"
             style={{
               transform: pullDistance ? `translateY(${pullDistance}px)` : undefined,
               transition: pullActive ? 'none' : 'transform 0.2s ease',
@@ -1370,7 +1370,7 @@ export default function App() {
             </div>
           )}
           <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
-          <DayStrip daily={daily} theme={theme} t={t} lang={lang} />
+          <DayStrip daily={daily} theme={theme} t={t} lang={lang} skipToday />
           <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
           </div>
         </div>

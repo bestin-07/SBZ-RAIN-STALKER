@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.32.0] - 2026-09-15 - Gemma Raus just got better: today is a proper tile, and the desktop finally breathes 🗓
+
+*Two asks: "can we lose the boring rain ribbon and make today look like the day rows, only bigger" — and, from a 1900px screenshot, "it needs a margin to be readable."*
+
+**What's new for you**
+
+- **Today is now a tile, not a strip.** The same bars, the same colours — given real height, with its own **TODAY** heading, sitting directly above the coming days so the whole outlook reads as one block instead of two unrelated charts.
+- **The colour key is gone from under the chart.** It took two lines to say something the guide can say better, and it was most of what made the block look busy. It lives in the guide now, under **?**.
+- **It now says out loud which part is measured.** Under the tile: *the first 2½ hours are radar — what is actually falling. everything after that, and every one of the days below, is a forecast.* The coming-days heading says "forecast" too. That distinction was always drawn in the chart; now it is also written down.
+- **Today appears once.** It used to be both the chart and the first row of the five-day list — the same day, described twice, by two different instruments at two different resolutions. The list now starts tomorrow.
+- **On a desktop the app sits in a column.** Full-screen it ran edge to edge: a rain chart two thousand pixels wide, and temperatures sitting a foot away from the day they belonged to. Now it centres, with space either side. On a phone nothing changes at all.
+
+**What did NOT change**
+
+The forecast, the verdict, the countdowns, and the chart itself — the bars, the dashed forecast zone, the faint drizzle stubs and the boundary line are all drawn exactly as before, just taller.
+
+---
+
 ## [2.31.0] - 2026-09-15 - Gemma Raus just got better: installed apps update themselves 🔄
 
 *After yesterday's blank-screen bug: if a release ever goes wrong again, the fix has to reach the app on your home screen without you doing anything.*
