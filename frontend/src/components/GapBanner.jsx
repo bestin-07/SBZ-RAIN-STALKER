@@ -35,14 +35,14 @@ function SourceLine({ signals, t }) {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-2.5 border-t border-border">
       <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
         <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(ground) }} />
-        {typeof ground === 'number' ? t('src_ground', { mm: mm(ground) }) : t('src_ground_none')}
+        {typeof ground === 'number' ? t('lane_ground', { mm: mm(ground) }) : t('lane_ground_none')}
       </span>
       <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
         <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(radar) }} />
-        {typeof radar !== 'number' ? t('src_radar_none')
-          : wet(radar) ? t('src_radar', { mm: mm(radar) }) : t('src_radar_clear')}
+        {typeof radar !== 'number' ? t('lane_radar_none')
+          : wet(radar) ? t('lane_radar', { mm: mm(radar) }) : t('lane_radar_clear')}
       </span>
-      {held && <span className="font-mono text-[10px] text-muted">{t('src_held')}</span>}
+      {held && <span className="font-mono text-[10px] text-muted">{t('lane_held')}</span>}
       {updated && (
         <span className="font-mono text-[10px] text-muted ml-auto">
           {new Date(updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

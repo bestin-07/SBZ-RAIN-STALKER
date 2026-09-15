@@ -34,6 +34,24 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             <StatusRow color="var(--c-stuck)" badge={t('guide_ex_stuck')} desc={t('guide_red')} />
           </div>
 
+          {/* ── THE SKY LINE (v2.30) ── */}
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
+            {t('guide_sky_title')}
+          </div>
+          <p className="font-mono text-xs text-muted leading-relaxed mb-5">
+            {t('guide_sky')}
+          </p>
+
+          {/* ── WHERE THE ANSWER COMES FROM (v2.30) ── */}
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
+            {t('guide_lanes_title')}
+          </div>
+          <div className="space-y-2 mb-5">
+            {['guide_lanes_1','guide_lanes_2','guide_lanes_3'].map(k => (
+              <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
+            ))}
+          </div>
+
           {/* ── HOW TO READ THE RIBBON ── */}
           <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
             {t('guide_ribbon_title')}
@@ -41,6 +59,17 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
           <RibbonGuide t={t} />
           <div className="space-y-2 mb-5">
             {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4'].map(k => (
+              <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
+            ))}
+          </div>
+
+          {/* ── THE FIVE-DAY STRIP (v2.30) ── */}
+          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
+            {t('guide_days_title')}
+          </div>
+          <DayGuide t={t} />
+          <div className="space-y-2 mb-5">
+            {['guide_days_1','guide_days_2','guide_days_3'].map(k => (
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
             ))}
           </div>
@@ -81,6 +110,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             <DataRow label={t('src_radar')}    value="RainViewer · EU composite" />
             <DataRow label={t('src_station')}  value="GeoSphere TAWES · 6 nearest + airport" />
             <DataRow label={t('src_radar_pt')} value="GeoSphere nowcast · 1 km / 15 min" />
+            <DataRow label={t('src_daily')}    value="Open-Meteo daily · 5 days + sun times" />
             <DataRow label={t('src_accuracy')} value={t('fact_03')} />
           </div>
 
@@ -205,6 +235,40 @@ function RibbonGuide({ t }) {
         <text key={i} x={i * W + 4} y="78" fontSize="8" fontFamily="monospace"
               fill="var(--c-muted)">{15 + n}:00</text>
       ))}
+    </svg>
+  )
+}
+
+// A miniature day row, drawn the same way as RibbonGuide above and for the same
+// reason: it reads the live colour tokens, so it cannot drift out of date or go
+// wrong in one theme the way a screenshot would. One day, one story — dry through
+// the morning, rain arriving late afternoon, easing at night — with the dry window
+// marked, because the window is the part people need to learn to spot.
+function DayGuide({ t }) {
+  const W = 22, GAP = 3, BASE = 30, X0 = 44
+  // 12 buckets of 2 h, on the app's own precip ramp.
+  const buckets = [0, 0, 0, 0, 0, 0, 0, 0.3, 1.4, 2.6, 0.9, 0.2]
+  const col = v => v < 0.1 ? 'var(--c-go)' : v < 0.5 ? 'var(--c-light)'
+                : v < 2 ? 'var(--c-wait)' : 'var(--c-stuck)'
+  const h = v => v < 0.1 ? 3 : Math.max(5, Math.round(Math.sqrt(v / 2.5) * 22))
+  const width = X0 + buckets.length * (W + GAP) + 58
+  return (
+    <svg viewBox={`0 0 ${width} 46`} className="w-full max-w-[360px] h-auto mb-4"
+         role="img" aria-label={t('guide_days_title')}>
+      <text x="0" y={BASE} fontSize="9" fontFamily="monospace" fill="var(--c-muted)">WED</text>
+      {buckets.map((v, i) => {
+        const bh = h(v)
+        return <rect key={i} x={X0 + i * (W + GAP)} y={BASE - bh} width={W} height={bh}
+                     fill={col(v)} fillOpacity={v < 0.1 ? 0.45 : 1} rx="1" />
+      })}
+      <text x={width - 52} y={BASE} fontSize="9" fontFamily="monospace" fill="var(--c-muted)">60%</text>
+      <text x={width - 22} y={BASE} fontSize="9" fontFamily="monospace" fill="var(--c-primary)">21°</text>
+      {/* the dry window, which is the thing to learn to spot */}
+      <line x1={X0} y1={BASE + 6} x2={X0 + 7 * (W + GAP) - GAP} y2={BASE + 6}
+            stroke="var(--c-go)" strokeWidth="1.5" />
+      <text x={X0} y={BASE + 16} fontSize="8" fontFamily="monospace" fill="var(--c-go)">
+        {t('guide_days_lbl_window')}
+      </text>
     </svg>
   )
 }

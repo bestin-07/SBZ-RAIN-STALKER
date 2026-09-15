@@ -310,7 +310,10 @@ Stability mechanisms (why "when" never jumps around — **reduce noise is the de
 The intended logic is encoded as an executable contract; **run both suites before and after touching gaps.js, the App.jsx blend, or the backend filter/push logic**:
 
 ```bash
-cd frontend && npm test            # 329 tests in TWO files:
+cd frontend && npm test            # 335 tests in THREE files:
+                                   #  i18n.test.js (6) — no duplicate keys, DE/EN key
+                                   #    parity, matching {placeholders}. A duplicate key
+                                   #    is legal JS and silently wins; nothing else catches it.
                                    #  gaps.test.js (313) — detectGaps, getStatus (all 4
                                    #    states, thresholds, downpour warning, night/evening
                                    #    voice, weather notes, notice voice), firstDownpourMin,
@@ -340,6 +343,11 @@ Rules:
 ### Logic change log
 Every change that alters the verdict or the data feeding it — newest first. Behavioural boundaries only; cosmetic/UI omitted.
 
+- **2026-09 · v2.30.2 · An i18n key collision silently ate half the source line, and the guide still described the pre-v2.30 screen.** Display/copy only; no verdict, threshold or countdown touched.
+  **The collision.** v2.30.0 added `src_radar: 'radar {mm} mm'` for the new source line. `src_radar: 'Radar'` **already existed** as the data-sources label in `InfoPanel` — the `src_*` prefix was taken, and I did not check. A duplicate key in a JS object literal is not an error: the last definition silently wins, so the original (declared later in the file) took precedence and the source line rendered a bare "radar" with no reading in it. Build passed, 313 tests passed, `render.test.jsx` passed — because it happened to assert on `src_ground` and `src_radar_clear`, not on the one key that collided. Renamed the whole block to `lane_*`.
+  **The structural fix, which matters more than the rename.** New `i18n.test.js`: no key may be declared twice in either language (parsed out of the source, since the evaluated object cannot show a duplicate by definition); both languages must carry exactly the same key set; and every `{placeholder}` in a German string must appear in its English twin, so a `{mm}` dropped in one language cannot render a literal brace to half the users. This class of bug is invisible to every other check we have.
+  **Guide.** `InfoPanel` gained three sections in SCREEN order (sky line → where the answer comes from → five days), a `DayGuide` SVG miniature drawn the same way and for the same reason as the existing `RibbonGuide` — it reads live colour tokens, so it cannot rot or break in one theme the way a screenshot would — and a `src_daily` data-sources row. The guide is now covered by a render test, because it is the one place a missing key stays invisible until someone opens the panel.
+  Tests: 329 → 335 frontend (a third file), backend unchanged at 27.
 - **2026-09 · v2.30.1 · A blank page on every device, and "best window" counting the middle of the night — both found by the first real payload, within minutes of shipping v2.30.0.** Two independent defects in the release above; neither reachable from the verdict path, both display.
   **(1) THE OUTAGE — the empty first render is a state, and it was the one state untested.** `RainRibbon`'s new `hasModelZone` read `forecast.isNowcast` UNGUARDED. `forecast` is **null on the very first render**, before any data arrives — which is exactly why every other read in that same render body is written `forecast?.` (lines 438, 444) and why `traceOnly`'s `forecast.tracePhantom` is protected by an `allDry &&` short-circuit. The unguarded read threw a TypeError on first paint, React unmounted the whole tree, and the app was blank for **everyone, on every device, cache irrelevant** — the maintainer's server logs showed clean 200s for `/`, the bundle and `/api/ambient`, confirming a purely client-side crash. The landing page survived only because it renders before `RainRibbon` mounts. **Lesson recorded: `render.test.jsx` mounted every new block with realistic data and passed — a display block tested only with GOOD data is untested exactly where it breaks.** The suite now also mounts all of them with `null` / `{}` / empty arrays, the state the app occupies for a moment on every single open. Pin verified by reverting the fix: the test fails, then passes.
   **(2) "Best window" was offering the middle of the night.** The first live daily payload produced *"best window: Wed 16 Sept 00:00-19:00"* on a day carrying **22 mm and a thunderstorm**, and *"best window: Fri 18 Sept 00:00-00:00"* for a day dry end to end. Both arithmetically correct, both useless: `bestWindow` searched the whole calendar day, and dry stretches beginning at midnight are common. Two consequences — a 24 h window formatted as a zero-length range, and, because night hours inflate run length, **a night-dry storm day outranking a genuinely clear one**. That is the optimistic-claim failure the v2.30.0 entry claimed to guard against, reached by a path that entry did not consider. Fix: `bestWindow` takes an optional `daylight` ({from, to}) and counts only hours lying **wholly** inside it (conservative, because this is a promise); the backend serves `sunrise`/`sunset` on the daily call it already makes, so it costs no request and self-adjusts from a 16-hour June day to an 8-hour December one, which any fixed hour band would not. Omitted or malformed → whole day considered, i.e. byte-identical pre-v2.30.1 behaviour.
@@ -495,7 +503,7 @@ Warning-banner accents (`--c-uv/warn/alert`) and `--c-muted` are likewise darken
 | `frontend/src/components/DayStrip.jsx` | Five-day outlook + "best window" (display only, never a verdict) |
 | `frontend/src/components/WeatherGlyph.jsx` | Drawn weather-code glyphs, theme-tokened |
 | `frontend/src/components/RadarMap.jsx` | Leaflet base map + RainViewer overlay + nearby-town precip dots + "recenter on me" `flyTo` button |
-| `frontend/src/components/InfoPanel.jsx` | Guide + about + data sources |
+| `frontend/src/components/InfoPanel.jsx` | Guide (incl. the v2.30 blocks + drawn ribbon/day examples) + about + data sources |
 | `frontend/src/main.jsx` | SW registration + JS force-update (controllerchange reload) |
 | `frontend/public/sw.js` | Service worker; cache name stamped per deploy (Dockerfile) |
 | `frontend/public/admin/` | Hidden accuracy dashboard (index.html + admin.js) |

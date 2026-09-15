@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.30.2] - 2026-09-15 - Gemma Raus just got better: the guide explains the new screen 📖
+
+*Following the two new blocks: the guide still described the old layout, and the source line under the status was missing half of what it meant to say.*
+
+**What's new for you**
+
+- **The guide is up to date.** Open it with the **?** button and you'll find three new sections: what the line at the very top is, what "ground" and "radar" under the status actually mean, and how to read the five-day strip — including a little drawn example of a day, with its dry window marked.
+- **The source line shows its numbers again.** It was meant to read "radar 2.6 mm" and was only saying "radar", because the name I gave that piece of text was already taken by the data-sources list further down. Both now say what they were written to say.
+
+**Behind the scenes**
+
+Nothing about the forecast or the verdict changed. The naming clash was the sort of thing that fails silently — no error, no warning, the wrong text just quietly wins — so there's now a check that refuses to let two pieces of text share a name, and another that makes sure German and English always carry exactly the same set.
+
+---
+
 ## [2.30.1] - 2026-09-15 - Gemma Raus just got better: the blank screen is gone, and "best window" now means daylight ☀️
 
 *Reported within minutes of the 2.30.0 deploy: "I can't see anything on the screen — the landing page is fine, the weather page is blank."*

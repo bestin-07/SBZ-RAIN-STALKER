@@ -15,7 +15,13 @@ import SkyLine from './components/SkyLine'
 import DayStrip from './components/DayStrip'
 import GapBanner from './components/GapBanner'
 import RainRibbon from './components/RainRibbon'
+import InfoPanel from './components/InfoPanel'
 import { translations } from './i18n'
+
+// React escapes text when it serialises; assertions have to compare like with like.
+const esc = str => str
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
 
 const mkT = lang => (key, vars = {}) => {
   let s = translations[lang][key]
@@ -81,8 +87,8 @@ for (const lang of ['de', 'en']) {
       const html = renderToStaticMarkup(
         <GapBanner status={status} blocked={[]} t={t}
                    signals={{ ground: 0, radar: 0, held: false, updated: Date.now() }} />)
-      expect(html).toContain(t('src_ground', { mm: '0.0' }))
-      expect(html).toContain(t('src_radar_clear'))
+      expect(html).toContain(t('lane_ground', { mm: '0.0' }))
+      expect(html).toContain(t('lane_radar_clear'))
     })
 
     // THE v2.30.0 OUTAGE. `forecast` is null on the very first render, before any
@@ -116,10 +122,25 @@ for (const lang of ['de', 'en']) {
                    signals={{ ground: null, radar: null, held: false, updated: null }} />)).not.toThrow()
     })
 
+    it('the guide renders every section, with no missing strings', () => {
+      // The guide is the one place a new i18n key is easy to forget, because nothing
+      // in the app reads it until someone opens the panel. mkT throws on an unknown
+      // key, so this fails loudly rather than rendering "guide_days_2" to a user.
+      const html = renderToStaticMarkup(
+        <InfoPanel open={true} onClose={() => {}} onPrivacy={() => {}} t={t} />)
+      for (const k of ['guide_sky_title', 'guide_sky', 'guide_lanes_title', 'guide_lanes_1',
+                       'guide_lanes_2', 'guide_lanes_3', 'guide_days_title', 'guide_days_1',
+                       'guide_days_2', 'guide_days_3', 'src_daily']) {
+        expect(html).toContain(esc(t(k).slice(0, 24)))
+      }
+      expect(renderToStaticMarkup(
+        <InfoPanel open={false} onClose={() => {}} onPrivacy={() => {}} t={t} />)).toBe('')
+    })
+
     it('GapBanner omits the source line when nothing was read', () => {
       const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'dry', weather: null }
       const html = renderToStaticMarkup(<GapBanner status={status} blocked={[]} t={t} />)
-      expect(html).not.toContain(t('src_radar_clear'))
+      expect(html).not.toContain(t('lane_radar_clear'))
     })
   })
 }
