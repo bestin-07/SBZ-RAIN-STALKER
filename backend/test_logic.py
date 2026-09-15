@@ -181,6 +181,18 @@ class TestDailyOutlook(unittest.TestCase):
         # than assuming 24 h, which is wrong on the two DST days a year.
         self.assertEqual(NS["DAILY_FORECAST_DAYS"], 6)
 
+    def test_daylight_bounds_requested(self):
+        # v2.30.1: without sunrise/sunset the strip offered "best window Wed
+        # 00:00-19:00" on a 22 mm thunderstorm day — arithmetically true, unusable,
+        # and able to outrank a genuinely good afternoon. gaps.bestWindow silently
+        # falls back to considering the whole day when these are missing, so the
+        # regression would be invisible rather than loud.
+        params = [n.value for n in ast.walk(self._fn())
+                  if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        joined = ",".join(params)
+        self.assertIn("sunrise", joined)
+        self.assertIn("sunset", joined)
+
     def test_hourly_series_rides_along(self):
         # The day shape and the dry window both come from the hourly series. If it
         # ever stops being requested the strip silently loses both and shows flat rows.

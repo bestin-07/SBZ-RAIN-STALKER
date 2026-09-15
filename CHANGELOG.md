@@ -12,6 +12,27 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.30.1] - 2026-09-15 - Gemma Raus just got better: the blank screen is gone, and "best window" now means daylight ☀️
+
+*Reported within minutes of the 2.30.0 deploy: "I can't see anything on the screen — the landing page is fine, the weather page is blank."*
+
+**What happened**
+
+A mistake of mine, and a bad one. The rain ribbon reads a piece of forecast data that doesn't exist yet during the split second before your first reading arrives. Every other line in that part of the app is written to expect that; the one line I added yesterday was not. So it failed on the very first draw — and when that happens the whole page goes blank rather than showing a broken ribbon. It hit everyone, on every device, and clearing your cache would not have helped.
+
+It's fixed, and there is now a test that draws every one of the new blocks with nothing in them at all — the state the app is in for a moment every single time you open it.
+
+**Also fixed: "best window" was offering you the middle of the night**
+
+The five-day strip went live yesterday, and the first real forecast showed up two problems with it at once:
+
+- A day that was dry from start to finish was described as **"00:00-00:00"** — a whole dry day printed as if it were no time at all.
+- Worse, dry hours in the middle of the night counted towards the window. Night is dry far more often than daytime, so a day that rained 22 mm in the evening could be offered as an eleven-hour opportunity, and beat a genuinely clear day later in the week.
+
+Windows are now measured **between sunrise and sunset**, so what you're offered is time you could actually use — and it adjusts itself through the year rather than assuming summer. When two days offer the same amount of daylight, the drier day wins; if they're equally dry, the sooner one does, because a tenth of a millimetre isn't worth waiting a day for.
+
+---
+
 ## [2.30.0] — 2026-09-15 — Gemma Raus just got better: it finally tells you what the sky is doing 🌤️
 
 *From a design pass on the main screen: "can we show something cleaner, more weather-based — the weather code, the coming days?"*

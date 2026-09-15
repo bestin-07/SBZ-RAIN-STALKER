@@ -21,7 +21,7 @@ import {
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
   rvNowValue, RV_HEAVY_MM,
-  dayBuckets, bestWindow, weatherGroup, HOUR_TO_SLOT, DAY_BUCKETS, BEST_WINDOW_MIN_H,
+  dayBuckets, bestWindow, preferWindow, weatherGroup, HOUR_TO_SLOT, DAY_BUCKETS, BEST_WINDOW_MIN_H,
 } from './gaps'
 
 // ---- helpers ---------------------------------------------------------------
@@ -2192,5 +2192,122 @@ describe('v2.30 weatherGroup — WMO code → glyph family', () => {
     expect(weatherGroup('61')).toBeNull()
     expect(weatherGroup(NaN)).toBeNull()
     expect(weatherGroup(4)).toBeNull()
+  })
+})
+
+describe('v2.30.1 bestWindow — a window nobody can use is not a window', () => {
+  // THE LIVE BUG. The first real /api/ambient payload offered
+  //   "best window: Wed 16 Sept 00:00–19:00"
+  // on a day carrying 22 mm and a thunderstorm, and
+  //   "best window: Fri 18 Sept 00:00–00:00"
+  // for a day that was dry end to end. Both were arithmetically correct and both
+  // were unusable: the dry stretch simply started at midnight. Night hours are dry
+  // far more often than daylight ones, so counting them also let a night-dry day
+  // outrank a genuinely good afternoon later in the week.
+  const day0 = 1757800800
+  const day1 = day0 + 86400
+  const sunrise = day0 + 7 * 3600
+  const sunset  = day0 + 19 * 3600
+  const light = { from: sunrise, to: sunset }
+  const series = vals => ({ t: vals.map((_, i) => day0 + i * 3600), p: vals.slice() })
+
+  it('a dry night before a wet day yields NO window', () => {
+    const vals = new Array(24).fill(2)          // wet all day…
+    for (let i = 0; i < 6; i++) vals[i] = 0     // …except 00:00–06:00
+    const s = series(vals)
+    // Without daylight bounds this was a confident 6-hour window at 3 in the morning.
+    expect(bestWindow(s.t, s.p, day0, day1)).not.toBeNull()
+    expect(bestWindow(s.t, s.p, day0, day1, light)).toBeNull()
+  })
+
+  it('an all-dry day reports the daylight span, never 00:00–00:00', () => {
+    const s = series(new Array(24).fill(0))
+    const w = bestWindow(s.t, s.p, day0, day1, light)
+    expect(w.start).toBe(sunrise)
+    expect(w.end).toBe(sunset)                  // a real range, not midnight to midnight
+  })
+
+  it('replays the live Wednesday: dry until 18:00, offered from sunrise only', () => {
+    const vals = new Array(24).fill(0)
+    for (let i = 18; i < 24; i++) vals[i] = 3   // the storm, 18:00 onwards
+    const s = series(vals)
+    const w = bestWindow(s.t, s.p, day0, day1, light)
+    expect(w.start).toBe(sunrise)               // not 00:00
+    expect(w.end).toBe(day0 + 18 * 3600)        // rain, correctly, ends it
+  })
+
+  it('a night-dry day can no longer outrank a good afternoon', () => {
+    const nightDry = series(new Array(24).fill(2).map((v, i) => (i < 7 ? 0 : v)))
+    const afternoon = series(new Array(24).fill(2).map((v, i) => (i >= 13 && i < 19 ? 0 : v)))
+    const a = bestWindow(nightDry.t, nightDry.p, day0, day1, light)
+    const b = bestWindow(afternoon.t, afternoon.p, day0, day1, light)
+    expect(a).toBeNull()
+    expect(b.end - b.start).toBe(6 * 3600)
+  })
+
+  it('no daylight info → unchanged pre-v2.30.1 behaviour', () => {
+    const vals = new Array(24).fill(2)
+    for (let i = 0; i < 6; i++) vals[i] = 0
+    const s = series(vals)
+    const plain = bestWindow(s.t, s.p, day0, day1)
+    expect(plain.start).toBe(day0)
+    // A malformed or reversed daylight pair is ignored rather than trusted.
+    expect(bestWindow(s.t, s.p, day0, day1, { from: sunset, to: sunrise })).toEqual(plain)
+    expect(bestWindow(s.t, s.p, day0, day1, { from: null, to: null })).toEqual(plain)
+  })
+
+  it('an hour only PARTLY in daylight does not count — the promise stays conservative', () => {
+    // Sunrise at 07:30: the 07:00 hour is not fully inside daylight, so a window
+    // starts at 08:00 rather than claiming half an hour of darkness.
+    const s = series(new Array(24).fill(0))
+    const w = bestWindow(s.t, s.p, day0, day1, { from: day0 + 7.5 * 3600, to: sunset })
+    expect(w.start).toBe(day0 + 8 * 3600)
+  })
+})
+
+describe('v2.30.1 preferWindow — the drier day wins an equal window', () => {
+  // The SECOND live finding, immediately after clipping to daylight: every day in
+  // the real payload produced the same 12-hour daylight window, so length stopped
+  // discriminating and the earliest-day tiebreak offered Wednesday — 22 mm and a
+  // thunderstorm, arriving right after sunset — ahead of a clean Friday. The
+  // headline sat directly above its own row reading "100% · 22 mm".
+  const d = (start, hours, rain, day = start) => ({ start, end: start + hours * 3600, rain, day })
+
+  it('longer window always wins, whatever the rain', () => {
+    const long = d(0, 8, 20), short = d(0, 4, 0)
+    expect(preferWindow(long, short)).toBe(long)
+    expect(preferWindow(short, long)).toBe(long)
+  })
+
+  it('equal window → the day with less total rain', () => {
+    const storm = d(0, 12, 22), clean = d(86400, 12, 0)
+    expect(preferWindow(storm, clean)).toBe(clean)
+    expect(preferWindow(clean, storm)).toBe(clean)
+  })
+
+  it('a sub-millimetre difference does NOT send the user a day later', () => {
+    // Live: Friday 0.1 mm vs Saturday 0.0 mm, identical 12 h windows. An exact
+    // comparison picked Saturday. A tenth of a millimetre across a whole day is not
+    // worth waiting another day for.
+    const friday = d(0, 12, 0.1), saturday = d(86400, 12, 0)
+    expect(preferWindow(friday, saturday)).toBe(friday)
+  })
+
+  it('equal window AND equal rain → the earlier day keeps it', () => {
+    const earlier = d(0, 12, 0), later = d(86400, 12, 0)
+    expect(preferWindow(earlier, later)).toBe(earlier)
+  })
+
+  it('an unknown rain total never displaces a measured dry day', () => {
+    const unknown = d(0, 12, null), dry = d(86400, 12, 0)
+    expect(preferWindow(unknown, dry)).toBe(dry)
+    expect(preferWindow(dry, unknown)).toBe(dry)
+  })
+
+  it('null-safe, so it folds over a list', () => {
+    const w = d(0, 6, 1)
+    expect(preferWindow(null, w)).toBe(w)
+    expect(preferWindow(w, null)).toBe(w)
+    expect(preferWindow(null, null)).toBeNull()
   })
 })

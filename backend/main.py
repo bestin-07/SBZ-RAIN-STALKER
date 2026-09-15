@@ -901,8 +901,12 @@ async def fetch_daily(client: httpx.AsyncClient):
         "https://api.open-meteo.com/v1/forecast",
         params={
             "latitude": 47.8009, "longitude": 13.0448,
+            # sunrise/sunset (v2.30.1): the strip's "best window" must not offer a
+            # dry stretch that runs through the night — see gaps.bestWindow. Free on
+            # this call; no extra request.
             "daily": ("weather_code,temperature_2m_max,temperature_2m_min,"
-                      "precipitation_sum,precipitation_probability_max"),
+                      "precipitation_sum,precipitation_probability_max,"
+                      "sunrise,sunset"),
             "hourly": "precipitation",
             "forecast_days": DAILY_FORECAST_DAYS,
             "timeformat": "unixtime", "timezone": "Europe/Vienna",
@@ -925,6 +929,8 @@ async def fetch_daily(client: httpx.AsyncClient):
         "tmin":  dy.get("temperature_2m_min", []),
         "psum":  dy.get("precipitation_sum", []),
         "pprob": dy.get("precipitation_probability_max", []),
+        "sunrise": dy.get("sunrise", []),
+        "sunset":  dy.get("sunset", []),
         "htime":   hr.get("time", []),
         "hprecip": hr.get("precipitation", []),
     }

@@ -1269,26 +1269,46 @@ export function dayBuckets(hTimes, hPrecips, dayStart, dayEnd, n = DAY_BUCKETS) 
   return seen ? out : null
 }
 
-// The longest run of consecutive DRY hours in a day, as {start, end} unix seconds,
-// or null when the day holds no run of at least BEST_WINDOW_MIN_H.
+// The longest run of consecutive dry DAYLIGHT hours in a day, as {start, end} unix
+// seconds, or null when the day holds no run of at least BEST_WINDOW_MIN_H.
 //
 // Deliberately the same DRY_THRESHOLD as everything else — expressed in the hourly
 // series' own unit by the conversion above, so this introduces no new dryness test
 // and no new constant to drift. Ties keep the EARLIER window: given two equal dry
-// stretches, the morning one is the one you can still act on.
+// stretches, the nearer day is the one you can still act on.
+//
+// `daylight` ({from, to} unix seconds — the day's sunrise and sunset) is the fix for
+// the v2.30.0 live bug: without it, the first real payload offered "best window
+// Wednesday 00:00–19:00" on a day carrying 22 mm and a thunderstorm, because the dry
+// stretch ran from midnight. Night hours are dry remarkably often and nobody is
+// planning a walk at 03:00, so counting them produced a window that was arithmetically
+// true, useless to read, and — by inflating the run length — able to outrank a
+// genuinely good afternoon later in the week. An hour must lie FULLY inside daylight
+// to count: conservative in the right direction, since this is a promise.
+// Sunrise/sunset also removes any need to guess at "daytime" — it self-adjusts from
+// a 16-hour June day to an 8-hour December one, which a fixed 07:00–21:00 band would
+// not. Omitted (older snapshot, missing fields) → the whole day is considered, which
+// is exactly the pre-v2.30.1 behaviour.
 //
 // Contiguity is checked on the timestamps, not the indices: a hole in the series
 // breaks the run rather than silently bridging it, so a missing hour can never be
 // counted as dry. Returning null on thin data is the safe direction — declining to
 // promise a window costs a user nothing, promising one we cannot back costs them
 // the afternoon.
-export function bestWindow(hTimes, hPrecips, dayStart, dayEnd) {
+export function bestWindow(hTimes, hPrecips, dayStart, dayEnd, daylight = null) {
   if (!Array.isArray(hTimes) || !Array.isArray(hPrecips)) return null
+  const dl = daylight && typeof daylight.from === 'number' && typeof daylight.to === 'number'
+    && daylight.to > daylight.from ? daylight : null
   let bestLen = 0, bestStart = null
   let runLen = 0, runStart = null, prevT = null
   for (let i = 0; i < hTimes.length; i++) {
     const t = hTimes[i]
     if (typeof t !== 'number' || t < dayStart || t >= dayEnd) continue
+    // The hour must sit wholly within daylight — a run may not begin before sunrise
+    // or spill past sunset. Skipping (rather than breaking) is right: a run is
+    // continued only by the timestamp check below, so night hours simply do not
+    // participate and a dawn run starts cleanly at the first full daylight hour.
+    if (dl && !(t >= dl.from && t + 3600 <= dl.to)) continue
     const p = hPrecips[i]
     const dry = typeof p === 'number' && p * HOUR_TO_SLOT < DRY_THRESHOLD
     const contiguous = prevT !== null && t === prevT + 3600
@@ -1322,4 +1342,34 @@ export function weatherGroup(code) {
   if (code >= 80 && code <= 82) return 'showers'
   if (code >= 95) return 'thunder'
   return null
+}
+
+// Which of two candidate day windows to offer (v2.30.1). Returns the better one;
+// null-safe, so it can be folded over a list.
+//
+// Length alone is NOT enough, and the live data showed why within minutes of the
+// fix above: once every window is clipped to daylight, a day that is dry all day
+// and a day that gets 22 mm starting at 18:30 produce the SAME 12-hour window, and
+// a length-only comparison with an earliest-day tiebreak handed the headline to the
+// thunderstorm. Both windows were true; one of them was terrible advice, and it sat
+// directly above its own row reading "100% · 22 mm".
+//
+// So: longer window wins; on a tie, the day with materially LESS total rain wins;
+// on a tie in both, the earlier day keeps the slot (it is the one you can still act
+// on). A day whose rain total is unknown never wins a tie — an unmeasured day must
+// not displace a measured dry one.
+//
+// "Materially" is a whole millimetre, and that rounding is doing real work: the same
+// live payload also had Friday at 0.1 mm against Saturday at 0.0, both with identical
+// 12-hour windows, and an exact comparison sent the user a day further out over a
+// tenth of a millimetre across an entire day. Sooner is worth more than that.
+export function preferWindow(a, b) {
+  if (!a) return b || null
+  if (!b) return a
+  const la = a.end - a.start, lb = b.end - b.start
+  if (la !== lb) return la > lb ? a : b
+  const ra = typeof a.rain === 'number' ? Math.round(a.rain) : Infinity
+  const rb = typeof b.rain === 'number' ? Math.round(b.rain) : Infinity
+  if (ra !== rb) return ra < rb ? a : b
+  return a    // caller feeds days in order, so `a` is the earlier one
 }

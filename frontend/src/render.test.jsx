@@ -14,6 +14,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import SkyLine from './components/SkyLine'
 import DayStrip from './components/DayStrip'
 import GapBanner from './components/GapBanner'
+import RainRibbon from './components/RainRibbon'
 import { translations } from './i18n'
 
 const mkT = lang => (key, vars = {}) => {
@@ -82,6 +83,37 @@ for (const lang of ['de', 'en']) {
                    signals={{ ground: 0, radar: 0, held: false, updated: Date.now() }} />)
       expect(html).toContain(t('src_ground', { mm: '0.0' }))
       expect(html).toContain(t('src_radar_clear'))
+    })
+
+    // THE v2.30.0 OUTAGE. `forecast` is null on the very first render, before any
+    // data arrives — every read in RainRibbon's render body is written `forecast?.`
+    // for that reason, and v2.30.0's new hasModelZone line was not. It threw a
+    // TypeError on first paint, React unmounted the whole tree, and the app was a
+    // blank page on every device until data that never got a chance to load arrived.
+    //
+    // The lesson this pins: the empty/initial state is a state, and a display block
+    // that only ever gets tested with realistic data is untested where it breaks.
+    it('RainRibbon survives the empty first render (forecast null/empty)', () => {
+      expect(() => renderToStaticMarkup(
+        <RainRibbon forecast={null} theme="light" t={t} unstable={false} modelRainMin={null} />)).not.toThrow()
+      expect(() => renderToStaticMarkup(
+        <RainRibbon forecast={{}} theme="dark" t={t} unstable={false} modelRainMin={null} />)).not.toThrow()
+      expect(() => renderToStaticMarkup(
+        <RainRibbon forecast={{ times: [], precips: [] }} theme="light" t={t} />)).not.toThrow()
+    })
+
+    it('every new block survives being handed nothing at all', () => {
+      // Same class of bug, swept across the whole release: the initial state passes
+      // null or empty into all of these before the first refresh completes.
+      expect(() => renderToStaticMarkup(<SkyLine weather={null} t={t} />)).not.toThrow()
+      expect(() => renderToStaticMarkup(<DayStrip daily={null} theme="light" t={t} lang={lang} />)).not.toThrow()
+      expect(() => renderToStaticMarkup(<DayStrip daily={{}} theme="light" t={t} lang={lang} />)).not.toThrow()
+      expect(() => renderToStaticMarkup(
+        <DayStrip daily={{ time: [1, 2] }} theme="light" t={t} lang={lang} />)).not.toThrow()
+      expect(() => renderToStaticMarkup(<GapBanner status={null} t={t} />)).not.toThrow()
+      expect(() => renderToStaticMarkup(
+        <GapBanner status={{ type: 'loading', headline: '…', sub: '' }} t={t}
+                   signals={{ ground: null, radar: null, held: false, updated: null }} />)).not.toThrow()
     })
 
     it('GapBanner omits the source line when nothing was read', () => {

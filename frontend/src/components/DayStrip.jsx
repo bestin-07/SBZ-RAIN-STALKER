@@ -1,6 +1,6 @@
 import WeatherGlyph from './WeatherGlyph'
 import { precipToColor, palOf } from './RainRibbon'
-import { dayBuckets, bestWindow, weatherGroup, DRY_THRESHOLD } from '../gaps'
+import { dayBuckets, bestWindow, preferWindow, weatherGroup, DRY_THRESHOLD } from '../gaps'
 
 // The five-day strip (v2.30).
 //
@@ -51,8 +51,13 @@ export default function DayStrip({ daily, theme, t, lang }) {
       hi:   typeof daily.tmax?.[i] === 'number' ? Math.round(daily.tmax[i]) : null,
       lo:   typeof daily.tmin?.[i] === 'number' ? Math.round(daily.tmin[i]) : null,
       prob: typeof daily.pprob?.[i] === 'number' ? Math.round(daily.pprob[i]) : null,
+      rain: typeof daily.psum?.[i] === 'number' ? daily.psum[i] : null,
       group: weatherGroup(daily.code?.[i] ?? null),
       shape: dayBuckets(hT, hP, start, end),
+      // Sunrise/sunset bound the window search (v2.30.1). Absent on an older
+      // snapshot → null → the whole day is considered, as before.
+      daylight: typeof daily.sunrise?.[i] === 'number' && typeof daily.sunset?.[i] === 'number'
+        ? { from: daily.sunrise[i], to: daily.sunset[i] } : null,
     }
   })
 
@@ -61,12 +66,10 @@ export default function DayStrip({ daily, theme, t, lang }) {
   // about this very afternoon is the contradiction this app exists not to make.
   let best = null
   for (let i = 1; i < days.length; i++) {
-    const w = bestWindow(hT, hP, days[i].start, days[i].end)
-    // Strictly longer wins, so an equal-length earlier day keeps the slot: a window
-    // two days out is worth more to someone than the same window five days out.
-    if (w && (!best || (w.end - w.start) > (best.end - best.start))) {
-      best = { ...w, day: days[i].start }
-    }
+    const w = bestWindow(hT, hP, days[i].start, days[i].end, days[i].daylight)
+    // Longer wins; equal length → the drier DAY wins; equal in both → the earlier
+    // day keeps the slot. See gaps.preferWindow for why length alone is not enough.
+    if (w) best = preferWindow(best, { ...w, day: days[i].start, rain: days[i].rain })
   }
 
   return (

@@ -453,8 +453,13 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const hasTrace = rslots.some(s => s.p > 0 && s.p < DRY_THRESHOLD)
   // …and the "model (expected)" key only once the ribbon actually reaches past the
   // radar horizon into the dashed zone.
-  const hasModelZone = forecast.isNowcast === false ||
-    rslots.some(s => s.t > (forecast.radarUntil ?? Infinity))
+  // NOTE the optional chaining: `forecast` is null on the very first render, before
+  // any data has arrived, and every other read in this render body is written that
+  // way for exactly that reason. v2.30.0 shipped this line unguarded and it threw a
+  // TypeError on first paint, which unmounted the whole app — a blank page on every
+  // device. Pinned by a render test that mounts this component with forecast={null}.
+  const hasModelZone = forecast?.isNowcast === false ||
+    rslots.some(s => s.t > (forecast?.radarUntil ?? Infinity))
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
   // Trace slots only (all sub-threshold, at least one non-zero): the overlay must
   // not claim "no rain in 3h" over visible drizzle stubs — name what's there.
