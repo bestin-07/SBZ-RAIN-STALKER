@@ -30,9 +30,9 @@ const PALETTE = {
   dark:  { dry: '#D4A017', light: '#6CD1EB', mod: '#1BAEE2', heavy: '#0077AA', storm: '#E05C00' },
   light: { dry: '#7A5E00', light: '#1E86B0', mod: '#0A6E9C', heavy: '#024D6E', storm: '#B34A00' },
 }
-function palOf(theme) { return PALETTE[theme === 'light' ? 'light' : 'dark'] }
+export function palOf(theme) { return PALETTE[theme === 'light' ? 'light' : 'dark'] }
 
-function precipToColor(p, pal) {
+export function precipToColor(p, pal) {
   if (p < DRY_THRESHOLD) return pal.dry
   if (p < 0.5)           return pal.light
   if (p < 2)             return pal.mod
@@ -449,6 +449,12 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // disagreeing about nothing is not a disagreement a user needs to see.
   const hasDisagreement = rslots.some(s => s.agree === false && s.p >= DRY_THRESHOLD)
   const hasData = rslots.length > 0
+  // A sub-threshold stub is only worth naming when one is actually drawn.
+  const hasTrace = rslots.some(s => s.p > 0 && s.p < DRY_THRESHOLD)
+  // …and the "model (expected)" key only once the ribbon actually reaches past the
+  // radar horizon into the dashed zone.
+  const hasModelZone = forecast.isNowcast === false ||
+    rslots.some(s => s.t > (forecast.radarUntil ?? Infinity))
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
   // Trace slots only (all sub-threshold, at least one non-zero): the overlay must
   // not claim "no rain in 3h" over visible drizzle stubs — name what's there.
@@ -479,19 +485,37 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           </div>
         )}
       </div>
+      {/* Legend (v2.30): one ordered SCALE instead of five swatch+label pairs on two
+          wrapped lines. The ramp is ordered, so naming its two ends and drawing the
+          steps between carries the same information in a fifth of the height — and
+          the height it gives back goes to the day strip below.
+
+          The three qualifier chips are now conditional, the way v2.18 already made
+          the disagreement chip conditional: a permanent legend entry for something
+          not currently drawn is clutter, and on a plain dry day this collapses to
+          the scale and the span. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
-        <Legend color={pal.dry}   label={t('dry')} />
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 shrink-0" style={{ background: pal.light, opacity: 0.45 }} />
-          <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_trace')}</span>
+          <span className="font-mono text-xs text-muted whitespace-nowrap">{t('dry')}</span>
+          <span className="flex" aria-hidden="true">
+            {[pal.dry, pal.light, pal.mod, pal.heavy, pal.storm].map((c, i) => (
+              <span key={i} className="block w-3 h-2.5" style={{ background: c }} />
+            ))}
+          </span>
+          <span className="font-mono text-xs text-muted whitespace-nowrap">{t('storm_rain')}</span>
         </div>
-        <Legend color={pal.light} label={t('light_rain')} />
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 shrink-0 border border-dashed" style={{ borderColor: pal.light }} />
-          <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_model')}</span>
-        </div>
-        {/* v2.18: only shown when the two models actually disagree somewhere on the
-            visible ribbon — a permanent legend entry for a rare state is clutter. */}
+        {hasTrace && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 shrink-0" style={{ background: pal.light, opacity: 0.45 }} />
+            <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_trace')}</span>
+          </div>
+        )}
+        {hasModelZone && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 shrink-0 border border-dashed" style={{ borderColor: pal.light }} />
+            <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_model')}</span>
+          </div>
+        )}
         {hasDisagreement && (
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 shrink-0 border border-dotted opacity-50"
@@ -499,9 +523,6 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
             <span className="font-mono text-xs text-muted whitespace-nowrap">{t('legend_uncertain')}</span>
           </div>
         )}
-        <Legend color={pal.mod}   label={t('mod_rain')} />
-        <Legend color={pal.heavy} label={t('heavy_rain')} />
-        <Legend color={pal.storm} label={t('storm_rain')} />
         <span className="font-mono text-xs text-muted ml-auto">
           {t('next_12h')}
           {!isNowcast && <span className="ml-1 opacity-50">·&nbsp;est</span>}
@@ -511,11 +532,3 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   )
 }
 
-function Legend({ color, label }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="w-2.5 h-2.5 shrink-0" style={{ background: color }} />
-      <span className="font-mono text-xs text-muted whitespace-nowrap">{label}</span>
-    </div>
-  )
-}

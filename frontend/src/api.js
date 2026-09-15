@@ -74,7 +74,7 @@ export const AREAS = [
 // One shared server call for the whole grid; clients pick the nearest point (GPS
 // stays in the browser). Prevents every user hitting Open-Meteo directly (rate
 // limits / shared NAT). Cached ~90s. Returns points[] or null.
-let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null, _ambientAreaWatch = null, _ambientWarnings = []
+let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null, _ambientAreaWatch = null, _ambientWarnings = [], _ambientDaily = null
 async function fetchAmbient() {
   const now = Date.now()
   if (_ambientPoints && now - _ambientPointsTs < 90 * 1000) return _ambientPoints
@@ -90,10 +90,19 @@ async function fetchAmbient() {
     _ambientAreaWatch = j?.area_watch ?? null
     // Official GeoSphere/ZAMG severe-weather warnings — [{id,type,level,start,end}].
     _ambientWarnings = Array.isArray(j?.warnings) ? j.warnings : []
+    // Five-day outlook (v2.30) — city-centre only, like city_ground and warnings.
+    // Kept from the previous snapshot if a cycle serves none, rather than blanking
+    // the strip: a day outlook going missing for one cycle is not news.
+    if (j?.daily && Array.isArray(j.daily.time) && j.daily.time.length) _ambientDaily = j.daily
     if (Array.isArray(j?.points) && j.points.length) { _ambientPoints = j.points; _ambientPointsTs = now; return j.points }
     return _ambientPoints   // empty before first cycle → let caller fall back to direct OM
   } catch { return _ambientPoints }
 }
+
+// Five-day outlook served on /api/ambient (city centre), or null before the first
+// cycle. {time[], code[], tmax[], tmin[], psum[], pprob[], htime[], hprecip[]} —
+// day boundaries are real Europe/Vienna midnights (see backend fetch_daily).
+export function ambientDaily() { return _ambientDaily }
 
 // Latest convective-initiation timestamp seen on /api/ambient (unix s), or null.
 export function ambientFormingTs() { return _ambientFormingTs }

@@ -21,6 +21,7 @@ import {
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
   rvNowValue, RV_HEAVY_MM,
+  dayBuckets, bestWindow, weatherGroup, HOUR_TO_SLOT, DAY_BUCKETS, BEST_WINDOW_MIN_H,
 } from './gaps'
 
 // ---- helpers ---------------------------------------------------------------
@@ -2043,5 +2044,153 @@ describe('END TO END — the 2026-08-21 verdict', () => {
     expect(s.type).not.toBe('go')
     expect(s.type).not.toBe('light')
     expect(['wait', 'stuck']).toContain(s.type)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2.30 — the day outlook (sky line + five-day strip).
+//
+// DISPLAY ONLY: none of these functions is reachable from getStatus, a countdown
+// or effectivePrecip. What they must never do is make a claim the data does not
+// support — an invented dry window is a lag in disguise (someone plans around it
+// and gets rained on), so the tests below pin the REFUSALS as hard as the results.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('v2.30 dayBuckets — hourly mm converted onto the app’s own slot scale', () => {
+  // Every threshold in gaps.js is calibrated on 15-MIN slots. Open-Meteo hourly
+  // precipitation is mm per HOUR. Getting this wrong is exactly the v2.21.0 gauge
+  // incident, so the conversion is pinned as a constant, not a magic number.
+  it('HOUR_TO_SLOT is a quarter — one hour is four slots', () => {
+    expect(HOUR_TO_SLOT).toBe(1 / 4)
+  })
+
+  const day0 = 1757800800            // an arbitrary local midnight
+  const day1 = day0 + 86400
+  const hours = (vals, start = day0) => ({
+    t: vals.map((_, i) => start + i * 3600),
+    p: vals.slice(),
+  })
+
+  it('buckets 24 hours into DAY_BUCKETS blocks on the slot scale', () => {
+    const h = hours(Array.from({ length: 24 }, () => 0.4))   // 0.4 mm/h everywhere
+    const b = dayBuckets(h.t, h.p, day0, day1)
+    expect(b).toHaveLength(DAY_BUCKETS)
+    expect(b.every(v => Math.abs(v - 0.1) < 1e-9)).toBe(true)  // 0.4 mm/h = 0.1 / slot
+  })
+
+  it('takes the MAX in a bucket, never the mean — one wet hour makes a wet block', () => {
+    const vals = new Array(24).fill(0)
+    vals[3] = 8                                    // one downpour hour
+    const h = hours(vals)
+    const b = dayBuckets(h.t, h.p, day0, day1)
+    expect(b[1]).toBeCloseTo(2, 6)                 // bucket covering hours 2–3
+    expect(b[0]).toBe(0)                           // neighbours untouched
+    expect(b[2]).toBe(0)
+  })
+
+  it('returns null for a day the series does not cover — unknown is not dry', () => {
+    const h = hours(new Array(24).fill(0))
+    expect(dayBuckets(h.t, h.p, day1, day1 + 86400)).toBeNull()
+    expect(dayBuckets([], [], day0, day1)).toBeNull()
+    expect(dayBuckets(null, null, day0, day1)).toBeNull()
+  })
+
+  it('ignores hours outside the day and non-numeric readings', () => {
+    const h = hours([0, 0, 5, 0], day0 - 4 * 3600)  // all BEFORE the day
+    expect(dayBuckets(h.t, h.p, day0, day1)).toBeNull()
+    const mixed = hours([1, null, undefined, 'x', 2])
+    const b = dayBuckets(mixed.t, mixed.p, day0, day1)
+    expect(b[0]).toBeCloseTo(0.25, 6)               // 1 mm/h in the first block
+  })
+})
+
+describe('v2.30 bestWindow — a named dry stretch, or nothing', () => {
+  const day0 = 1757800800
+  const day1 = day0 + 86400
+  const series = vals => ({
+    t: vals.map((_, i) => day0 + i * 3600),
+    p: vals.slice(),
+  })
+
+  it('finds the longest dry run and reports its real start and end', () => {
+    const vals = new Array(24).fill(1)
+    for (let i = 9; i < 15; i++) vals[i] = 0        // 09:00–15:00 dry
+    const s = series(vals)
+    const w = bestWindow(s.t, s.p, day0, day1)
+    expect(w).not.toBeNull()
+    expect(w.start).toBe(day0 + 9 * 3600)
+    expect(w.end).toBe(day0 + 15 * 3600)
+  })
+
+  it('refuses a stretch shorter than BEST_WINDOW_MIN_H', () => {
+    const vals = new Array(24).fill(1)
+    vals[10] = 0; vals[11] = 0                      // only 2 dry hours
+    const s = series(vals)
+    expect(BEST_WINDOW_MIN_H).toBe(3)
+    expect(bestWindow(s.t, s.p, day0, day1)).toBeNull()
+  })
+
+  it('uses the SAME DRY_THRESHOLD as the rest of the app, in the hourly unit', () => {
+    // 0.4 mm/h converts to exactly DRY_THRESHOLD — which is NOT dry (the test is
+    // `< DRY_THRESHOLD`), so a day of it has no window at all.
+    const wetAtTheLine = series(new Array(24).fill(DRY_THRESHOLD / HOUR_TO_SLOT))
+    expect(bestWindow(wetAtTheLine.t, wetAtTheLine.p, day0, day1)).toBeNull()
+    // A hair under the line is dry, and the whole day becomes one window.
+    const justUnder = series(new Array(24).fill(DRY_THRESHOLD / HOUR_TO_SLOT - 0.01))
+    expect(bestWindow(justUnder.t, justUnder.p, day0, day1)).not.toBeNull()
+  })
+
+  it('a hole in the series BREAKS the run — a missing hour is never counted dry', () => {
+    // 4 dry hours, but the third is absent from the series entirely.
+    const t = [day0 + 8 * 3600, day0 + 9 * 3600, day0 + 11 * 3600, day0 + 12 * 3600]
+    const p = [0, 0, 0, 0]
+    expect(bestWindow(t, p, day0, day1)).toBeNull()
+  })
+
+  it('never invents a window from empty or malformed data', () => {
+    expect(bestWindow([], [], day0, day1)).toBeNull()
+    expect(bestWindow(null, null, day0, day1)).toBeNull()
+    const s = series(new Array(24).fill(0))
+    expect(bestWindow(s.t, s.p, day1, day1 + 86400)).toBeNull()   // wrong day
+  })
+
+  it('user scenario: a washed-out day names no window at all', () => {
+    // The release scenario in reverse — the strip must be able to say "nothing".
+    const s = series(new Array(24).fill(2.5))
+    expect(bestWindow(s.t, s.p, day0, day1)).toBeNull()
+  })
+})
+
+describe('v2.30 weatherGroup — WMO code → glyph family', () => {
+  it('maps each family to the right glyph', () => {
+    expect(weatherGroup(0)).toBe('clear')
+    expect(weatherGroup(1)).toBe('partly')
+    expect(weatherGroup(2)).toBe('partly')
+    expect(weatherGroup(3)).toBe('cloudy')
+    expect(weatherGroup(45)).toBe('fog')
+    expect(weatherGroup(51)).toBe('drizzle')
+    expect(weatherGroup(57)).toBe('drizzle')
+    expect(weatherGroup(61)).toBe('rain')
+    expect(weatherGroup(65)).toBe('rain')
+    expect(weatherGroup(71)).toBe('snow')
+    expect(weatherGroup(86)).toBe('snow')
+    expect(weatherGroup(80)).toBe('showers')
+    expect(weatherGroup(82)).toBe('showers')
+    expect(weatherGroup(95)).toBe('thunder')
+    expect(weatherGroup(99)).toBe('thunder')
+  })
+
+  it('a thunderstorm never renders as anything but thunder', () => {
+    // The failure that matters: a storm code landing in a calm family would put a
+    // sun over a thunderstorm while the banner below says "stay safe".
+    for (const c of [95, 96, 99]) expect(weatherGroup(c)).toBe('thunder')
+  })
+
+  it('unknown or absent code → null, so nothing is drawn rather than guessed', () => {
+    expect(weatherGroup(null)).toBeNull()
+    expect(weatherGroup(undefined)).toBeNull()
+    expect(weatherGroup('61')).toBeNull()
+    expect(weatherGroup(NaN)).toBeNull()
+    expect(weatherGroup(4)).toBeNull()
   })
 })

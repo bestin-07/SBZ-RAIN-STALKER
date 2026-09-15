@@ -1,10 +1,12 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, AREAS } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, ambientDaily, AREAS } from './api'
 import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, easesToGoableMin, settleStuckHold, blockedActivities, rvNowValue, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
 import RainRibbon from './components/RainRibbon'
+import SkyLine from './components/SkyLine'
+import DayStrip from './components/DayStrip'
 import RadarMap from './components/RadarMap'
 import LocationPrompt from './components/LocationPrompt'
 import FarAway from './components/FarAway'
@@ -128,6 +130,10 @@ export default function App() {
   const [formingTs, setFormingTs] = useState(null)    // convective-watch Layer 2 (radar-confirmed)
   const [areaWatch, setAreaWatch] = useState(null)    // city-scale wet/dry direction + trend (v2.4)
   const [uvIndex, setUvIndex] = useState(null)
+  const [daily, setDaily] = useState(null)      // five-day outlook served on /api/ambient (v2.30)
+  // What the two NOW-lane instruments actually read this cycle — display only, shown
+  // under the headline so a verdict can be traced to an instrument (v2.30).
+  const [signals, setSignals] = useState(null)
   // Official GeoSphere/ZAMG severe-weather warnings — currently ACTIVE instances only
   // (start <= now <= end). dismissedWarnings holds `${warnid}:${verlaufid}` ids the
   // user closed; a NEW instance (different id — new hazard, level, or the next day's
@@ -899,6 +905,16 @@ export default function App() {
         } catch {}
 
         setCurrentPrecip(displayPrecip)
+        // Source line (v2.30): what each lane read, NOT the blended verdict value.
+        // `ground` is null when no gauge reported at all — that lane then says so
+        // rather than borrowing the radar's number and implying a measurement.
+        setSignals({
+          ground: stationData !== null ? groundPrecip : null,
+          radar: typeof rawNowSlot === 'number' ? rawNowSlot : null,
+          held: settledHold.holding,
+          updated: nowMs,
+        })
+        setDaily(ambientDaily())
         setGaps(detectedGaps)
         setTrend(trendNow)
         setTickNow(Math.floor(Date.now() / 1000))
@@ -1209,6 +1225,7 @@ export default function App() {
               transition: pullActive ? 'none' : 'transform 0.2s ease',
             }}
           >
+          <SkyLine weather={currentWeather} t={t} />
           {isOutsideSalzburg(location) && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
@@ -1340,7 +1357,7 @@ export default function App() {
             headline: t('STUCK'),
             sub: t('storm_danger_sub'),
             weather: null, weatherEmoji: null, moto: false,
-          } : status} blocked={blocked} t={t} />
+          } : status} blocked={blocked} signals={signals} t={t} />
           {showCloudyNote && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs leading-relaxed text-muted">
@@ -1349,6 +1366,7 @@ export default function App() {
             </div>
           )}
           <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
+          <DayStrip daily={daily} theme={theme} t={t} lang={lang} />
           <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
           </div>
         </div>

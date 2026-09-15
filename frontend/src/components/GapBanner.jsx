@@ -11,7 +11,48 @@ const COLORS = {
   loading: '#6B7280',
 }
 
-export default function GapBanner({ status, blocked = [], t }) {
+// The source line (v2.30). Three facts, no opinion: what the ground gauge reads,
+// what the radar reads over your head, and when that was. `held` names the v2.22
+// BLEIB DRIN hold, the one state where the verdict deliberately outlives the
+// reading and therefore looks broken without a word of explanation.
+//
+// This is the cheapest trust the app can buy. Every hyper-local complaint in the
+// logic log — "it is raining like hell and we say passt schon", "a sudden
+// unreliable jump" — is a moment where the user could not see WHICH instrument was
+// talking. A dry gauge printed next to a wet radar explains a GO ANYWAY in one
+// glance; it does not change a single verdict.
+//
+// It reports only what was actually read: a lane with no reading says so (`—`)
+// rather than borrowing the other lane's number.
+function SourceLine({ signals, t }) {
+  if (!signals) return null
+  const { ground, radar, held, updated } = signals
+  const wet = v => typeof v === 'number' && v >= 0.1
+  const dot = v => (v === null || v === undefined ? 'var(--c-muted)' : wet(v) ? 'var(--c-wait)' : 'var(--c-go)')
+  const mm = v => v.toFixed(1)
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-2.5 border-t border-border">
+      <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
+        <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(ground) }} />
+        {typeof ground === 'number' ? t('src_ground', { mm: mm(ground) }) : t('src_ground_none')}
+      </span>
+      <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
+        <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(radar) }} />
+        {typeof radar !== 'number' ? t('src_radar_none')
+          : wet(radar) ? t('src_radar', { mm: mm(radar) }) : t('src_radar_clear')}
+      </span>
+      {held && <span className="font-mono text-[10px] text-muted">{t('src_held')}</span>}
+      {updated && (
+        <span className="font-mono text-[10px] text-muted ml-auto">
+          {new Date(updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      )}
+    </div>
+  )
+}
+
+export default function GapBanner({ status, blocked = [], signals = null, t }) {
   if (!status) return null
 
   // Theme-aware colour via CSS var (light mode darkens these for contrast);
@@ -53,6 +94,7 @@ export default function GapBanner({ status, blocked = [], t }) {
           {status.weather}
         </div>
       )}
+      <SourceLine signals={signals} t={t} />
     </div>
   )
 }

@@ -12,6 +12,32 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.30.0] — 2026-09-15 — Gemma Raus just got better: it finally tells you what the sky is doing 🌤️
+
+*From a design pass on the main screen: "can we show something cleaner, more weather-based — the weather code, the coming days?"*
+
+**What happened**
+
+Gemma Raus has always known more than it let on. The temperature, the wind and what kind of sky is over you were already coming down with every refresh — but the only way any of it reached you was inside the little sentence under the headline. And that sentence is deliberately quiet whenever rain is anywhere in the picture, because "perfect day, get out there" underneath a rain countdown reads as broken.
+
+Which meant that on exactly the days you open the app most, it showed you no temperature at all.
+
+The other gap was simpler: the app answers "can I go outside" for the next three hours, brilliantly. Ask it about tomorrow, or the weekend, and it had nothing — so you went and checked something else, and then trusted that something else for the next three hours too.
+
+**What's new for you**
+
+- **A sky line, right under the header.** A drawn weather icon, what the sky is doing in a word, the temperature and the wind. Always in the same place, whatever the verdict says. The advice you already got ("grab a jacket", "hold onto your hat") hasn't gone anywhere — it just doesn't have to carry the facts any more.
+- **Five days, at the bottom.** Each day gets its icon, its shape — a little bar for every two hours, coloured exactly like the rain ribbon above, so a wet afternoon looks wet in both places — its chance of rain, and its high and low.
+- **"Best window".** The longest dry stretch in the coming days, with the day and the hours named. It's a *plan*, not a verdict: something to aim your Saturday at. If there isn't a proper dry stretch, it says so instead of inventing one.
+- **A line that says where the verdict came from.** Under the headline: what the ground gauge reads, what the radar reads over your head, and when. When Gemma Raus says GO ANYWAY while your gauge says dry, you can now see exactly that, instead of wondering which of you is wrong.
+- **The rain ribbon got its space back.** The colour key used to take two full lines listing six things. It's now one small scale, and the extra labels only appear when there's actually something on the chart they explain.
+
+**What did NOT change**
+
+The verdict. Not one threshold, not one rule, not one countdown. Everything above is the app showing you what it already knew — the decision about the next three hours is made exactly as it was yesterday, by the same radar and the same two rain gauges.
+
+---
+
 ## [2.29.1] — 2026-09-15 — Gemma Raus just got better: the map stopped nagging you for an API key 🗺️
 
 *Reported from a screenshot: "API KEY REQUIRED" stamped diagonally across the whole map, over and over.*

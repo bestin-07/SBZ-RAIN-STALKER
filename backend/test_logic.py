@@ -40,6 +40,7 @@ NS = _extract({
     "_detect_forming", "FORMING_MIN_POINTS", "FORMING_CAPE_MIN",
     "_area_watch", "_AW_SECTORS",
     "_deaccumulate",
+    "DAILY_FORECAST_DAYS",
 })
 
 
@@ -148,6 +149,44 @@ class TestWarningTypeFilter(unittest.TestCase):
                     and isinstance(comps[0], ast.Constant) and comps[0].value == 5):
                 self.fail("wtype == 5 guard is back — thunderstorm warnings are being "
                           "dropped again (see CLAUDE.md v2.17.0)")
+
+
+class TestDailyOutlook(unittest.TestCase):
+    """v2.30: the five-day strip's day BOUNDARY is itself data.
+
+    `fetch_daily` is async + does HTTP, so this asserts on its parsed body — the same
+    narrow technique as the warning test above, pinning the one property that breaks
+    silently. Asked in UTC (what every other call in this file uses), a Salzburg day
+    would start at 02:00 local and each row would bucket two hours of the previous
+    evening. Nothing would error; the strip would just be wrong by two hours forever.
+    """
+
+    def _fn(self):
+        with open(os.path.join(HERE, "main.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        return next(n for n in ast.parse(src).body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and n.name == "fetch_daily")
+
+    def test_day_boundaries_are_local(self):
+        consts = [n.value for n in ast.walk(self._fn())
+                  if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        self.assertIn("Europe/Vienna", consts,
+                      "fetch_daily must ask Open-Meteo for Europe/Vienna days — a UTC "
+                      "day boundary shifts every row two hours (see CLAUDE.md v2.30)")
+        self.assertNotIn("UTC", consts)
+
+    def test_fetches_one_day_beyond_what_is_shown(self):
+        # The last visible row needs a real next-midnight to bucket against rather
+        # than assuming 24 h, which is wrong on the two DST days a year.
+        self.assertEqual(NS["DAILY_FORECAST_DAYS"], 6)
+
+    def test_hourly_series_rides_along(self):
+        # The day shape and the dry window both come from the hourly series. If it
+        # ever stops being requested the strip silently loses both and shows flat rows.
+        consts = [n.value for n in ast.walk(self._fn())
+                  if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        self.assertIn("precipitation", consts)
 
 
 class TestPushContract(unittest.TestCase):

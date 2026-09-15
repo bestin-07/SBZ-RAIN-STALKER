@@ -876,6 +876,60 @@ async def fetch_ambient(client: httpx.AsyncClient):
     return out
 
 
+# Days shown in the strip (5) + 1, so the last visible row still has a real
+# next-midnight to bucket against instead of assuming a 24 h day.
+DAILY_FORECAST_DAYS = 6
+
+
+async def fetch_daily(client: httpx.AsyncClient):
+    """Five-day outlook for the CITY CENTRE only (v2.30) — the same single-point
+    precedent as city_ground and the severe-weather warnings. A day-scale forecast
+    does not vary meaningfully across 11 grid points 3 km apart, so one query
+    represents the city; the browser makes no call of its own and the per-IP quota
+    is untouched.
+
+    timezone=Europe/Vienna, NOT the UTC the rest of the pipeline uses: this is the
+    one place where the day BOUNDARY is itself the data. Asked in UTC, "Wednesday"
+    would begin at 02:00 local and the strip would bucket two hours of Tuesday
+    evening into it. Timestamps still come back as unix seconds, so nothing
+    downstream parses a local-time string.
+
+    The hourly precipitation series rides along on the same call — it is what gives
+    each day its shape and its dry window (gaps.dayBuckets / gaps.bestWindow).
+    Returns a dict, or None on failure (caller keeps the previous snapshot)."""
+    r = await client.get(
+        "https://api.open-meteo.com/v1/forecast",
+        params={
+            "latitude": 47.8009, "longitude": 13.0448,
+            "daily": ("weather_code,temperature_2m_max,temperature_2m_min,"
+                      "precipitation_sum,precipitation_probability_max"),
+            "hourly": "precipitation",
+            "forecast_days": DAILY_FORECAST_DAYS,
+            "timeformat": "unixtime", "timezone": "Europe/Vienna",
+        },
+        timeout=15,
+    )
+    if r.status_code != 200:
+        print(f"[daily] Open-Meteo {r.status_code}: {r.text[:200]}")
+        return None
+    d = r.json() or {}
+    dy = d.get("daily", {}) or {}
+    hr = d.get("hourly", {}) or {}
+    times = dy.get("time") or []
+    if not times:
+        return None
+    return {
+        "time":  times,
+        "code":  dy.get("weather_code", []),
+        "tmax":  dy.get("temperature_2m_max", []),
+        "tmin":  dy.get("temperature_2m_min", []),
+        "psum":  dy.get("precipitation_sum", []),
+        "pprob": dy.get("precipitation_probability_max", []),
+        "htime":   hr.get("time", []),
+        "hprecip": hr.get("precipitation", []),
+    }
+
+
 async def fetch_now_precip(client: httpx.AsyncClient, point: dict):
     try:
         v = await fetch_tawes_precip(client, point["lat"], point["lon"])
@@ -1326,6 +1380,17 @@ async def run_cycle():
         except Exception as e:
             print(f"[warnings] {e}")
             severe_warnings = []
+
+        # Five-day outlook (v2.30) — city centre, one call per cycle. Served, never
+        # consulted: nothing in the verdict, the push logic or the accuracy
+        # verification reads this. On failure the previous snapshot stands rather
+        # than blanking the strip; a day outlook missing for one cycle is not news.
+        try:
+            daily = await fetch_daily(client)
+            if daily:
+                _ambient["daily"] = daily
+        except Exception as e:
+            print(f"[daily] {e}")
 
         for pt in _ambient.get("points", []):
             pt["ground"] = city_ground   # shared 2-gauge reading (None if TAWES unavailable)

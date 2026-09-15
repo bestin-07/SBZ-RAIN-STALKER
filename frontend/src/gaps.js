@@ -1224,3 +1224,102 @@ export function getStatus(
     notice: noticeFor('stuck', currentPrecip, firstGap, trend, nowSec, t),
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Day outlook (v2.30) — the five-day strip and the sky line.
+//
+// DISPLAY ONLY. Nothing below feeds getStatus, a countdown, effectivePrecip or a
+// verdict, and nothing below ever speaks about the next three hours — those stay
+// radar's. A day row is a PLAN ("worth keeping Friday free"), never a verdict
+// ("go out now"), and the wording layer keeps it that way.
+//
+// UNITS — the v2.21.0 lesson applied at the door rather than discovered later.
+// Open-Meteo's hourly `precipitation` is mm accumulated over that HOUR. Every
+// threshold in this file (DRY_THRESHOLD, LIGHT_MIN/MAX, DOWNPOUR_MM) is calibrated
+// on the nowcast's 15-MIN slots. So the hourly series is converted ONCE, here, on
+// the way in: everything downstream then compares like with like, and a colour in
+// the day strip means exactly what the same colour means in the ribbon.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const HOUR_TO_SLOT     = 1 / 4   // mm per hour → mm per 15-min slot
+export const DAY_BUCKETS      = 12      // 12 × 2 h — a whole day in one phone-width row
+export const BEST_WINDOW_MIN_H = 3      // a dry stretch worth naming is ≥ 3 hours
+
+// Peak intensity per 2-hour bucket across one day, on the SLOT scale.
+// MAX within the bucket, not the mean: a two-hour block containing one wet hour is
+// a wet block, and averaging it away would hide exactly the shower someone is
+// planning around (the same reasoning as v2.20.0's accumulation arm, one level up).
+// Returns null when the series carries no hours for that day at all — a day we have
+// no data for must render as unknown, never as a flat dry strip.
+export function dayBuckets(hTimes, hPrecips, dayStart, dayEnd, n = DAY_BUCKETS) {
+  if (!Array.isArray(hTimes) || !Array.isArray(hPrecips) || !hTimes.length) return null
+  if (!(dayEnd > dayStart) || !(n > 0)) return null
+  const span = (dayEnd - dayStart) / n
+  const out = new Array(n).fill(0)
+  let seen = false
+  for (let i = 0; i < hTimes.length; i++) {
+    const t = hTimes[i]
+    if (typeof t !== 'number' || t < dayStart || t >= dayEnd) continue
+    const p = hPrecips[i]
+    if (typeof p !== 'number' || !(p >= 0)) continue
+    const b = Math.min(n - 1, Math.floor((t - dayStart) / span))
+    out[b] = Math.max(out[b], p * HOUR_TO_SLOT)
+    seen = true
+  }
+  return seen ? out : null
+}
+
+// The longest run of consecutive DRY hours in a day, as {start, end} unix seconds,
+// or null when the day holds no run of at least BEST_WINDOW_MIN_H.
+//
+// Deliberately the same DRY_THRESHOLD as everything else — expressed in the hourly
+// series' own unit by the conversion above, so this introduces no new dryness test
+// and no new constant to drift. Ties keep the EARLIER window: given two equal dry
+// stretches, the morning one is the one you can still act on.
+//
+// Contiguity is checked on the timestamps, not the indices: a hole in the series
+// breaks the run rather than silently bridging it, so a missing hour can never be
+// counted as dry. Returning null on thin data is the safe direction — declining to
+// promise a window costs a user nothing, promising one we cannot back costs them
+// the afternoon.
+export function bestWindow(hTimes, hPrecips, dayStart, dayEnd) {
+  if (!Array.isArray(hTimes) || !Array.isArray(hPrecips)) return null
+  let bestLen = 0, bestStart = null
+  let runLen = 0, runStart = null, prevT = null
+  for (let i = 0; i < hTimes.length; i++) {
+    const t = hTimes[i]
+    if (typeof t !== 'number' || t < dayStart || t >= dayEnd) continue
+    const p = hPrecips[i]
+    const dry = typeof p === 'number' && p * HOUR_TO_SLOT < DRY_THRESHOLD
+    const contiguous = prevT !== null && t === prevT + 3600
+    if (dry && contiguous && runLen > 0) {
+      runLen++
+    } else if (dry) {
+      runLen = 1; runStart = t
+    } else {
+      runLen = 0; runStart = null
+    }
+    prevT = t
+    if (runLen > bestLen) { bestLen = runLen; bestStart = runStart }
+  }
+  if (bestLen < BEST_WINDOW_MIN_H || bestStart === null) return null
+  return { start: bestStart, end: bestStart + bestLen * 3600 }
+}
+
+// WMO weather code → one of nine drawn glyph families. Presentation, but pure and
+// pinned by tests because the mapping is easy to break silently: a code landing in
+// the wrong family shows a sun over a thunderstorm.
+// Unknown or absent code → null (the caller renders nothing rather than guessing).
+export function weatherGroup(code) {
+  if (typeof code !== 'number' || !Number.isFinite(code)) return null
+  if (code === 0) return 'clear'
+  if (code === 1 || code === 2) return 'partly'
+  if (code === 3) return 'cloudy'
+  if (code === 45 || code === 48) return 'fog'
+  if (code >= 51 && code <= 57) return 'drizzle'
+  if (code >= 61 && code <= 67) return 'rain'
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow'
+  if (code >= 80 && code <= 82) return 'showers'
+  if (code >= 95) return 'thunder'
+  return null
+}

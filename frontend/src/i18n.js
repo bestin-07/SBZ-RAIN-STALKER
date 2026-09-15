@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-const translations = {
+export const translations = {
   de: {
     GO_NOW:       'GEMMA RAUS',
     LIGHT_RAIN:   'PASST SCHON',
@@ -192,6 +192,33 @@ const translations = {
     thunder_regional:  'Gewitter in der Region — die Lage kann sich schnell ändern',
     showers_regional:  'Schauer in der Region — Regen nähert sich',
     cloudy_note: ['Bewölkt, aber trocken — gut genug, um rauszugehen', 'Grau, aber kein Regen — passt', 'Viele Wolken, aber trocken ist trocken'],
+
+    // ---- Sky line + five-day strip + source line (v2.30) ----
+    // Plain single strings, NOT variant pools: these are facts, not voice. The
+    // rotating one-liners are the app's personality; a temperature that reworded
+    // itself daily would just read as instability.
+    wx_clear:   'Klarer Himmel',
+    wx_partly:  'Teils sonnig',
+    wx_cloudy:  'Bewölkt',
+    wx_fog:     'Nebel',
+    wx_drizzle: 'Nieselregen',
+    wx_rain:    'Regen',
+    wx_showers: 'Regenschauer',
+    wx_snow:    'Schnee',
+    wx_thunder: 'Gewitter',
+    days_title: 'Nächste 5 Tage',
+    today_short: 'HEUTE',
+    // Deliberately "Fenster", not "raus": this is a PLAN for another day, and it
+    // must never read as permission to go out now — that sentence belongs to the
+    // headline and to radar alone.
+    best_window: 'bestes Fenster: {day} {from}–{to}',
+    best_window_none: 'kein längeres trockenes Fenster in Sicht',
+    src_ground: 'Boden {mm} mm',
+    src_ground_none: 'Boden —',
+    src_radar: 'Radar {mm} mm',
+    src_radar_clear: 'Radar frei',
+    src_radar_none: 'Radar —',
+    src_held: 'wird noch bestätigt',
     loc_unavailable: 'Standort konnte nicht ermittelt werden.',
     loc_help_title:  'So aktivierst du den Standort',
     loc_help_firefox: 'Firefox: Klick auf das Schloss-/Standortsymbol links in der Adressleiste → Berechtigung „Standort" auf Erlauben setzen oder zurücksetzen, dann Seite neu laden. Prüfe auch die Ortungsdienste deines Systems.',
@@ -487,6 +514,28 @@ const translations = {
     thunder_regional:  'Thunderstorm in the region — conditions can change fast',
     showers_regional:  'Showers in the region — rain on the way',
     cloudy_note: ['Cloudy but dry — still worth heading out', 'Grey skies, but no rain — you\'re good', 'Lots of clouds, but dry is dry'],
+
+    // ---- Sky line + five-day strip + source line (v2.30) ----
+    // Plain single strings, NOT variant pools — see the German block above.
+    wx_clear:   'Clear sky',
+    wx_partly:  'Partly sunny',
+    wx_cloudy:  'Cloudy',
+    wx_fog:     'Fog',
+    wx_drizzle: 'Drizzle',
+    wx_rain:    'Rain',
+    wx_showers: 'Showers',
+    wx_snow:    'Snow',
+    wx_thunder: 'Thunderstorm',
+    days_title: 'Next 5 days',
+    today_short: 'TODAY',
+    best_window: 'best window: {day} {from}–{to}',
+    best_window_none: 'no long dry window in sight',
+    src_ground: 'ground {mm} mm',
+    src_ground_none: 'ground —',
+    src_radar: 'radar {mm} mm',
+    src_radar_clear: 'radar clear',
+    src_radar_none: 'radar —',
+    src_held: 'confirming',
     uv_very_high: 'UV very high — limit time in direct sun',
     loc_unavailable: 'Could not determine your location.',
     loc_help_title:  'How to enable location',
