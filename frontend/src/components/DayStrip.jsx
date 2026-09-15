@@ -32,7 +32,9 @@ function fmtDay(ts, lang) {
 
 function fmtHour(ts, lang) {
   return new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', {
-    hour: '2-digit', minute: '2-digit', timeZone: TZ, hour12: false,
+    // hourCycle, not hour12:false — the latter renders midnight as "24:00" in
+    // several locales on both Safari and Chrome.
+    hour: '2-digit', minute: '2-digit', timeZone: TZ, hourCycle: 'h23',
   }).format(new Date(ts * 1000))
 }
 

@@ -249,7 +249,11 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    // All three, not just two: a handful of Android WebViews and locked-down
+    // browsers expose PushManager while leaving Notification undefined, and the
+    // very next line reads Notification.permission.
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)
+        || !('Notification' in window)) {
       setNotifyState('unsupported')
       return
     }

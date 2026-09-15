@@ -310,7 +310,7 @@ Stability mechanisms (why "when" never jumps around — **reduce noise is the de
 The intended logic is encoded as an executable contract; **run both suites before and after touching gaps.js, the App.jsx blend, or the backend filter/push logic**:
 
 ```bash
-cd frontend && npm test            # 335 tests in THREE files:
+cd frontend && npm test            # 337 tests in THREE files:
                                    #  i18n.test.js (6) — no duplicate keys, DE/EN key
                                    #    parity, matching {placeholders}. A duplicate key
                                    #    is legal JS and silently wins; nothing else catches it.
@@ -513,7 +513,37 @@ Warning-banner accents (`--c-uv/warn/alert`) and `--c-muted` are likewise darken
 `theme`, `lang`, `phrase_seed` (one-liner rotation), `push_unsub_token`, `ios_hint_dismissed`, `last_location` (`{lat,lon,ts}` — GPS cache), `story` (`{lat,lon,ts,lastWetAt,stuckHold}` — narrative continuity + the v2.22.0 BLEIB DRIN hold), `gr_admin_key` (sessionStorage, admin page only). The privacy copy (`privacy_2`, privacy page) discloses the local location cache.
 
 ### JS force-update (deploy → fresh JS without hard-refresh)
-One `DEPLOY_TS` (Dockerfile) stamps **both** the SW cache name and Vite's `__BUILD_ID__` (logged on boot). A new deploy → new SW installs, `skipWaiting()`s, claims clients → `controllerchange` fires → `main.jsx` reloads once (guarded against first-load/loops) and re-checks for a new SW on tab focus.
+One `DEPLOY_TS` (Dockerfile) stamps **three** things that must move together: the SW cache name, Vite's `__BUILD_ID__` (logged on boot), and `dist/version.json`.
+
+**Two independent paths, on purpose** (v2.31.0 — written the day after a bad release sat on installed home screens):
+1. **Service worker.** New deploy → new SW installs, `skipWaiting()`s, claims clients → `controllerchange` → `main.jsx` reloads once (guarded against first-load and loops).
+2. **Version watchdog** (`checkForNewBuild`, main.jsx) — needs **no service worker at all**. Fetches `/version.json` (`cache: 'no-store'`) and reloads when the served `build` differs from the compiled `__BUILD_ID__`. This is the path that survives a wedged SW registration, which iOS has a long history of.
+
+**Triggers:** boot (2 s after load), `visibilitychange`, **and `pageshow`** — both are needed, because an iOS PWA restored from the page cache fires `pageshow` and may not fire `visibilitychange` at all — plus a jittered ~15 min interval for the install that simply stays open (the pre-v2.31 code only ever checked on a visibility change, so a permanently-open PWA never updated).
+
+**The loop guard is the important part.** Each target build is attempted **exactly once per tab** (`sessionStorage.gr_reloaded_for`). If a reload does not resolve the mismatch — a proxy pinning old HTML, a wedged cache — reloading again would trap the user in a refresh loop with no way out, which is strictly worse than stale JS. `BUILD_ID === 'dev'` (vite dev server) skips the check entirely.
+
+---
+
+## Browser support (audited 2026-09-15)
+
+The app is mostly phones, and a meaningful share of them are old. Everything below is
+load-bearing — each line is something that WOULD break, or did.
+
+| Feature | Floor | How it's handled |
+|---|---|---|
+| `AbortSignal.timeout` | iOS 16 | **Shimmed at the top of `api.js`.** Every fetch in the data layer uses it; without the shim older iPhones threw TypeError on every call — permanent "checking", blank app. Do not remove. |
+| `ResizeObserver` | iOS 13.4 | `typeof === 'function'` guard in `RadarMap`; it once threw and took the whole map-init effect with it (no tiles, no dots). |
+| `navigator.permissions` | iOS 16 | `navigator.permissions?.query` — absent means "ask on click", which is the old behaviour. |
+| `Notification` / `PushManager` | iOS 16.4, installed PWA only | Guarded three ways (`serviceWorker` + `PushManager` + **`Notification`**, the last added v2.31.0 — some Android WebViews expose PushManager without Notification and the next line reads `Notification.permission`). iOS in a browser tab is told to install first. |
+| `100dvh` | iOS 15.4 | `@supports (height: 100dvh)` over a `100%` base. |
+| flex `gap` | iOS 14.1 | Used everywhere. Below that, spacing collapses but nothing breaks — accepted. |
+| `Intl.DateTimeFormat` `timeZone` | iOS 10 | Day boundaries and all `DayStrip` labels are formatted in `Europe/Vienna`, so a row labelled WED is the hours the server bucketed as Wednesday whatever the device is set to. |
+| `hourCycle: 'h23'` | iOS 12 | Used **instead of** `hour12: false`, which renders midnight as "24:00" in several locales on both Safari and Chrome (v2.31.0). |
+| Canvas `crossOrigin` sampling | universal | RainViewer pixel sampling is best-effort: a tainted canvas returns null and the app behaves as if RainViewer were unavailable. |
+| Optional chaining / `??` | iOS 13.4 | Native; Vite's default target does not transpile them. **This is why the v2.30.0 crash was a crash and not a syntax error** — see that log entry: an unguarded property read on a null object. |
+
+**Not used anywhere, deliberately** (each would raise the floor to iOS 15.4+ for no gain): `structuredClone`, `Array.prototype.at`, `Object.hasOwn`, `findLast`, `toSorted`, `:has()`, `text-wrap`.
 
 ---
 

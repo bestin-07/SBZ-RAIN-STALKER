@@ -137,6 +137,20 @@ for (const lang of ['de', 'en']) {
         <InfoPanel open={false} onClose={() => {}} onPrivacy={() => {}} t={t} />)).toBe('')
     })
 
+    it('carries an imprint, and the name appears ONLY there', () => {
+      // An Austrian site needs an imprint (ECG §5 / MedienG §25), but the
+      // maintainer asked for the name to be out of the app's voice — so the
+      // support line must stay anonymous while the legal block still names them.
+      const html = renderToStaticMarkup(
+        <InfoPanel open={true} onClose={() => {}} onPrivacy={() => {}} t={t} />)
+      expect(html).toContain(t('imprint_title'))
+      expect(html).toContain('Bestin Antu')
+      expect(html).toContain('Salzburg, AT')
+      expect(t('made_by')).not.toMatch(/Bestin/i)
+      // Exactly one mention, in the imprint — not scattered back through the copy.
+      expect(html.match(/Bestin/g)).toHaveLength(1)
+    })
+
     it('GapBanner omits the source line when nothing was read', () => {
       const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'dry', weather: null }
       const html = renderToStaticMarkup(<GapBanner status={status} blocked={[]} t={t} />)

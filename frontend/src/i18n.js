@@ -307,7 +307,8 @@ export const translations = {
     privacy_terms_body:    'Gemma Raus zeigt Wetterdaten von Drittanbietern (GeoSphere Austria, Open-Meteo, RainViewer) und übernimmt keine Gewähr für deren Richtigkeit oder Verfügbarkeit. Die App dient zur allgemeinen Information — keine sicherheitskritischen Entscheidungen darauf stützen. Nutzung auf eigene Verantwortung. Anwendbares Recht: Österreich.',
 
     support_title: 'Unterstützen',
-    made_by:       'Ein kleines Salzburg-Projekt von Bestin Antu.',
+    made_by:       'Kleines Projekt von einem Salzburger.',
+    imprint_title: 'Impressum',
     buy_coffee:    'Spendier mir einen Kaffee',
     coffee_scan:   'Spendier mir einen Kaffee',
     coffee_soon:   'Spenden-Link folgt in Kürze',
@@ -636,7 +637,8 @@ export const translations = {
     privacy_terms_body:    'Gemma Raus displays third-party weather data (GeoSphere Austria, Open-Meteo, RainViewer) and makes no guarantee of accuracy or availability. The app is for general information only — do not rely on it for safety-critical decisions. Use at your own risk. Governing law: Austria.',
 
     support_title: 'Support',
-    made_by:       'A small Salzburg project by Bestin Antu.',
+    made_by:       'Small project from a salzburger.',
+    imprint_title: 'Imprint',
     buy_coffee:    'Buy me a coffee',
     coffee_scan:   'Buy me a coffee',
     coffee_soon:   'Donate link coming soon',

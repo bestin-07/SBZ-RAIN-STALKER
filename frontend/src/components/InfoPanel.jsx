@@ -162,7 +162,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             )}
           </div>
 
-          <div className="mb-10">
+          <div className="mb-8">
             <p className="font-mono text-xs text-muted mb-2">{t('contact_line')}</p>
             <a
               href="mailto:contact@gemmaraus.at"
@@ -170,6 +170,20 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
             >
               contact@gemmaraus.at
             </a>
+          </div>
+
+          {/* Impressum / Offenlegung. Legally required of an Austrian site
+              (ECG §5, MedienG §25) and deliberately kept to the minimum that
+              satisfies it: the name is not part of the app's voice anywhere else.
+              Not translated — a person's name and city are the same in both. */}
+          <div className="mb-10">
+            <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-2">
+              {t('imprint_title')}
+            </div>
+            <address className="font-mono text-xs text-muted leading-relaxed not-italic">
+              Bestin Antu<br />
+              Salzburg, AT
+            </address>
           </div>
 
           <button

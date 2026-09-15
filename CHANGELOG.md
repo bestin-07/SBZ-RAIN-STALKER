@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.31.0] - 2026-09-15 - Gemma Raus just got better: installed apps update themselves 🔄
+
+*After yesterday's blank-screen bug: if a release ever goes wrong again, the fix has to reach the app on your home screen without you doing anything.*
+
+**What's new for you**
+
+- **The installed app now keeps itself current.** It checks for a new version when you open it, whenever you come back to it, and every quarter of an hour it stays open. If it finds one, it loads it. Until now it only checked when you switched back to the tab — so an app left sitting on a home screen could stay on old code for a long time, which is exactly the wrong thing to happen during a bad release.
+- **It no longer depends on one mechanism.** There is now a second check that works even if the app's background updater has got stuck, something iOS in particular has a history of. If a reload doesn't fix the mismatch it stops trying rather than trapping you in a refresh loop.
+- **An imprint.** Under Support, next to the contact address, as Austrian law asks for.
+- The support line no longer carries a name — it just says what it is.
+
+**Also checked over**
+
+A full pass over which browser features the app relies on, against what older iPhones and Android phones actually have. Two things were tightened: notifications could fail awkwardly on a few locked-down Android browsers, and a dry window ending at midnight could have been written as "24:00" instead of "00:00" on some phones.
+
+---
+
 ## [2.30.2] - 2026-09-15 - Gemma Raus just got better: the guide explains the new screen 📖
 
 *Following the two new blocks: the guide still described the old layout, and the source line under the status was missing half of what it meant to say.*

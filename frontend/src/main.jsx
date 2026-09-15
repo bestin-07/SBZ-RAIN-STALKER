@@ -7,6 +7,70 @@ import './index.css'
 const BUILD_ID = typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev'
 console.log('Gemma Raus build', BUILD_ID)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Keeping installed apps current (v2.31).
+//
+// The service-worker path below is the primary mechanism and it works — but it has
+// two failure modes that matter for an app people install and leave on a home
+// screen for weeks:
+//
+//   1. It only ever CHECKS on a visibility change. A PWA left open on a desk, or
+//      resumed from iOS's back/forward cache (which fires `pageshow`, not always
+//      `visibilitychange`), can sit on week-old JS indefinitely.
+//   2. It depends entirely on service-worker semantics. If the registration is
+//      wedged — and iOS has a long history of exactly that — there is no path back.
+//
+// So there is a second, independent check that needs no service worker at all:
+// every deploy writes `/version.json` carrying the same DEPLOY_TS that is compiled
+// into this bundle as __BUILD_ID__. If the served build id differs from the one we
+// are running, this bundle is stale and we reload onto the new one.
+//
+// The loop guard matters more than the check. If a reload does NOT resolve the
+// mismatch (a proxy pinning old HTML, a wedged cache), reloading again would trap
+// the user in a refresh loop with no way out — far worse than stale JS. So each
+// target build is attempted exactly ONCE per tab, recorded in sessionStorage.
+const UPDATE_EVERY_MS = 15 * 60 * 1000
+
+async function checkForNewBuild() {
+  if (BUILD_ID === 'dev') return          // vite dev server serves no version.json
+  try {
+    const r = await fetch('/version.json', { cache: 'no-store' })
+    if (!r.ok) return
+    const { build } = await r.json()
+    if (!build || build === BUILD_ID) return
+    // Attempt each target build once per tab, never twice.
+    let tried = null
+    try { tried = sessionStorage.getItem('gr_reloaded_for') } catch {}
+    if (tried === build) return
+    try { sessionStorage.setItem('gr_reloaded_for', build) } catch {}
+    console.log('Gemma Raus: new build', build, '- reloading from', BUILD_ID)
+    window.location.reload()
+  } catch {
+    // Offline or the endpoint is missing: not an update, nothing to do.
+  }
+}
+
+function refreshWorker() {
+  if (!('serviceWorker' in navigator)) return
+  navigator.serviceWorker.getRegistration()
+    .then(reg => { if (reg) reg.update() })
+    .catch(() => {})
+}
+
+// Check whenever the app comes back to the foreground. Both events are needed:
+// Android fires `visibilitychange`, and an iOS PWA restored from the page cache
+// fires `pageshow` with persisted=true and may not fire the former at all.
+function onResume() {
+  if (document.visibilityState !== 'visible') return
+  refreshWorker()
+  checkForNewBuild()
+}
+document.addEventListener('visibilitychange', onResume)
+window.addEventListener('pageshow', onResume)
+// …and on a timer, for the install that simply stays open. Jittered so a deploy
+// does not bring every open client back at the same instant.
+setInterval(onResume, UPDATE_EVERY_MS + Math.floor(Math.random() * 60 * 1000))
+
 if ('serviceWorker' in navigator) {
   // Force a fresh JS load after a new deploy without a manual hard-refresh. Each
   // deploy stamps a new SW cache name (see Dockerfile), so a new SW installs,
@@ -22,17 +86,12 @@ if ('serviceWorker' in navigator) {
   })
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {})
-    // A long-lived PWA session may never reload — re-check for a new SW whenever
-    // the tab regains focus so deploys still reach open installs.
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        navigator.serviceWorker.getRegistration()
-          .then(reg => { if (reg) reg.update() })
-          .catch(() => {})
-      }
-    })
   })
 }
+
+// One check on boot, after first paint, so a stale install lands on the current
+// build immediately rather than waiting for the first resume.
+window.addEventListener('load', () => { setTimeout(checkForNewBuild, 2000) })
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -15,7 +15,8 @@ ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 # controllerchange handler) — no manual hard-refresh needed.
 RUN DEPLOY_TS=$(date +%Y%m%d%H%M) && \
     BUILD_ID=$DEPLOY_TS npm run build && \
-    sed -i "s/gemma-raus-v2/gemma-raus-${DEPLOY_TS}/" dist/sw.js
+    sed -i "s/gemma-raus-v2/gemma-raus-${DEPLOY_TS}/" dist/sw.js && \
+    printf '{"build":"%s"}' "$DEPLOY_TS" > dist/version.json
 
 FROM python:3.11-slim
 # Unbuffered stdout so print() diagnostics ([vapid], [push], [cycle]) show in
