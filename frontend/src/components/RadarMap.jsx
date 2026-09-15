@@ -19,8 +19,13 @@ const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
 // the only radar overlay and must be visible at the default zoom (11).
 const RV_MAX_ZOOM = 14
 
-const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+// CartoDB's free basemaps.cartocdn.com CDN now requires a signed-up API key —
+// unauthenticated tiles still return HTTP 200 but with an "API KEY REQUIRED"
+// watermark baked into the image (confirmed live 2026-09-15), so it silently
+// broke the map instead of failing loudly. Esri's gray-canvas tiles are a
+// no-signup, no-key drop-in with the same light/dark split.
+const TILE_DARK  = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+const TILE_LIGHT = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
 
 const ALLOWED_RV_HOST = 'https://tilecache.rainviewer.com'
 
@@ -334,10 +339,9 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     if (!mapRef.current) return
     if (baseTileRef.current) mapRef.current.removeLayer(baseTileRef.current)
     baseTileRef.current = L.tileLayer(theme === 'light' ? TILE_LIGHT : TILE_DARK, {
-      attribution: '© CartoDB © OpenStreetMap',
-      subdomains: 'abcd',
+      attribution: '© Esri © OpenStreetMap contributors',
+      maxNativeZoom: 16,
       maxZoom: 19,
-      detectRetina: true,
       zIndex: 1,
     }).addTo(mapRef.current)
     // Bound on the LAYER — tileerror is a GridLayer event and does not reach the map.

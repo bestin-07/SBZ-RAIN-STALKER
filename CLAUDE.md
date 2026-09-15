@@ -502,6 +502,11 @@ One `DEPLOY_TS` (Dockerfile) stamps **both** the SW cache name and Vite's `__BUI
 
 Do not reintroduce any `maps.dwd.de` request — the whole host is blocked for Austrian (and likely most EU residential) networks.
 
+### CartoDB base map tiles — REPLACED with Esri (no-key requirement, silent break)
+**Found 2026-09-15**, reported by the maintainer from a screenshot ("API KEY REQUIRED" text tiled diagonally across the whole map). Root cause: `basemaps.cartocdn.com` (the free `dark_all`/`light_all` tile CDN `RadarMap.jsx` used for the base layer) now requires a signed-up CARTO API key. It fails **silently** — the tile request still returns HTTP 200 with a valid PNG, just with the "API KEY REQUIRED — carto.com/basemaps/apikey" watermark baked into the image — so `tileerror` never fires and there's no clean signal this broke. Unknown how long it had been live; nothing in our monitoring would have caught it since it isn't a network error.
+Fix: swapped `TILE_DARK`/`TILE_LIGHT` in `RadarMap.jsx` to Esri's `World_Dark_Gray_Base` / `World_Light_Gray_Base` canvas tiles (`server.arcgisonline.com/ArcGIS/rest/services/Canvas/...`) — free, no signup, no API key, `maxNativeZoom` 16 (vs Carto's 19; upscales above that same as before). Also dropped the now-unused `subdomains`/`detectRetina` tile options (Esri's URL scheme is single-host with no `{s}`/`{r}` placeholders) and updated the backend CSP `img-src` allowlist (`backend/main.py`) from `*.basemaps.cartocdn.com` to `server.arcgisonline.com`.
+**If the map ever shows a diagonal watermark or unfamiliar branding again, suspect the CURRENT tile provider (whichever it is) has changed its free-tier terms** — check by fetching one tile URL directly and viewing the PNG, not just checking the HTTP status.
+
 ### ICON-EU Model Lag
 The Open-Meteo ICON-EU model runs roughly hourly and can be 2-3h behind convective rain events in the Alps. On fast-moving summer storms, all model-based signals (minutely_15, current.precipitation, weather_code) can show `0` while it's actively raining. The TAWES stations (fast, 10-min) and the GeoSphere nowcast (1 km / 15-min radar) are meant to compensate — but only if those API calls succeed. The inverse also happens: the radar nowcast **over-reads** light returns (virga) — see the ground-magnitude blending above.
 
@@ -741,7 +746,7 @@ Full security review conducted covering backend API, frontend JS, Docker build, 
 
 **Security headers set by middleware:**
 ```
-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.cartocdn.com https://*.openstreetmap.org https://*.rainviewer.com https://tilecache.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://dataset.api.hub.geosphere.at https://api.rainviewer.com https://tilecache.rainviewer.com; frame-ancestors 'none'
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://server.arcgisonline.com https://*.openstreetmap.org https://*.rainviewer.com https://tilecache.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://dataset.api.hub.geosphere.at https://api.rainviewer.com https://tilecache.rainviewer.com; frame-ancestors 'none'
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin

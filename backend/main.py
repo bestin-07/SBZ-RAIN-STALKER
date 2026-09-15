@@ -1528,7 +1528,7 @@ async def security_headers(request: Request, call_next):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob: "
-        "https://*.basemaps.cartocdn.com "
+        "https://server.arcgisonline.com "
         "https://tilecache.rainviewer.com https://*.rainviewer.com "
         "https://*.tile.openstreetmap.org; "
         "connect-src 'self' "

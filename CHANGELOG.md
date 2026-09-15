@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.29.1] — 2026-09-15 — Gemma Raus just got better: the map stopped nagging you for an API key 🗺️
+
+*Reported from a screenshot: "API KEY REQUIRED" stamped diagonally across the whole map, over and over.*
+
+**What happened**
+
+The free map tiles we've used since the start quietly changed their terms — they now ask for a sign-up key we never had. Instead of failing outright, the map kept loading tiles that just had that message printed on them, so nothing in our own monitoring noticed anything was wrong.
+
+**What's new for you**
+
+- **The base map is back to normal**, now served from a different free provider that doesn't require a key.
+- Everything else on the map — the radar overlay, the town dots, the recenter button — was untouched and unaffected.
+
+---
+
 ## [2.29.0] — 2026-08-21 — Gemma Raus just got better: it can tell a drizzle from a downpour ⛈️
 
 *Reported mid-storm, and fairly: "suddenly it started raining and we lagged — it still says go anyways."*
