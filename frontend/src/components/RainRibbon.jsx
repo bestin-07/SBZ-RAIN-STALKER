@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { showGhost, radarSpanLabel, hasRadarZone } from '../gaps'
+import { showGhost, radarSpanLabel, hasRadarZone, hoursLabel } from '../gaps'
 
 const SLOT_W = 46
 // v2.32: 52 -> 88. Today is the one day you can act on, so it gets the height:
@@ -7,7 +7,12 @@ const SLOT_W = 46
 // strip. Taller bars also separate the light/moderate/heavy tiers visually, which
 // at 52px were only a few pixels apart (HEIGHT_STOPS is a ratio scale, so every
 // tier grows with it).
-const SLOT_H = 88
+// v2.35: 88 -> 76. The tile still has to out-rank the day rows below it, but the
+// zone band above the bars shrank from a 14px labelled strip to a 5px rail (its
+// words moved to a pinned row outside the scroller), so the whole block reads
+// taller than it needs to. Total canvas height goes 117 -> 108 even with the new
+// bracket strip, because those are the two changes that pay for each other.
+const SLOT_H = 76
 // v2.23: dedicated strip for the time labels UNDER the bars. They used to be drawn
 // inside the bar area at SLOT_H-6, so every bar taller than ~10px covered its own
 // timestamp — and with the rescaled bars below, essentially every wet bar does.
@@ -16,11 +21,21 @@ const LABEL_H = 15
 // 30 min (MIN_GAP_SLOTS = 2), so 15-min bars drew a resolution the verdict cannot
 // act on — and 49 of them across 12 h read as noise rather than as a shape.
 const BUCKET_S = 30 * 60
-// v2.6 zone band: thin labelled strip above the bars naming which instrument each
-// zone comes from — "radar · next 3h" (observed look-ahead) vs "forecast · model"
-// (estimate). The solid→dashed bar switch alone read as confusing; the band makes
+// v2.6 zone band: thin strip above the bars marking which instrument each zone
+// comes from. The solid→dashed bar switch alone read as confusing; the band makes
 // the handoff explicit without overlapping the two zones.
-const BAND_H = 14
+//
+// v2.35: the band no longer carries its own TEXT — 14px -> a 5px silent rail. The
+// words moved to a pinned row above the scroller, because the band scrolls with
+// the canvas: swipe toward the evening and "RADAR · NEXT 2½ H" left the screen,
+// leaving dashed model bars with nothing naming them. The TINT has to stay here,
+// since it marks *where* among the bars the boundary falls.
+const BAND_H = 5
+// v2.35: strip between the bars and the time labels, for the dry-window bracket.
+// Always reserved rather than added only when a bracket exists — a canvas that
+// changes height between refreshes shifts everything below it, and this app is
+// read in two-second glances.
+const BRACKET_H = 12
 // 1 "now" anchor + 48 × 15-min steps = 12 h (v2.2: extended from 3h so the model tail
 // is visible, not just implied by a text label). Mobile can't see all 49 slots at
 // once — that's what the auto-scroll below is for.
@@ -37,13 +52,20 @@ const PALETTE = {
 }
 export function palOf(theme) { return PALETTE[theme === 'light' ? 'light' : 'dark'] }
 
-export function precipToColor(p, pal) {
-  if (p < DRY_THRESHOLD) return pal.dry
-  if (p < 0.5)           return pal.light
-  if (p < 2)             return pal.mod
-  if (p < 5)             return pal.heavy
-  return                        pal.storm
+// The intensity class of a reading. ONE definition, used by the colour, by the
+// height ramp's stops and (v2.35) by the colour key under the chart — so a key
+// that lists MOD is a key drawn over a bar that actually reached the mod class.
+export const TIERS = ['dry', 'light', 'mod', 'heavy', 'storm']
+
+export function tierOf(p) {
+  if (p < DRY_THRESHOLD) return 'dry'
+  if (p < 0.5)           return 'light'
+  if (p < 2)             return 'mod'
+  if (p < 5)             return 'heavy'
+  return                        'storm'
 }
+
+export function precipToColor(p, pal) { return pal[tierOf(p)] }
 
 // Label priority when the drawn ribbon is dry/empty: MODEL disagreeing with a radar
 // all-clear beats everything (frontal rain the radar can't see yet), then CAPE
@@ -91,6 +113,32 @@ function precipToHeight(p) {
     break
   }
   return Math.round(MIN_REAL_H + Math.min(1, f) * (MAX_BAR_H - MIN_REAL_H))
+}
+
+// v2.35 — the dry-window bracket. A dry afternoon draws twenty-four 4px gold
+// baselines, which is honest and is also indistinguishable from a chart that
+// failed to load; that is precisely why the floating "no rain" pill had to be
+// invented. The bracket draws the one thing a dry stretch actually contains: how
+// long it is. On a showery afternoon the same run lands on the gap between bands.
+//
+// CLIPPED TO THE RADAR ZONE by its caller, always. Drawn across model bars it
+// would promise a dry window on evidence the verdict itself declines to act on —
+// v2.30.1's refusal rule (never claim a window on thin data), applied to a drawing
+// instead of a sentence. Needs MIN_BRACKET_BARS whole bars, comfortably past the
+// app's own 30-min MIN_GAP_SLOTS floor, so one quiet slot cannot draw a window.
+export const MIN_BRACKET_BARS = 2
+
+export function dryRunIn(bars, lastIdx) {
+  const end = Math.min(lastIdx, (bars?.length ?? 0) - 1)
+  let best = null, run = null
+  for (let i = 0; i <= end; i++) {
+    if (bars[i].p < DRY_THRESHOLD) {
+      run = run || { a: i, b: i }
+      run.b = i
+      if (!best || run.b - run.a > best.b - best.a) best = { a: run.a, b: run.b }
+    } else run = null
+  }
+  return best && best.b - best.a + 1 >= MIN_BRACKET_BARS ? best : null
 }
 
 // Fold the 15-min series into 30-min bars. The bar takes the MAX of its two slots,
@@ -143,7 +191,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // renders as a silently blank canvas on iOS.
     const cssW = slots.length * SLOT_W
     const dpr  = Math.max(1, Math.min(window.devicePixelRatio || 1, 8192 / cssW))
-    const cssH = BAND_H + SLOT_H + LABEL_H
+    const cssH = BAND_H + SLOT_H + BRACKET_H + LABEL_H
     canvas.width  = Math.round(cssW * dpr)
     canvas.height = Math.round(cssH * dpr)
     canvas.style.width  = cssW + 'px'
@@ -158,6 +206,8 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // Brighter/darker than before for a readable label at the larger size.
     const labelCol = theme === 'light' ? '#57544D' : '#9CA3AF'
     const nowCol   = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
+    // The page ground (--c-bg), for knocking the bracket label out of its own line.
+    const bgCol    = theme === 'light' ? '#F2F0EB' : '#08090B'
 
     // Model series lookup (ghost bars, within the radar zone): nearest model slot
     // within ±8 min of a ribbon slot. Only meaningful when the bars ARE radar
@@ -193,47 +243,21 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // split is taken on the bar's END. Errs toward "estimate", the honest direction.
     const splitIdx   = slots.findIndex(s => s.end > radarUntil)
     const boundaryX  = splitIdx <= 0 ? null : splitIdx * SLOT_W
-    // …and the band's LABEL is derived from the same boundary, so "NEXT 2½ H" always
-    // names the zone actually drawn. v2.18 fixed this label drifting from the data
-    // once already; bucketing would have reintroduced it up to half an hour out.
-    const lastRadar  = splitIdx === -1 ? slots[slots.length - 1]
-                     : splitIdx > 0 ? slots[splitIdx - 1] : null
-    const radarSpanTs = Number.isFinite(radarUntil) && lastRadar ? lastRadar.end : radarUntil
 
-    // Zone band (v2.6): radar zone tinted in the dry-gold family, forecast zone in
-    // neutral grey — matching the "dimmer = estimate" language of the bars below.
+    // Zone rail (v2.6, silent since v2.35): radar zone tinted in the dry-gold
+    // family, forecast zone in neutral grey — matching the "dimmer = estimate"
+    // language of the bars below. The words that used to sit in here are rendered
+    // as a pinned row above the scroller, so they survive a sideways swipe.
     const bandRadar = theme === 'light' ? 'rgba(122,94,0,0.22)'    : 'rgba(212,160,23,0.22)'
     const bandFcst  = theme === 'light' ? 'rgba(87,84,77,0.14)'    : 'rgba(156,163,175,0.12)'
     const radarEnd  = splitIdx === -1 ? cssW : splitIdx * SLOT_W
-    ctx.font = 'bold 9px "JetBrains Mono", monospace'
-    // Both band captions are clipped to their own band and skipped outright when the
-    // band is too narrow to hold them — a zone label bleeding across the boundary (or
-    // off the end of the canvas) mislabels the very thing it exists to name.
-    const bandLabel = (text, x0, x1, pad) => {
-      const room = x1 - x0
-      if (!text || room < 24) return
-      ctx.save()
-      ctx.beginPath()
-      ctx.rect(x0, 0, room, BAND_H - 2)
-      ctx.clip()
-      if (ctx.measureText(text).width + pad <= room) ctx.fillText(text, x0 + pad, BAND_H - 4)
-      ctx.restore()
-    }
     if (!modelOnly && radarEnd > 0) {
       ctx.fillStyle = bandRadar
-      ctx.fillRect(0, 0, radarEnd, BAND_H - 2)
-      ctx.fillStyle = labelCol
-      // v2.18: the span is COMPUTED, not the old hardcoded "3 H". The nowcast's 12
-      // slots cover 2h45 from their first slot and then age up to 15 min before the
-      // next issue, so the radar zone really reaches ~2½ h — saying "3 H" made the
-      // boundary look like it was drifting when it was the label that was wrong.
-      bandLabel(t ? t('zone_radar', { h: radarSpanLabel(radarSpanTs, now) }) : 'radar', 0, radarEnd, 6)
+      ctx.fillRect(0, 0, radarEnd, BAND_H - 1)
     }
     if (radarEnd < cssW) {
       ctx.fillStyle = bandFcst
-      ctx.fillRect(radarEnd, 0, cssW - radarEnd, BAND_H - 2)
-      ctx.fillStyle = labelCol
-      bandLabel(t ? t('zone_forecast') : 'forecast · model', radarEnd, cssW, modelOnly ? 6 : 4)
+      ctx.fillRect(radarEnd, 0, cssW - radarEnd, BAND_H - 1)
     }
     // Bars keep their own SLOT_H coordinate system — shift the origin below the band.
     ctx.translate(0, BAND_H)
@@ -336,10 +360,63 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         const label = `${String(d.getHours()).padStart(2, '0')}:00`
         // Never let the last label overhang the canvas edge.
         const w = ctx.measureText(label).width
-        if (x + 3 + w <= cssW) ctx.fillText(label, x + 3, SLOT_H + LABEL_H - 4)
+        if (x + 3 + w <= cssW) ctx.fillText(label, x + 3, SLOT_H + BRACKET_H + LABEL_H - 4)
         ctx.restore()
       }
     })
+
+    // The dry-window bracket (v2.35). Radar zone only — see dryRunIn.
+    const lastRadarIdx = (splitIdx === -1 ? slots.length : splitIdx) - 1
+    const dryRun = dryRunIn(slots, lastRadarIdx)
+    if (dryRun) {
+      const x0 = dryRun.a * SLOT_W + 2
+      const x1 = (dryRun.b + 1) * SLOT_W - 3
+      // Sits fully inside the bracket strip: the label's knock-out box runs from
+      // y-8 to y+2, which at SLOT_H+8 starts exactly at the foot of the bars rather
+      // than clipping a pixel off them.
+      const y  = SLOT_H + 8
+      // The run reaches the end of what radar can see AND the model keeps it dry
+      // past there: cap the bracket with an arrow rather than a closing tick. The
+      // measurement ended; the expectation did not, and the two are not the same
+      // claim — which is the whole reason the bracket stops at the boundary.
+      const openEnd = dryRun.b === lastRadarIdx &&
+        slots.slice(lastRadarIdx + 1).every(s => s.p < DRY_THRESHOLD)
+      ctx.save()
+      ctx.strokeStyle = pal.dry
+      ctx.globalAlpha = 0.85
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(x0 + 0.5, y - 4)
+      ctx.lineTo(x0 + 0.5, y + 0.5)
+      ctx.lineTo(x1 - 0.5, y + 0.5)
+      if (!openEnd) ctx.lineTo(x1 - 0.5, y - 4)
+      ctx.stroke()
+      if (openEnd) {
+        ctx.beginPath()
+        ctx.moveTo(x1 - 5, y - 3)
+        ctx.lineTo(x1 - 0.5, y + 0.5)
+        ctx.lineTo(x1 - 5, y + 4)
+        ctx.stroke()
+      }
+      const mins = (dryRun.b - dryRun.a + 1) * (BUCKET_S / 60)
+      const txt = t
+        ? (mins < 60 ? t('bracket_dry_min', { min: mins })
+                     : t('bracket_dry_h', { h: hoursLabel(mins) }))
+        : ''
+      ctx.font = 'bold 9px "JetBrains Mono", monospace'
+      const tw = ctx.measureText(txt).width
+      // Only label a bracket wide enough to hold the label inside its own span —
+      // a caption spilling past the end marks a window we did not measure.
+      if (txt && tw + 12 < x1 - x0) {
+        const cx = (x0 + x1) / 2
+        ctx.globalAlpha = 1
+        ctx.fillStyle = bgCol
+        ctx.fillRect(cx - tw / 2 - 4, y - 8, tw + 8, 10)
+        ctx.fillStyle = pal.dry
+        ctx.fillText(txt, cx - tw / 2, y)
+      }
+      ctx.restore()
+    }
 
     // Radar → model handoff marker: a dashed vertical line through band + bars so
     // the zone switch has a crisp edge (the labelled band above names the zones,
@@ -352,7 +429,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.lineWidth = 1
       ctx.beginPath()
       ctx.moveTo(boundaryX, -BAND_H)
-      ctx.lineTo(boundaryX, SLOT_H + LABEL_H)
+      ctx.lineTo(boundaryX, SLOT_H + BRACKET_H + LABEL_H)
       ctx.stroke()
       ctx.restore()
     }
@@ -365,7 +442,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const nowX = Math.max(0, Math.min(SLOT_W - 2,
       Math.round(((now - slots[0].t) / BUCKET_S) * SLOT_W)))
     ctx.fillStyle = nowCol
-    ctx.fillRect(nowX, -BAND_H, 2, BAND_H + SLOT_H + LABEL_H)
+    ctx.fillRect(nowX, -BAND_H, 2, BAND_H + SLOT_H + BRACKET_H + LABEL_H)
 
   }, [forecast, theme, t])
 
@@ -384,6 +461,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i] }))
     .filter(s => s.t >= nowS - 300)
     .slice(0, MAX_SLOTS)
+  // The key describes the PICTURE, so it is computed from the same 30-min bars the
+  // canvas draws, not from the raw 15-min slots. A bar takes the max of its two
+  // slots, so a slot's class can vanish in the fold — and a key naming a colour
+  // that is nowhere on the chart is the v2.34 label-drift bug in miniature.
+  const rbars = bucket30(rslots)
   // Only a WET slot the two models argue about is worth a legend entry — two models
   // disagreeing about nothing is not a disagreement a user needs to see.
   const hasDisagreement = rslots.some(s => s.agree === false && s.p >= DRY_THRESHOLD)
@@ -402,14 +484,32 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // way for exactly that reason. v2.30.0 shipped this line unguarded and it threw a
   // TypeError on first paint, which unmounted the whole app — a blank page on every
   // device. Pinned by a render test that mounts this component with forecast={null}.
-  const hasModelZone = !showRadarZone ||
-    rslots.some(s => s.t > (forecast?.radarUntil ?? Infinity))
+  // v2.35: …and only once a model-zone bar is actually DRAWN dashed. The chip
+  // explains the dashed outline; an all-dry model tail draws no outline, so the
+  // chip would be explaining something that is not on the screen.
+  const hasModelZone = rbars.some(b =>
+    (!showRadarZone || b.t > (forecast?.radarUntil ?? Infinity)) && b.p >= DRY_THRESHOLD)
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
+  // Which intensity classes the chart actually reaches. `dry` is always in, because
+  // the gold baseline is drawn under every bar.
+  const tiersShown = TIERS.filter(k => k === 'dry' || rbars.some(b => tierOf(b.p) === k))
+  // The bracket, recomputed here from the same pure function and the same bars the
+  // canvas uses, so the two cannot disagree about whether a dry span was drawn.
+  const rUntil = showRadarZone ? (forecast?.radarUntil ?? Infinity) : -Infinity
+  const rSplit = rbars.findIndex(b => b.end > rUntil)
+  const hasBracket = !!dryRunIn(rbars, (rSplit === -1 ? rbars.length : rSplit) - 1)
   // Trace slots only (all sub-threshold, at least one non-zero): the overlay must
   // not claim "no rain in 3h" over visible drizzle stubs — name what's there.
   // v2.8: unless both instruments call the carpet phantom (clear sky + quiet
   // RainViewer) — then the dry line is the honest headline, not "faint drizzle".
   const traceOnly = allDry && rslots.some(s => s.p > 0) && forecast.tracePhantom !== true
+  // v2.35: on a plain dry day the bracket now states the same fact WITH a length on
+  // it, so the floating pill becomes a second voice on one message — the duplicate
+  // v2.18.1 removed for thunderstorms. It stays for every case the bracket cannot
+  // express: no data at all, trace echo, the model disagreeing with a radar
+  // all-clear, and unstable air. Those all say something a drawn span cannot.
+  const plainDryOnly = hasData && !traceOnly && modelRainMin == null && !unstable
+  const showDryLabel = (allDry || !hasData) && !(plainDryOnly && hasBracket)
 
   return (
     <div className="border-t border-border shrink-0">
@@ -424,17 +524,38 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           {!showRadarZone && <span className="ml-1 opacity-50">·&nbsp;est</span>}
         </span>
       </div>
+      {/* v2.35 — the zone row, PINNED outside the scroller. It used to be drawn
+          into the canvas band, which scrolls: swipe toward the evening and the
+          words "RADAR · NEXT 2½ H" left the screen, leaving a chart of dashed
+          model bars with nothing naming them. The span is still
+          radarSpanLabel(forecast.radarUntil) — the same value the canvas splits
+          the tint on — so the sentence and the picture keep the single source
+          v2.34.0 gave them. With no usable radar zone it says so outright rather
+          than naming a boundary that is not drawn. */}
+      {hasData && (
+        <div className="flex items-center gap-2 px-4 pb-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-muted">
+          {showRadarZone ? (
+            <>
+              <span className="text-primary shrink-0">{t('zone_radar', { h: spanLabel })}</span>
+              <span className="flex-1 h-px bg-border" aria-hidden="true" />
+              <span className="shrink-0">{t('zone_forecast')}</span>
+            </>
+          ) : (
+            <span className="normal-case tracking-normal">{t('zone_caption_model')}</span>
+          )}
+        </div>
+      )}
       <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none">
         <canvas
           ref={canvasRef}
           style={{ display: 'block' }}
         />
-        {(allDry || !hasData) && (
+        {showDryLabel && (
           // Centred on the BARS, not the whole canvas — the zone band above and the
           // time strip below are chrome, and letting them pull the label off-centre
           // drifts it toward the bars it is meant to sit clear of.
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
-               style={{ paddingTop: BAND_H, paddingBottom: LABEL_H }}>
+               style={{ paddingTop: BAND_H, paddingBottom: BRACKET_H + LABEL_H }}>
             <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
               {/* Honest attribution, in priority order: the MODEL disagreeing with a
                   radar all-clear beats everything (frontal rain the radar can't see
@@ -445,28 +566,43 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           </div>
         )}
       </div>
-      {/* v2.32: the six-swatch colour key is gone from here and lives in the guide.
-          What replaces it is the one thing a reader cannot deduce from the picture —
-          WHICH INSTRUMENT each half comes from, in words. The canvas already draws
-          the zone band and the boundary line in the right place; this says, plainly,
-          that the near part is observed and everything after it (including every one
-          of the days below) is a forecast. */}
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-2.5">
-        {/* With no data at all there is nothing to attribute, so the sentence is
-            withheld rather than guessed. With data but no usable radar zone it says
-            so plainly — the alternative, and the bug this replaces, was promising
-            "the first 0 h are radar". */}
-        {hasData && (
-          <span className="font-mono text-[10px] text-muted leading-relaxed">
-            {showRadarZone ? t('zone_caption', { h: spanLabel }) : t('zone_caption_model')}
-          </span>
-        )}
-        {hasDisagreement && (
-          <span className="font-mono text-[10px] text-muted leading-relaxed">
-            {t('legend_uncertain')}
-          </span>
-        )}
-      </div>
+      {/* v2.32 replaced a six-swatch key with two lines of prose; v2.35 puts a key
+          back, but a CONDITIONAL one. The instrument question the prose answered is
+          now answered by the pinned zone row above, in fewer words and in the right
+          place — and what is left for this row is the thing a reader genuinely
+          cannot deduce from the picture: which colour means what. Every entry is
+          gated on something actually being drawn that it explains (v2.18.0's own
+          reasoning for the disagreement chip, extended to all of them), so a dry
+          day collapses to a single swatch and a storm shows the whole ramp.
+
+          The full scale, including the tiers a calm day never reaches, stays in the
+          guide (guide_ribbon_5) where someone learning it is already looking. */}
+      {hasData && (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.07em] text-muted">
+          {tiersShown.map(k => (
+            <span key={k} className="flex items-center gap-1">
+              <span className="inline-block w-3 h-1.5 rounded-[1px] shrink-0"
+                    style={{ background: pal[k] }} aria-hidden="true" />
+              {t('key_' + k)}
+            </span>
+          ))}
+          {hasTrace && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-1.5 rounded-[1px] shrink-0 opacity-[0.45]"
+                    style={{ background: pal.light }} aria-hidden="true" />
+              {t('legend_trace')}
+            </span>
+          )}
+          {hasModelZone && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-2 rounded-[1px] shrink-0 border border-dashed border-current"
+                    aria-hidden="true" />
+              {t('legend_model')}
+            </span>
+          )}
+          {hasDisagreement && <span>{t('legend_uncertain')}</span>}
+        </div>
+      )}
     </div>
   )
 }

@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.35.0] - 2026-09-15 - Gemma Raus just got better: a calmer screen, and the colours explain themselves 🎚️
+
+*Same information. Fewer things to read before you get your answer.*
+
+**What's new for you**
+
+- **One weather alert at a time.** On a stormy evening Gemma Raus could stack six full-width warnings above the headline — thunderstorm in the region, storm cells forming, high storm potential, strong wind, an official rain warning, rain spreading from the west. Every one of them true, and together a wall you had to scroll past to find out whether you could go outside. Now you see the most serious one, with a **"+5 more"** next to it. Tap it and they all open. Nothing is hidden and nothing is decided for you — the serious ones simply go first.
+- **The colours under the chart are explained again — but only the ones you can see.** A dry afternoon shows a single gold swatch. A stormy one shows the full scale, from gold through to orange. Two lines of small print underneath are gone; the chart now names its two halves in one line above it instead — *RADAR · NEXT 2½ H  ———  FORECAST · MODEL* — and that line stays put when you swipe the chart sideways, which the old one did not.
+- **A dry afternoon finally looks like an answer.** A flat gold line is honest and looks exactly like a chart that failed to load. There's now a small bracket under the dry stretch with its length on it — *DRY · 3 H* — so you can see at a glance how long you've got. It stops where our radar stops, because past that we're guessing, and it marks that with an arrow rather than pretending.
+- **Temperature and sky moved up next to the verdict.** They had a strip of their own, directly above a line that often said something similar. Same numbers, one less band across your screen.
+- **The chart is a little shorter**, and on a computer the app uses the **whole window** again instead of a narrow column pinned to one side.
+
+**Nothing about the verdict changed.** Every threshold, every countdown, the decision tree and the notifications are untouched — this release only changes what is on screen and how much of it there is at once.
+
+---
+
 ## [2.34.0] - 2026-09-15 - Gemma Raus just got better: the chart holds still, and never says "0 hours" 🧭
 
 *Five things in one message, all of them fair.*

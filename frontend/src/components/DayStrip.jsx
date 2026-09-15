@@ -81,11 +81,16 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
 
   return (
     <div className="border-b border-border shrink-0 px-4 py-2.5">
+      {/* One line, always (v2.35). The title never shrinks and never wraps; the
+          window text takes whatever is left and truncates inside it. Without the
+          shrink-0 / min-w-0 pair a long window label pushed the title onto a second
+          line on narrow phones, and `truncate` on a flex child does nothing unless
+          that child is allowed to shrink below its content width. */}
       <div className="flex items-baseline gap-3 mb-1.5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted shrink-0 whitespace-nowrap">
           {t(skipToday ? 'days_title_forecast' : 'days_title')}
         </span>
-        <span className="font-mono text-[10px] text-muted ml-auto text-right truncate">
+        <span className="font-mono text-[10px] text-muted ml-auto min-w-0 text-right truncate">
           {best
             ? t('best_window', {
                 day: fmtDay(best.day, lang),

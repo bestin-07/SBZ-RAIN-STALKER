@@ -83,19 +83,16 @@ html.light {
 }
 
 @layer utilities {
-  /* The reading column (v2.32). At 1900px the app ran edge to edge: a rain chart
-     two thousand pixels wide, and day rows whose temperature sat a foot away from
-     the day it belonged to. Line length is the constraint, not screen width — so
-     the app centres in a column and the space outside it is left empty on purpose.
-     Below 980px this is inert, which is the case that matters most. */
+  /* v2.35: the app uses the FULL window width again. v2.32 capped it at a 980px
+     reading column and v2.34 pushed that column flush left; on a wide screen the
+     result was a narrow strip against one edge with a large dead void beside it,
+     which reads as a broken layout rather than as a considered column. The pieces
+     that genuinely need a line-length limit set their own (the day shape keeps its
+     max-w-[460px]); the map and the chart are better off with the whole window.
+     Kept as a no-op hook so the header and the scrolling body still share one
+     class if a width rule is ever wanted again. */
   .gr-col {
     width: 100%;
-    max-width: 980px;
-    /* v2.34: flush LEFT, not centred. Centring floated the app in the middle of a
-       wide screen with equal voids either side; anchored left it reads as a column
-       that starts where the window starts, and the header and the scrolling body
-       (both .gr-col) stay on the same left edge. */
-    margin-inline: 0;
   }
 
   .scrollbar-none {

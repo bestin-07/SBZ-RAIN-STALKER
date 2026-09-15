@@ -5,7 +5,6 @@ import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
 import RainRibbon from './components/RainRibbon'
-import SkyLine from './components/SkyLine'
 import DayStrip from './components/DayStrip'
 import RadarMap from './components/RadarMap'
 import LocationPrompt from './components/LocationPrompt'
@@ -123,6 +122,9 @@ export default function App() {
   const [locationAccuracy, setLocationAccuracy] = useState(null) // metres from pos.coords.accuracy
   const [upgradingLocation, setUpgradingLocation] = useState(false)
   const [accuracyDismissed, setAccuracyDismissed] = useState(false)
+  // v2.35 — is the weather-alert stack expanded? Collapsed by default; the `alerts`
+  // array below explains why the stack is folded at all.
+  const [alertsOpen, setAlertsOpen] = useState(false)
   const [stormCape, setStormCape] = useState(null)
   const [unsettled, setUnsettled] = useState(false)   // convective-watch Layer 1 (regime)
   const [capeUnstable, setCapeUnstable] = useState(false) // CAPE ≥ 300 → ribbon dry-label says "can change fast"
@@ -229,6 +231,79 @@ export default function App() {
     iceWarning: warnings.some(w => w.type === WARN_TYPE_BLACK_ICE),
     wetGround: !!trend.wetGround,
   })
+
+  // v2.35 — the weather alerts, collapsed to one row.
+  //
+  // A storm evening stacks six full-width banners at once: regional thunderstorm,
+  // radar-confirmed initiation, CAPE, wind, the area watch and up to two ZAMG
+  // warnings. Each is correct; together they are a wall you scroll past to reach
+  // the headline you opened the app for. v2.14.0 already made this call once,
+  // capping ZAMG banners at two because four of them stacking "was worse than
+  // useful" — this is that same decision applied across every banner source rather
+  // than just one of them.
+  //
+  // It changes ORDER and CHROME, never whether a hazard reached the screen: the
+  // most severe alert is always rendered in full, the count is always visible, and
+  // nothing folds silently. HAZARD-class alerts (official warnings, thunderstorm,
+  // forming, CAPE) sort strictly above COMFORT-class ones (wind, UV, unsettled air,
+  // the area watch), so during a storm the visible row is always a storm row. The
+  // user can only ever lose WHICH of two storm messages is shown — the exact
+  // duplicate v2.18.1 removed by hand for this same pair.
+  //
+  // Location / app-state rows (outside Salzburg, stale fix, poor accuracy) stay out
+  // of here: they carry their own actions and they are not hazards.
+  const alerts = []
+  if (regionalThunder) alerts.push({
+    id: 'thunder', sev: regionalFullStorm ? 74 : 56, icon: '⚡', color: 'var(--c-alert)',
+    text: regionalFullStorm ? t('thunder_regional') : t('showers_regional'),
+  })
+  if (formingActive) alerts.push({
+    id: 'forming', sev: 78, icon: '🌩', color: 'var(--c-alert)', text: t('forming_note'),
+  })
+  if (stormCape) alerts.push({
+    id: 'cape', sev: 66, icon: '⚡', color: 'var(--c-alert)', text: t('storm_cape_warning'),
+  })
+  if (windWarning) alerts.push({
+    id: 'wind', sev: windStrong ? 40 : 34, icon: '💨', color: 'var(--c-warn)',
+    text: `${windStrong ? t('wind_strong') : t('wind_warning')} (${Math.round(currentWeather.wind)} km/h)`,
+  })
+  if (uvIndex !== null) alerts.push({
+    id: 'uv', sev: uvIndex >= 8 ? 28 : 24, icon: '🌞', color: 'var(--c-uv)',
+    text: `${uvIndex >= 8 ? t('uv_very_high') : t('uv_high')} (UV ${Math.round(uvIndex)})`,
+  })
+  if (unsettled && !formingActive) alerts.push({
+    id: 'unsettled', sev: 16, icon: '🌤', color: 'var(--c-warn)', text: t('unsettled_note'),
+  })
+  if (areaWatch && !formingActive) alerts.push({
+    id: 'areawatch', sev: 10, icon: '🌧', color: 'var(--c-muted)',
+    text: t('aw_' + areaWatch.trend, { dir: t('dir_' + areaWatch.sector) }),
+  })
+  warnings
+    .filter(w => !dismissedWarnings.includes(w.id))
+    // v2.18.1: thunderstorm warnings don't get a banner — the regional thunderstorm
+    // alert above already says it, from our own data, without a dismiss button. This
+    // is BANNER-ONLY suppression: `warnings` itself still carries type 5, so a RED
+    // thunderstorm still overrides the headline (redWarning) and the backend still
+    // pushes it. The v2.17.0 mistake was dropping it at the SOURCE, which killed
+    // both of those as collateral.
+    .filter(w => w.type !== WARN_TYPE_THUNDERSTORM)
+    .forEach(w => alerts.push({
+      id: 'warn-' + w.id,
+      // Official, human-issued warnings outrank every heuristic we compute
+      // ourselves — the v2.17.0 doctrine, expressed as a number.
+      sev: 80 + w.level * 5,
+      icon: WARN_EMOJI[w.type] ?? '⚠️',
+      color: w.level >= 2 ? 'var(--c-alert)' : 'var(--c-warn)',
+      text: t('warn_banner_title', { level: t('warn_level_' + w.level), type: t('warn_type_' + w.type) })
+        + ' — '
+        + t('warn_banner_body', {
+            date: new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB',
+              { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(w.end * 1000)),
+          }),
+      onDismiss: () => dismissWarning(w.id),
+    }))
+  // Most serious first; ties keep insertion order, which is stable across refreshes.
+  alerts.sort((a, b) => b.sev - a.sev)
 
   // Tick every minute so the "rain in X" / "dry in X" countdown moves live
   // between the 5-minute data refreshes (re-synced on each refresh).
@@ -1257,7 +1332,8 @@ export default function App() {
               transition: pullActive ? 'none' : 'transform 0.2s ease',
             }}
           >
-          <SkyLine weather={currentWeather} t={t} />
+          {/* v2.35: the sky line is no longer a section of its own — it renders
+              inside GapBanner, above the headline. See SkyLine's `compact`. */}
           {isOutsideSalzburg(location) && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs text-wait">⚠ {t('outside_sbz')}</span>
@@ -1292,86 +1368,31 @@ export default function App() {
               >✕</button>
             </div>
           )}
-          {uvIndex !== null && (
-            <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-uv)' }}>
-                🌞 {uvIndex >= 8 ? t('uv_very_high') : t('uv_high')} (UV {Math.round(uvIndex)})
+          {/* The weather alerts (v2.35). One row unless you ask for the rest — see
+              the `alerts` array above for the severity rule and why the fold is
+              safe. The "+N more" control sits on the visible row rather than below
+              the stack, so the count is read at the same glance as the alert. */}
+          {(alertsOpen ? alerts : alerts.slice(0, 1)).map((a, i) => (
+            <div key={a.id} className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
+              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: a.color }}>
+                {a.icon} {a.text}
               </span>
-            </div>
-          )}
-          {windWarning && (
-            <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-warn)' }}>
-                💨 {windStrong ? t('wind_strong') : t('wind_warning')} ({Math.round(currentWeather.wind)} km/h)
-              </span>
-            </div>
-          )}
-          {regionalThunder && (
-            <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-alert)' }}>
-                ⚡ {regionalFullStorm ? t('thunder_regional') : t('showers_regional')}
-              </span>
-            </div>
-          )}
-          {stormCape && (
-            <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-alert)' }}>
-                ⚡ {t('storm_cape_warning')}
-              </span>
-            </div>
-          )}
-          {formingActive && (
-            <div className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span className="font-mono text-xs flex-1 leading-relaxed" style={{ color: 'var(--c-alert)' }}>
-                🌩 {t('forming_note')}
-              </span>
-            </div>
-          )}
-          {unsettled && !formingActive && (
-            <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
-              <span className="font-mono text-xs leading-relaxed" style={{ color: 'var(--c-warn)' }}>
-                🌤 {t('unsettled_note')}
-              </span>
-            </div>
-          )}
-          {areaWatch && !formingActive && (
-            <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
-              <span className="font-mono text-xs leading-relaxed text-muted">
-                🌧 {t('aw_' + areaWatch.trend, { dir: t('dir_' + areaWatch.sector) })}
-              </span>
-            </div>
-          )}
-          {warnings
-            .filter(w => !dismissedWarnings.includes(w.id))
-            // v2.18.1: thunderstorm warnings don't get a banner — `regionalThunder`
-            // above already says it, from our own data, without a dismiss button.
-            // This is BANNER-ONLY suppression: `warnings` itself still carries type 5,
-            // so a RED thunderstorm still overrides the headline (redWarning) and the
-            // backend still pushes it. The v2.17.0 mistake was dropping it at the
-            // SOURCE, which killed those two as collateral.
-            .filter(w => w.type !== WARN_TYPE_THUNDERSTORM)
-            // Most serious first (level desc), soonest-ending as tiebreak; cap at
-            // 2 — a wall of 4+ simultaneous banners was the reported problem, not
-            // useful signal (the app already knows to pick the top ones for push).
-            .sort((a, b) => b.level - a.level || a.end - b.end)
-            .slice(0, 2)
-            .map(w => (
-            <div key={w.id} className="px-4 py-2.5 bg-surface border-b border-border shrink-0 flex items-center gap-3">
-              <span
-                className="font-mono text-xs flex-1 leading-relaxed"
-                style={{ color: w.level >= 2 ? 'var(--c-alert)' : 'var(--c-warn)' }}
-              >
-                {WARN_EMOJI[w.type] ?? '⚠️'} {t('warn_banner_title', { level: t('warn_level_' + w.level), type: t('warn_type_' + w.type) })}
-                {' — '}
-                {t('warn_banner_body', {
-                  date: new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(w.end * 1000)),
-                })}
-              </span>
-              <button
-                onClick={() => dismissWarning(w.id)}
-                className="font-mono text-xs text-muted hover:text-primary transition-colors shrink-0"
-                aria-label="dismiss"
-              >✕</button>
+              {i === 0 && alerts.length > 1 && (
+                <button
+                  onClick={() => setAlertsOpen(o => !o)}
+                  className="font-mono text-[10px] text-muted hover:text-primary hover:border-primary transition-colors shrink-0 border border-border rounded-full px-2 py-0.5"
+                  aria-expanded={alertsOpen}
+                >
+                  {alertsOpen ? t('alerts_fewer') : t('alerts_more', { n: alerts.length - 1 })}
+                </button>
+              )}
+              {a.onDismiss && (
+                <button
+                  onClick={a.onDismiss}
+                  className="font-mono text-xs text-muted hover:text-primary transition-colors shrink-0"
+                  aria-label="dismiss"
+                >✕</button>
+              )}
             </div>
           ))}
           <GapBanner status={redWarning ? {
@@ -1389,7 +1410,7 @@ export default function App() {
             headline: t('STUCK'),
             sub: t('storm_danger_sub'),
             weather: null, weatherEmoji: null, moto: false,
-          } : status} blocked={blocked} signals={signals} t={t} />
+          } : status} blocked={blocked} signals={signals} weather={currentWeather} t={t} />
           {showCloudyNote && (
             <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
               <span className="font-mono text-xs leading-relaxed text-muted">

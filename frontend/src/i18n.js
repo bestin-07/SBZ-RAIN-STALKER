@@ -48,7 +48,7 @@ export const translations = {
     mod_rain:   'Mäßiger Regen',
     heavy_rain: 'Starker Regen',
     storm_rain: 'Gewitter',
-    next_12h:   '12 Std. · Radar + Prognose',
+    next_12h:   '12 Std.',
     ribbon_dry:  'Radar sieht keinen Regen in den nächsten 3 Std.',
     ribbon_trace_only: 'nur hauchfeiner Niesel am Radar — nichts Stärkeres in Sicht',
     legend_trace: 'Niesel möglich',
@@ -110,6 +110,19 @@ export const translations = {
     zone_radar: 'RADAR · NÄCHSTE {h} STD',
     zone_forecast: 'PROGNOSE · MODELL',
     legend_uncertain: 'Modelle uneinig',
+    // v2.35 — kurze Beschriftungen für die Farbskala unter dem Balkendiagramm.
+    // Bewusst NICHT die längeren `light_rain`/`mod_rain`-Strings: die Skala ist
+    // eine Legende, keine Beschreibung, und muss in eine Zeile passen.
+    key_dry:   'TROCKEN',
+    key_light: 'LEICHT',
+    key_mod:   'MÄSSIG',
+    key_heavy: 'STARK',
+    key_storm: 'STURM',
+    // Beschriftung der trockenen Spanne im Diagramm (v2.35).
+    bracket_dry_min: 'TROCKEN · {min} MIN',
+    bracket_dry_h:   'TROCKEN · {h} STD',
+    alerts_more:  '+{n} weitere',
+    alerts_fewer: 'weniger',
     compass_n: 'N',
     compass_e: 'O',
     compass_s: 'S',
@@ -208,7 +221,6 @@ export const translations = {
     wx_thunder: 'Gewitter',
     days_title: 'Nächste 5 Tage',
     days_title_forecast: 'Kommende Tage · Prognose',
-    zone_caption: 'Die ersten {h} h sind Radar — was wirklich fällt. Alles danach, und jeder der Tage unten, ist eine Prognose.',
     zone_caption_model: 'Gerade kein Live-Radar — alles hier, und jeder der Tage unten, ist eine Prognose.',
     today_short: 'HEUTE',
     // Deliberately "Fenster", not "raus": this is a PLAN for another day, and it
@@ -397,7 +409,7 @@ export const translations = {
     mod_rain:   'moderate rain',
     heavy_rain: 'heavy rain',
     storm_rain: 'storm',
-    next_12h:   '12h · radar + forecast',
+    next_12h:   '12 h',
     ribbon_dry:  'radar sees no rain in the next 3 h',
     ribbon_trace_only: 'only faint drizzle traces on radar — nothing heavier in sight',
     legend_trace: 'drizzle possible',
@@ -455,6 +467,19 @@ export const translations = {
     zone_radar: 'RADAR · NEXT {h} H',
     zone_forecast: 'FORECAST · MODEL',
     legend_uncertain: 'models disagree',
+    // v2.35 — short labels for the colour scale under the chart. Deliberately NOT
+    // the longer `light_rain`/`mod_rain` strings: the scale is a legend, not a
+    // description, and it has to fit on one line.
+    key_dry:   'DRY',
+    key_light: 'LIGHT',
+    key_mod:   'MOD',
+    key_heavy: 'HEAVY',
+    key_storm: 'STORM',
+    // Label on the dry span drawn in the chart (v2.35).
+    bracket_dry_min: 'DRY · {min} MIN',
+    bracket_dry_h:   'DRY · {h} H',
+    alerts_more:  '+{n} more',
+    alerts_fewer: 'fewer',
     compass_n: 'N',
     compass_e: 'E',
     compass_s: 'S',
@@ -547,7 +572,6 @@ export const translations = {
     wx_thunder: 'Thunderstorm',
     days_title: 'Next 5 days',
     days_title_forecast: 'Coming days · forecast',
-    zone_caption: 'the first {h} h are radar — what is actually falling. everything after that, and every one of the days below, is a forecast.',
     zone_caption_model: 'no live radar right now — everything here, and every one of the days below, is a forecast.',
     today_short: 'TODAY',
     best_window: 'best window: {day} {from}–{to}',

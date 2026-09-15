@@ -14,7 +14,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import SkyLine from './components/SkyLine'
 import DayStrip from './components/DayStrip'
 import GapBanner from './components/GapBanner'
-import RainRibbon from './components/RainRibbon'
+import RainRibbon, { dryRunIn, MIN_BRACKET_BARS } from './components/RainRibbon'
 import InfoPanel from './components/InfoPanel'
 import { translations } from './i18n'
 
@@ -101,9 +101,12 @@ for (const lang of ['de', 'en']) {
                                 radarUntil: now + 2.66 * 3600 }}
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).toContain(t('today_short'))
-      // The caption interpolates the SAME radarUntil the canvas band is drawn from,
-      // so the sentence and the picture cannot name different boundaries.
-      expect(html).toContain(esc(t('zone_caption', { h: '2½' }).slice(0, 20)))
+      // v2.35: the span moved out of a prose caption and into the pinned zone row,
+      // but it is still interpolated from the SAME forecast.radarUntil the canvas
+      // splits its tint on — so the words and the picture cannot name different
+      // boundaries. That invariant is the point of this test, not where it renders.
+      expect(html).toContain(esc(t('zone_radar', { h: '2½' })))
+      expect(html).toContain(esc(t('zone_forecast')))
     })
 
     // v2.34. hoursLabel rounds to the nearest half hour, so a radar zone that had
@@ -121,7 +124,7 @@ for (const lang of ['de', 'en']) {
           <RainRibbon forecast={forecast} theme="light" t={t}
                       unstable={false} modelRainMin={null} />)
         expect(html).toContain(esc(t('zone_caption_model').slice(0, 20)))
-        expect(html).not.toContain(esc(t('zone_caption', { h: '0' }).slice(0, 20)))
+        expect(html).not.toContain(esc(t('zone_radar', { h: '0' })))
       }
     })
 
@@ -132,7 +135,37 @@ for (const lang of ['de', 'en']) {
         <RainRibbon forecast={{ times: [], precips: [] }} theme="light" t={t}
                     unstable={false} modelRainMin={null} />)
       expect(html).not.toContain(esc(t('zone_caption_model').slice(0, 20)))
-      expect(html).not.toContain(esc(t('zone_caption', { h: '3' }).slice(0, 20)))
+      expect(html).not.toContain(esc(t('zone_radar', { h: '3' })))
+      // …and no colour key either: a key describes a picture, and there isn't one.
+      expect(html).not.toContain(esc(t('key_dry')))
+    })
+
+    // v2.35 — the colour key is conditional. Every entry has to be explaining
+    // something that is actually drawn, which is v2.18.0's reasoning for the
+    // disagreement chip applied to all of them. A key naming a colour that is
+    // nowhere on the chart is the v2.34 label-drift bug in miniature.
+    it('the colour key names only the tiers the chart actually reaches', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const ribbon = precips => renderToStaticMarkup(
+        <RainRibbon forecast={{ times, precips, isNowcast: true, radarUntil: now + 2.66 * 3600 }}
+                    theme="light" t={t} unstable={false} modelRainMin={null} />)
+
+      // Matched as a whole key entry, not as a substring: "MOD" also occurs inside
+      // "FORECAST · MODEL" in the zone row two lines above it.
+      const entry = k => esc(t(k)) + '</span>'
+
+      const dry = ribbon(times.map(() => 0))
+      expect(dry).toContain(entry('key_dry'))
+      for (const k of ['key_light', 'key_mod', 'key_heavy', 'key_storm']) {
+        expect(dry).not.toContain(entry(k))
+      }
+
+      // A storm slot pulls in every class below it that the bars also reach.
+      const wet = ribbon(times.map((_, i) => [0, 0.3, 1.2, 3, 7][i % 5]))
+      for (const k of ['key_dry', 'key_light', 'key_mod', 'key_heavy', 'key_storm']) {
+        expect(wet).toContain(entry(k))
+      }
     })
 
     it('DayStrip renders nothing without data', () => {
@@ -214,5 +247,56 @@ for (const lang of ['de', 'en']) {
       const html = renderToStaticMarkup(<GapBanner status={status} blocked={[]} t={t} />)
       expect(html).not.toContain(t('lane_radar_clear'))
     })
+
+    // v2.35 — the sky facts render inside the verdict block now. Same four values,
+    // one section fewer; a mis-plumbed prop here would show as nothing at all.
+    it('GapBanner carries the sky facts when given weather', () => {
+      const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'dry', weather: null }
+      const html = renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} weather={{ code: 3, temp: 19.4, wind: 11.2 }} t={t} />)
+      expect(html).toContain(esc(t('wx_cloudy')))
+      expect(html).toContain('19°')
+      expect(html).toContain('11 km/h')
+      // …and nothing breaks when there is no weather yet, which is every first paint.
+      expect(() => renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} t={t} />)).not.toThrow()
+    })
   })
 }
+
+// v2.35 — the dry-window bracket, as a contract rather than as pixels. The drawing
+// itself lives on the canvas and cannot be asserted from here, but the rule that
+// decides WHETHER a span is claimed is pure, and it is the half that can lie.
+describe('dryRunIn (the dry-window bracket)', () => {
+  const bars = ps => ps.map((p, i) => ({ t: i * 1800, end: (i + 1) * 1800, p }))
+
+  it('finds the longest sub-threshold run', () => {
+    // dry(2) · wet · dry(3) — the second run wins on length, not on being first.
+    expect(dryRunIn(bars([0, 0, 0.8, 0, 0, 0]), 5)).toEqual({ a: 3, b: 5 })
+  })
+
+  it('never looks past the radar zone', () => {
+    // Bars 2-5 are dry, but only bar 2 is inside the zone, so there is no run to
+    // claim. Drawing across model bars would promise a window on evidence the
+    // verdict itself declines to act on (v2.30.1's refusal rule).
+    expect(dryRunIn(bars([0.8, 0.8, 0, 0, 0, 0]), 2)).toBeNull()
+    expect(dryRunIn(bars([0.8, 0, 0, 0, 0, 0]), 2)).toEqual({ a: 1, b: 2 })
+  })
+
+  it('refuses a run shorter than MIN_BRACKET_BARS', () => {
+    expect(MIN_BRACKET_BARS).toBe(2)
+    expect(dryRunIn(bars([0.8, 0, 0.8, 0, 0.8]), 4)).toBeNull()
+  })
+
+  it('uses the same DRY_THRESHOLD as the rest of the app', () => {
+    // 0.09 is dry, 0.1 is not — the one line every other threshold is measured from.
+    expect(dryRunIn(bars([0.09, 0.09]), 1)).toEqual({ a: 0, b: 1 })
+    expect(dryRunIn(bars([0.1, 0.1]), 1)).toBeNull()
+  })
+
+  it('claims nothing on an empty or out-of-range series', () => {
+    expect(dryRunIn([], 5)).toBeNull()
+    expect(dryRunIn(bars([0, 0, 0]), -1)).toBeNull()
+    expect(dryRunIn(undefined, 3)).toBeNull()
+  })
+})

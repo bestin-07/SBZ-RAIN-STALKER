@@ -1,3 +1,5 @@
+import SkyLine from './SkyLine'
+
 const ACTIVITY_EMOJI = {
   swim: '🏊', run: '🏃', bike: '🚴', moto: '🏍️', picnic: '🧺',
 }
@@ -52,7 +54,7 @@ function SourceLine({ signals, t }) {
   )
 }
 
-export default function GapBanner({ status, blocked = [], signals = null, t }) {
+export default function GapBanner({ status, blocked = [], signals = null, weather = null, t }) {
   if (!status) return null
 
   // Theme-aware colour via CSS var (light mode darkens these for contrast);
@@ -61,6 +63,10 @@ export default function GapBanner({ status, blocked = [], signals = null, t }) {
 
   return (
     <div className="px-4 py-6 shrink-0">
+      {/* v2.35 — the sky facts, folded in from what used to be a bordered section
+          of its own directly above. Muted and small: this is context for the
+          headline, not a competitor to it. */}
+      <SkyLine weather={weather} t={t} compact />
       <div
         className="font-display font-bold text-5xl leading-none tracking-tight"
         style={{ color: `var(--c-${status.type}, ${fallback})` }}
