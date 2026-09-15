@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.35.1] - 2026-09-15 - Gemma Raus just got better: readable in daylight 🔆
+
+*A few spots that only looked right at night.*
+
+**What happened**
+
+A handful of coloured elements — the "buy me a coffee" button, the notification bell once you've turned it on, the "you're outside Salzburg" banner, and the low-contrast tail end of a couple of other messages — were quietly using the app's *dark-theme* colours even when your phone was in light mode. On the light cream background that gold and blue washed out to barely-there, the same problem the rest of the app already solved by darkening its colours for daylight. These five spots had slipped through that fix.
+
+**What's new for you**
+
+- The donate button, the notification bell, and a couple of banner messages now read clearly in light mode, matching the same darkened palette the rest of the app already uses.
+- Nothing else changed — same verdicts, same countdowns, same everything. Just easier to read in the sun.
+
+**Nothing about the verdict changed.** This is a display-only fix; every threshold, countdown, and decision is untouched.
+
+---
+
 ## [2.35.0] - 2026-09-15 - Gemma Raus just got better: a calmer screen, and the colours explain themselves 🎚️
 
 *Same information. Fewer things to read before you get your answer.*

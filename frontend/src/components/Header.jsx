@@ -72,7 +72,7 @@ export default function Header({
               onClick={onNotifyToggle}
               className={`w-9 h-9 flex items-center justify-center rounded-lg border transition-colors ${
                 notifyState === 'subscribed'
-                  ? 'text-[#D4A017] border-[#D4A017]'
+                  ? 'text-go border-go'
                   : 'text-muted border-border hover:text-primary hover:border-primary'
               }`}
               aria-label="toggle notifications"

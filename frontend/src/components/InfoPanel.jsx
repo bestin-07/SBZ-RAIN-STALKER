@@ -153,7 +153,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
                 href={DONATE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 font-display font-bold text-sm tracking-[0.12em] uppercase px-6 py-3 rounded-lg bg-[#D4A017] text-bg hover:opacity-90 transition-opacity"
+                className="inline-flex items-center gap-2 font-display font-bold text-sm tracking-[0.12em] uppercase px-6 py-3 rounded-lg bg-go text-bg hover:opacity-90 transition-opacity"
               >
                 ☕ {t('buy_coffee')}
               </a>
