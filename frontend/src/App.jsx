@@ -1302,12 +1302,20 @@ export default function App() {
           t={t}
         />
       ) : (
-        /* Scrollable middle column: on busy days the warning banners stack up
-           (UV + wind + thunder + gap banner…) inside a fixed-height shell —
-           without a scroll path the map got crushed and the page felt frozen
-           (iOS report: "the website becomes unscrollable"). Wrapped in a relative
-           shell so the pull-to-refresh indicator can sit above it while the
-           column itself is dragged down (see the touch effect above). */
+        /* v2.36.1 — LOCKED middle column, no page scroll (maintainer decision,
+           reversing the v2.9.0 choice below on purpose). On a busy day the
+           warning banners stack up (UV + wind + thunder + gap banner…) inside
+           this fixed-height shell; the shock absorber is now the MAP
+           (RadarMap's own flex-1, floor lowered to min-h-[160px]), not a
+           scrollbar. This is the same mechanism that was reverted once before
+           for an iOS report ("the website becomes unscrollable") when the map
+           had no floor at all (min-h-0) and could crush to nothing — the floor
+           is the fix for that specific failure, not a new idea tried blind.
+           Wrapped in a relative shell so the pull-to-refresh indicator can sit
+           above it while the column itself is dragged down (see the touch
+           effect above); pull-to-refresh still works unchanged; its `scrollTop
+           > 0` at-the-top gate is simply always true now, which is correct —
+           there is no scroll position to be away from. */
         <div className="flex-1 min-h-0 relative overflow-hidden">
           <div
             className="absolute inset-x-0 top-0 flex justify-center items-center font-mono text-lg text-muted pointer-events-none"
@@ -1330,7 +1338,7 @@ export default function App() {
           </div>
           <div
             ref={scrollRef}
-            className="h-full overflow-y-auto overscroll-contain scrollbar-none flex flex-col gr-col"
+            className="h-full overflow-hidden scrollbar-none flex flex-col gr-col"
             style={{
               transform: pullDistance ? `translateY(${pullDistance}px)` : undefined,
               transition: pullActive ? 'none' : 'transform 0.2s ease',

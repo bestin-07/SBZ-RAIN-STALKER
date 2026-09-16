@@ -40,7 +40,7 @@ NS = _extract({
     "_detect_forming", "FORMING_MIN_POINTS", "FORMING_CAPE_MIN",
     "_area_watch", "_AW_SECTORS",
     "_deaccumulate",
-    "DAILY_FORECAST_DAYS",
+    "DAILY_FORECAST_DAYS", "DAILY_TTL_S",
 })
 
 
@@ -199,6 +199,16 @@ class TestDailyOutlook(unittest.TestCase):
         consts = [n.value for n in ast.walk(self._fn())
                   if isinstance(n, ast.Constant) and isinstance(n.value, str)]
         self.assertIn("precipitation", consts)
+
+    def test_daily_fetch_is_throttled_not_per_cycle(self):
+        # v2.36.1 incident: fetch_daily was called every 5-min run_cycle (288/day)
+        # for data that barely changes hour to hour, and that volume is what
+        # exhausted Open-Meteo's own daily request quota live — a 429 that then
+        # blanked the Coming days tab until the next UTC day with no retry.
+        # Floor of 30 min keeps this a throttle, not effectively disabled; ceiling
+        # of 4 h keeps the outlook from going stale enough to miss a day boundary.
+        self.assertGreaterEqual(NS["DAILY_TTL_S"], 1800)
+        self.assertLessEqual(NS["DAILY_TTL_S"], 4 * 3600)
 
 
 class TestPushContract(unittest.TestCase):

@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.1] - 2026-09-16 - Gemma Raus just got better: one screen, and a fixed outlook 🧾
+
+*Two things found the same day the tabs shipped.*
+
+**What happened**
+
+The five-day outlook went blank with no explanation. Turned out Open-Meteo — the outside service that supplies it — had cut us off for the day: we were asking it for that forecast every five minutes, 288 times a day, for numbers that barely change hour to hour. Nothing else about the app was affected; the radar chart, the ground reading, the verdict — all fine.
+
+**What's new for you**
+
+- **The app no longer scrolls.** Everything now fits one screen, always. On a day with several weather banners stacked up, the map gets smaller to make room instead of the page growing a scrollbar — it'll still show enough to read, just less of it.
+- **The five-day outlook won't go dark again.** It's now asked for about once an hour instead of every five minutes — comfortably inside what the weather service allows — and the last good answer is saved, so a restart on our end can't blank it either.
+
+**Nothing about the verdict changed.** Both fixes are about how often we ask for data and how the screen lays itself out — not what the app tells you.
+
+---
+
 ## [2.36.0] - 2026-09-16 - Gemma Raus just got better: today and the outlook, split apart 📑
 
 *A design pass, worked out with users before it shipped.*

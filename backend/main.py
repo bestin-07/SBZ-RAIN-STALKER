@@ -51,6 +51,9 @@ DRY_THRESHOLD = 0.1
 # each calling Open-Meteo — dodges the per-IP rate limit and shared-NAT throttling.
 # The rain verdict is unaffected (still GeoSphere nowcast + TAWES, client-side).
 _ambient = {"ts": 0, "points": []}
+# When the five-day outlook currently in _ambient["daily"] was actually fetched
+# from Open-Meteo (not just restored from DB) — gates the TTL in run_cycle.
+_daily_fetched_at = 0
 
 VAPID_CONTACT = os.getenv("VAPID_CONTACT", "mailto:gemmaraus@example.com")
 MAX_PUSH_SUBS = 50_000
@@ -832,6 +835,30 @@ def load_last_good_ambient():
     return json.loads(row[0]) if row else None
 
 
+def save_last_good_daily(daily: dict, fetched_at: int):
+    """Same doctrine as save_last_good_ambient, plus the fetch time — restoring
+    only the payload after a restart would make run_cycle think it's fresh and
+    skip re-fetching for a full DAILY_TTL_S even if it was actually already
+    stale when the process last exited."""
+    with get_db() as (_, cur):
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES ('last_good_daily', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (json.dumps({"daily": daily, "fetched_at": fetched_at}),),
+        )
+
+
+def load_last_good_daily():
+    """Returns (daily, fetched_at) or (None, 0)."""
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = 'last_good_daily'")
+        row = cur.fetchone()
+    if not row:
+        return None, 0
+    wrapper = json.loads(row[0])
+    return wrapper.get("daily"), wrapper.get("fetched_at", 0)
+
+
 async def fetch_ambient(client: httpx.AsyncClient):
     """One batched Open-Meteo call for all grid POINTS → the coarse weather fields
     the app shows (temp/wind/code/cape/uv) + hourly precip probability. Returns a
@@ -879,6 +906,13 @@ async def fetch_ambient(client: httpx.AsyncClient):
 # Days shown in the strip (5) + 1, so the last visible row still has a real
 # next-midnight to bucket against instead of assuming a 24 h day.
 DAILY_FORECAST_DAYS = 6
+
+# v2.36.1 — was fetched every 5-min run_cycle (288 calls/day) for data that only
+# needs to change a few times a day; that volume is the likely cause of a live
+# "Daily API request limit exceeded" 429 from Open-Meteo that blanked the Coming
+# days tab for the rest of the day. 1h → ~24 calls/day, in line with how often a
+# day-scale forecast is worth re-asking for.
+DAILY_TTL_S = 3600
 
 
 async def fetch_daily(client: httpx.AsyncClient):
@@ -1387,16 +1421,30 @@ async def run_cycle():
             print(f"[warnings] {e}")
             severe_warnings = []
 
-        # Five-day outlook (v2.30) — city centre, one call per cycle. Served, never
-        # consulted: nothing in the verdict, the push logic or the accuracy
-        # verification reads this. On failure the previous snapshot stands rather
-        # than blanking the strip; a day outlook missing for one cycle is not news.
-        try:
-            daily = await fetch_daily(client)
-            if daily:
-                _ambient["daily"] = daily
-        except Exception as e:
-            print(f"[daily] {e}")
+        # Five-day outlook (v2.30) — city centre. Served, never consulted: nothing
+        # in the verdict, the push logic or the accuracy verification reads this.
+        # On failure (or inside the TTL) the previous snapshot stands rather than
+        # blanking the strip; a day outlook missing for one cycle is not news.
+        #
+        # v2.36.1 — gated to once per DAILY_TTL_S instead of every 5-min cycle.
+        # A day-scale forecast doesn't need 5-min freshness, and calling it 288
+        # times a day for data that barely moves is what actually exhausted
+        # Open-Meteo's own daily request quota live (429 "Daily API request
+        # limit exceeded"), which then blanked the Coming days tab with no
+        # retry until midnight UTC. ~24 calls/day instead.
+        global _daily_fetched_at
+        if now_ts - _daily_fetched_at >= DAILY_TTL_S:
+            try:
+                daily = await fetch_daily(client)
+                if daily:
+                    _ambient["daily"] = daily
+                    _daily_fetched_at = now_ts
+                    try:
+                        save_last_good_daily(daily, now_ts)
+                    except Exception as e:
+                        print(f"[daily] save_last_good failed: {e}")
+            except Exception as e:
+                print(f"[daily] {e}")
 
         for pt in _ambient.get("points", []):
             pt["ground"] = city_ground   # shared 2-gauge reading (None if TAWES unavailable)
@@ -1523,6 +1571,15 @@ async def lifespan(app: FastAPI):
             print(f"[ambient] restored last-good snapshot from DB ({len(restored)} points)")
     except Exception as e:
         print(f"[ambient] restore failed: {e}")
+    try:
+        global _daily_fetched_at
+        restored_daily, restored_daily_ts = load_last_good_daily()
+        if restored_daily:
+            _ambient["daily"] = restored_daily
+            _daily_fetched_at = restored_daily_ts
+            print(f"[daily] restored last-good outlook from DB (fetched {int(datetime.now(timezone.utc).timestamp()) - restored_daily_ts}s ago)")
+    except Exception as e:
+        print(f"[daily] restore failed: {e}")
     try:
         init_vapid()
     except Exception as e:

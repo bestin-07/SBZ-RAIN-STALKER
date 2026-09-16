@@ -499,9 +499,15 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   useEffect(() => () => clearTimeout(spinTimer.current), [])
 
   return (
-    /* min-h keeps the map usable when the banner stack grows tall — the column
-       above scrolls instead of crushing the map (was min-h-0). */
-    <div className="relative flex-1 min-h-[320px]">
+    /* v2.36.1 — 320px -> 160px. The column no longer scrolls at all (maintainer
+       decision): this map IS the shock absorber that keeps a tall banner stack
+       from pushing the page past the viewport, so it now has to be willing to
+       shrink further than before. The floor stays — not min-h-0 — because THAT
+       exact combination (no scroll path + no floor) is the one already reverted
+       once for an iOS report of a crushed, "frozen" map. 160px still shows the
+       radar-time pill, the user's dot and enough tile to read; below that the
+       map stops being a map. */
+    <div className="relative flex-1 min-h-[160px]">
       <div ref={containerRef} className="absolute inset-0" style={{ zIndex: 0 }} />
       {radarFrame && (
         <div className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5
