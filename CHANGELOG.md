@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.37.0] - 2026-09-16 - Gemma Raus just got better: today's chart is a skyline now, and one more scroll gap is closed 🌤️
+
+*A design pass on today's rain chart, worked through against a few mocked-up options before picking one — plus a follow-up to yesterday's scroll fix.*
+
+**What's new for you**
+
+- **Today's rain chart is a filled shape now, not a row of bars.** The idea is the same — taller means heavier rain, dry is dry — but it reads as one continuous line instead of a strip of boxes, and colour now runs smoothly from blue (light rain) to red (a real storm) instead of a fixed five-colour key.
+- **Dry no longer has a colour.** The old gold baseline tile — which got confusing where it overlapped the model's own guess for later hours — is gone. A dry stretch is just... nothing drawn, with a small line underneath naming how long it lasts.
+- **Two things the chart couldn't say before, it says now.** When the weather model expects more rain at a spot than radar is currently measuring — still within the part we trust most — a small dashed marker breaks up through the shape to flag it, instead of that disagreement staying invisible. And when the two forecast models argue with each other further out, that gets its own marker too, distinct from the first.
+- **One more scroll gap, closed.** Yesterday's fix (v2.36.8) covered the whole screen coming up short. This covers a narrower case: when an extra warning banner stacks on top of an already-busy screen, the very bottom of the page could still get clipped with no way to reach it. It's reachable now — a safety net, same as before, invisible on every ordinary day.
+
+**Nothing about the verdict changed.** Same thresholds, same countdowns, same decision — this is what it looks like, not what it decides.
+
+---
+
 ## [2.36.8] - 2026-09-16 - Gemma Raus just got better: nothing gets stuck behind your browser's own bar 🧾
 
 *A real gap left over from removing the page scroll.*

@@ -1312,20 +1312,33 @@ export default function App() {
           t={t}
         />
       ) : (
-        /* v2.36.1 — LOCKED middle column, no page scroll (maintainer decision,
-           reversing the v2.9.0 choice below on purpose). On a busy day the
-           warning banners stack up (UV + wind + thunder + gap banner…) inside
-           this fixed-height shell; the shock absorber is now the MAP
-           (RadarMap's own flex-1, floor lowered to min-h-[160px]), not a
-           scrollbar. This is the same mechanism that was reverted once before
-           for an iOS report ("the website becomes unscrollable") when the map
-           had no floor at all (min-h-0) and could crush to nothing — the floor
-           is the fix for that specific failure, not a new idea tried blind.
+        /* v2.36.1 — the middle column does not page-scroll by default
+           (maintainer decision, reversing the v2.9.0 choice below on
+           purpose). On a busy day the warning banners stack up (UV + wind +
+           thunder + gap banner…) inside this fixed-height shell; the shock
+           absorber is the MAP first (RadarMap's own flex-1, floor lowered to
+           min-h-[160px]), not a scrollbar. This is the same mechanism that
+           was reverted once before for an iOS report ("the website becomes
+           unscrollable") when the map had no floor at all (min-h-0) and
+           could crush to nothing — the floor is the fix for that specific
+           failure, not a new idea tried blind.
+           v2.36.9 — `overflow-hidden` on the scroll column below became
+           `overflow-y-auto`. A stacked closable banner (e.g. a second/third
+           active ZAMG warning) can push the column's minimum content height
+           past what's left once the map is already at its 160px floor; with
+           `overflow-hidden` that excess was silently clipped — invisible and
+           unreachable, including from the v2.36.8 root-level safety net,
+           which only sees overflow at the ROOT, not inside this nested
+           fixed-height flex item. `overflow-y-auto` is a no-op on every
+           ordinary day (map absorbs the banner first, nothing to scroll);
+           it only activates once the floor is hit and content still doesn't
+           fit, which is exactly the "reach the clipped part" escape hatch
+           v2.36.8 already established the doctrine for, one level deeper.
            Wrapped in a relative shell so the pull-to-refresh indicator can sit
            above it while the column itself is dragged down (see the touch
-           effect above); pull-to-refresh still works unchanged; its `scrollTop
-           > 0` at-the-top gate is simply always true now, which is correct —
-           there is no scroll position to be away from. */
+           effect above); pull-to-refresh's `scrollTop > 0` at-the-top gate
+           (above) is meaningful again now that the column can actually
+           scroll, instead of being permanently 0. */
         <div className="flex-1 min-h-0 relative overflow-hidden">
           <div
             className="absolute inset-x-0 top-0 flex justify-center items-center font-mono text-lg text-muted pointer-events-none"
@@ -1348,7 +1361,7 @@ export default function App() {
           </div>
           <div
             ref={scrollRef}
-            className="h-full overflow-hidden scrollbar-none flex flex-col gr-col"
+            className="h-full overflow-y-auto overscroll-y-contain scrollbar-none flex flex-col gr-col"
             style={{
               transform: pullDistance ? `translateY(${pullDistance}px)` : undefined,
               transition: pullActive ? 'none' : 'transform 0.2s ease',

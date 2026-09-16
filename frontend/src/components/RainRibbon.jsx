@@ -2,53 +2,42 @@ import { useEffect, useRef, useState } from 'react'
 import { showGhost, radarSpanLabel, hasRadarZone, hoursLabel } from '../gaps'
 
 const SLOT_W = 46
-// v2.32: 52 -> 88. Today is the one day you can act on, so it gets the height:
-// the same bar language as the days below it, but read as a tile rather than a
-// strip. Taller bars also separate the light/moderate/heavy tiers visually, which
-// at 52px were only a few pixels apart (HEIGHT_STOPS is a ratio scale, so every
-// tier grows with it).
-// v2.35: 88 -> 76. The tile still has to out-rank the day rows below it, but the
-// zone band above the bars shrank from a 14px labelled strip to a 5px rail (its
-// words moved to a pinned row outside the scroller), so the whole block reads
-// taller than it needs to. Total canvas height goes 117 -> 108 even with the new
-// bracket strip, because those are the two changes that pay for each other.
-const SLOT_H = 76
-// v2.23: dedicated strip for the time labels UNDER the bars. They used to be drawn
-// inside the bar area at SLOT_H-6, so every bar taller than ~10px covered its own
-// timestamp — and with the rescaled bars below, essentially every wet bar does.
+// v2.37 — bars became a filled skyline (area + line), maintainer-directed
+// redesign after a design-comparison pass (three drawing options mocked up,
+// this one picked). CHART_H replaces the old SLOT_H: it's the same footprint
+// as before (old BAND_H 5 + SLOT_H 76 = 81), just no longer split into a
+// separate zone-tint rail — solid-fill-vs-dashed-line now carries "measured
+// vs estimated" on its own, so the rail was pure redundancy once the chart
+// itself already answers that question by shape. Total canvas height is
+// therefore UNCHANGED from before (81 + BRACKET_H + LABEL_H), so nothing
+// downstream in the page layout shifts.
+const CHART_H = 81
+// v2.23: dedicated strip for the time labels UNDER the chart. They used to be
+// drawn inside the bar area, so every bar taller than ~10px covered its own
+// timestamp — and with the rescaled bars, essentially every wet bar did.
 const LABEL_H = 15
-// One bar per 30 minutes (was 15). The app never promises a break shorter than
-// 30 min (MIN_GAP_SLOTS = 2), so 15-min bars drew a resolution the verdict cannot
-// act on — and 49 of them across 12 h read as noise rather than as a shape.
+// One point per 30 minutes (was 15). The app never promises a break shorter
+// than 30 min (MIN_GAP_SLOTS = 2), so 15-min resolution drew detail the
+// verdict cannot act on — and 49 of them across 12 h read as noise, not a
+// shape.
 const BUCKET_S = 30 * 60
-// v2.6 zone band: thin strip above the bars marking which instrument each zone
-// comes from. The solid→dashed bar switch alone read as confusing; the band makes
-// the handoff explicit without overlapping the two zones.
-//
-// v2.35: the band no longer carries its own TEXT — 14px -> a 5px silent rail. The
-// words moved to a pinned row above the scroller, because the band scrolls with
-// the canvas: swipe toward the evening and "RADAR · NEXT 2½ H" left the screen,
-// leaving dashed model bars with nothing naming them. The TINT has to stay here,
-// since it marks *where* among the bars the boundary falls.
-const BAND_H = 5
-// v2.35: strip between the bars and the time labels, for the dry-window bracket.
-// Always reserved rather than added only when a bracket exists — a canvas that
-// changes height between refreshes shifts everything below it, and this app is
-// read in two-second glances.
+// v2.35: strip between the chart and the time labels, for the dry-window
+// bracket. Always reserved rather than added only when a bracket exists — a
+// canvas that changes height between refreshes shifts everything below it,
+// and this app is read in two-second glances.
 const BRACKET_H = 12
-// 1 "now" anchor + 48 × 15-min steps = 12 h (v2.2: extended from 3h so the model tail
-// is visible, not just implied by a text label). Mobile can't see all 49 slots at
-// once — that's what the auto-scroll below is for.
+// 1 "now" anchor + 48 × 15-min steps = 12 h (v2.2: extended from 3h so the
+// model tail is visible, not just implied by a text label). Mobile can't see
+// all 49 slots at once — the strip stays horizontally scrollable.
 const MAX_SLOTS = 49
 const DRY_THRESHOLD = 0.1
 
-// Theme-aware rain palette (v2.36 — collapsed from five intensity colours to two:
-// height was already continuous (v2.23), so a five-way ramp was colour and height
-// both saying the same thing. `rain` and `storm` are kept identical to the WAIT /
-// STUCK headline colours (--c-wait / --c-stuck in index.css) — the two remaining
-// wet colours were already the two that matched the app's own status doctrine;
-// the ones dropped (the old `light` and the orange `storm`) were the two that
-// didn't. Dry stays the GO colour, drawn only as the thin baseline it always was.
+// Theme-aware two-colour palette, used by precipToColor/tierOf below — kept
+// for DayStrip's own five-day bars (still discrete, still on this exact
+// scale, still matched to the WAIT/STUCK headline colours per the app's
+// "status colour = ribbon legend" doctrine). This is a SEPARATE palette from
+// skyPalOf below, which only the TODAY chart uses — see that function's own
+// comment for why they're allowed to diverge.
 const PALETTE = {
   dark:  { dry: '#D4A017', rain: '#1BAEE2', storm: '#0077AA' },
   light: { dry: '#7A5E00', rain: '#0A6E9C', storm: '#024D6E' },
@@ -56,8 +45,8 @@ const PALETTE = {
 export function palOf(theme) { return PALETTE[theme === 'light' ? 'light' : 'dark'] }
 
 // Three classes only: dry, rain, storm. The storm line sits at the app's own
-// DOWNPOUR_MM (1.5 mm/15min, App.jsx) rather than a new number — the ribbon's
-// "storm" now means the same threshold the downpour warning already means.
+// DOWNPOUR_MM (1.5 mm/15min, App.jsx) rather than a new number — "storm"
+// means the same threshold the downpour warning already means.
 const STORM_THRESHOLD = 1.5
 
 export function tierOf(p) {
@@ -68,32 +57,29 @@ export function tierOf(p) {
 
 export function precipToColor(p, pal) { return pal[tierOf(p)] }
 
-// v2.36.3 — forecast-zone bars are pulled toward the app's own muted grey instead
-// of just fading the true colour's opacity. A live review of the dimmed-opacity
-// look (v2.36.1) found it still read as "faded rain", not clearly "a different
-// kind of reading" — a forecast estimate is a different CLASS of evidence than a
-// radar measurement, not just a fainter one. Blending toward grey says that in one
-// glance; the radar zone keeps the true, saturated colour untouched, so "measured"
-// vs "estimated" is now a hue difference the eye catches before it reads a caption.
-const MUTED_RGB = { dark: [107, 114, 128], light: [85, 82, 75] } // --c-muted, both themes
-const FORECAST_GREY_MIX = 0.55 // fraction of the true colour pulled toward grey
-
-function hexToRgb(hex) {
-  const n = parseInt(hex.slice(1), 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+// v2.37 — the TODAY chart's own rain→storm gradient, DELIBERATELY red at the
+// storm end rather than reusing --c-stuck's blue. This is a scoped, named
+// exception to the app's own "headline colour = ribbon legend" rule
+// (CLAUDE.md, "Status colours"): storm-as-red was a maintainer design
+// decision for THIS chart specifically, reusing the app's existing
+// --c-danger red (the RED official-warning override, v2.14.0) rather than
+// inventing a third red. It does NOT touch --c-stuck, palOf, or
+// precipToColor above — DayStrip's five-day bars and the STUCK headline stay
+// exactly the blue they've always been. A storm on today's chart reading red
+// does not mean an official warning is active; it means the same thing the
+// blue STUCK headline above it already says, just drawn on this one chart's
+// own colour language. Kept as a plain object (not CSS vars) because a
+// canvas gradient needs literal colour strings, same as the rest of this
+// file already does.
+const SKY_PALETTE = {
+  dark:  { rain: '#1BAEE2', storm: '#EF4444' },
+  light: { rain: '#0A6E9C', storm: '#991B1B' },
 }
+export function skyPalOf(theme) { return SKY_PALETTE[theme === 'light' ? 'light' : 'dark'] }
 
-export function forecastColor(p, pal, theme) {
-  const [r1, g1, b1] = hexToRgb(precipToColor(p, pal))
-  const [r2, g2, b2] = MUTED_RGB[theme === 'light' ? 'light' : 'dark']
-  const m = FORECAST_GREY_MIX
-  const mix = (a, b) => Math.round(a + (b - a) * m)
-  return `rgb(${mix(r1, r2)}, ${mix(g1, g2)}, ${mix(b1, b2)})`
-}
-
-// Label priority when the drawn ribbon is dry/empty: MODEL disagreeing with a radar
-// all-clear beats everything (frontal rain the radar can't see yet), then CAPE
-// instability, then the plain radar-attributed dry line.
+// Label priority when the drawn chart is dry/empty: MODEL disagreeing with a
+// radar all-clear beats everything (frontal rain the radar can't see yet),
+// then CAPE instability, then the plain radar-attributed dry line.
 function dryLabel(t, hasData, unstable, modelRainMin) {
   if (!hasData) return t('ribbon_wait')
   if (modelRainMin != null) {
@@ -106,25 +92,28 @@ function dryLabel(t, hasData, unstable, modelRainMin) {
   return t(unstable ? 'ribbon_dry_unstable' : 'ribbon_dry')
 }
 
-// Bar heights (v2.23). The old scale was linear over 0–5 mm, but a Salzburg 15-min
-// slot is almost always between 0.1 and 1.0 mm — so 90% of all real rain was squeezed
-// into the bottom sixth of the chart (0.14 mm drew 5 px, 0.70 mm drew 10 px) while the
-// top three quarters sat empty waiting for intensities that basically never arrive.
-// Every bar looked the same height, which is why the ribbon read as noise.
-//
-// Worse, the trace stub was a hardcoded 10 px while a real bar was computed — so on
-// 2026-08-18 the 0.02/0.04/0.07 mm LULL drew TALLER than the 0.14 mm of rain beside
-// it. The dry window, the one thing this app exists to find, was rendered as the
-// tallest thing in the middle of the ribbon.
-//
-// Now the height uses the SAME class stops as precipToColor (0.1 / 0.5 / 2 / 5), each
-// class getting an equal quarter of the range, so a band boundary is a colour change
-// AND a height step. Strictly ordered: dry < trace < any real reading.
-const DRY_H      = 4     // the gold "it's dry" baseline
-const TRACE_H    = 6     // sub-threshold echo: visible, never taller than real rain
+// Point heights (v2.23, kept unchanged by the v2.37 bars→skyline redesign —
+// this is still the one function that turns a mm value into a y-position,
+// just read as a line point instead of a bar top). A Salzburg 15-min slot is
+// almost always between 0.1 and 1.0 mm, so the scale gives each class an
+// equal quarter of the range rather than being linear over 0–5mm, which used
+// to squeeze 90% of all real rain into the bottom sixth of the chart.
+const DRY_H      = 4     // dry (p === 0): effectively flat
+const TRACE_H    = 6     // sub-threshold echo: a whisper of a rise, never as tall as real rain
 const MIN_REAL_H = 10    // any reporting reading is legibly "this is rain"
-const MAX_BAR_H  = SLOT_H - 6
+const MAX_BAR_H  = CHART_H - 6
 const HEIGHT_STOPS = [[DRY_THRESHOLD, 0], [0.5, 0.25], [2, 0.5], [5, 0.75], [15, 1]]
+// v2.37 — where the sky gradient (below) reaches full storm-red. HEIGHT_STOPS
+// spends its top quarter on 5-15mm — genuinely rare — so anchoring the
+// gradient's red end to MAX_BAR_H (i.e. 15mm) left an ordinary 2mm storm
+// sampling the MIDDLE of the gradient: a muted purple, not red. Caught by
+// screenshotting the real component with mock data before shipping this —
+// the artifact mockup this was ported from used a much smaller reference
+// max (2.4) for exactly this reason, and that detail didn't survive the
+// port on the first pass. GRAD_REF_P matches it: anything at or above this
+// reads as fully, unambiguously red; only the shape (via precipToHeight)
+// keeps climbing for genuinely extreme rain above it.
+const GRAD_REF_P = 2.4
 
 function precipToHeight(p) {
   if (p < DRY_THRESHOLD) return p > 0 ? TRACE_H : DRY_H
@@ -139,17 +128,35 @@ function precipToHeight(p) {
   return Math.round(MIN_REAL_H + Math.min(1, f) * (MAX_BAR_H - MIN_REAL_H))
 }
 
-// v2.35 — the dry-window bracket. A dry afternoon draws twenty-four 4px gold
-// baselines, which is honest and is also indistinguishable from a chart that
-// failed to load; that is precisely why the floating "no rain" pill had to be
-// invented. The bracket draws the one thing a dry stretch actually contains: how
-// long it is. On a showery afternoon the same run lands on the gap between bands.
+// The model's own reading nearest a given radar-zone window — extracted to
+// module scope (v2.37) so both the drawing effect and the legend-gating
+// logic in the render body call the exact same function; two independent
+// re-derivations of "what did the model say here" is exactly the kind of
+// drift CLAUDE.md's own audit log warns about. A 30-min bar spans two model
+// slots, so this compares against the model's PEAK across the bar — taking
+// one instant would let a model spike in the second half go undrawn.
+function modelPeakAt(mTimes, mPrecips, t0, t1) {
+  let best = null
+  for (let i = 0; i < mTimes.length; i++) {
+    if (mTimes[i] < t0 - 8 * 60 || mTimes[i] > t1) continue
+    const v = mPrecips[i] ?? 0
+    if (best === null || v > best) best = v
+  }
+  return best
+}
+
+// v2.35 — the dry-window bracket. A dry afternoon used to draw twenty-four
+// 4px gold baselines, which was honest and indistinguishable from a chart
+// that failed to load. The v2.37 skyline makes a dry stretch read as an
+// unmistakable flat line on its own, but the bracket's TEXT ("dry for 45
+// min") is still information the shape alone doesn't carry, so it stays.
 //
-// CLIPPED TO THE RADAR ZONE by its caller, always. Drawn across model bars it
-// would promise a dry window on evidence the verdict itself declines to act on —
-// v2.30.1's refusal rule (never claim a window on thin data), applied to a drawing
-// instead of a sentence. Needs MIN_BRACKET_BARS whole bars, comfortably past the
-// app's own 30-min MIN_GAP_SLOTS floor, so one quiet slot cannot draw a window.
+// CLIPPED TO THE RADAR ZONE by its caller, always. Drawing it across model
+// points would promise a window on evidence the verdict itself declines to
+// act on — v2.30.1's refusal rule (never claim a window on thin data),
+// applied to a drawing instead of a sentence. Needs MIN_BRACKET_BARS whole
+// points, comfortably past the app's own 30-min MIN_GAP_SLOTS floor, so one
+// quiet slot cannot draw a window.
 export const MIN_BRACKET_BARS = 2
 
 export function dryRunIn(bars, lastIdx) {
@@ -165,11 +172,12 @@ export function dryRunIn(bars, lastIdx) {
   return best && best.b - best.a + 1 >= MIN_BRACKET_BARS ? best : null
 }
 
-// Fold the 15-min series into 30-min bars. The bar takes the MAX of its two slots,
-// never the sum: the colour/height classes are calibrated per 15-min slot, and a max
-// can only ever over-state the intensity — the forgiven direction (v2.7's rationale
-// for the model union). agree/prob travel WITH the slot that won, so the confidence
-// shown always belongs to the reading being drawn rather than to its neighbour.
+// Fold the 15-min series into 30-min points. A point takes the MAX of its two
+// slots, never the sum: the height/threshold classes are calibrated per
+// 15-min slot, and a max can only ever over-state the intensity — the
+// forgiven direction (v2.7's rationale for the model union). agree/prob
+// travel WITH the slot that won, so the confidence shown always belongs to
+// the reading being drawn rather than to its neighbour.
 function bucket30(slots) {
   const out = []
   let cur = null
@@ -209,28 +217,19 @@ function computeInitialZone(forecast) {
 export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
   const canvasRef = useRef(null)
   const scrollRef = useRef(null)
-  // v2.36.4 — the pinned zone caption (below) used to be a static label pair with
-  // no relationship to where the radar/forecast split actually falls in the
-  // canvas underneath it: "FORECAST · MODEL" always sat at the far right of the
-  // viewport regardless of how much of the visible chart was actually forecast.
-  // Live report: on a mostly-forecast view the header implied the opposite of
-  // what the bars showed. viewW/scrollX track the scroll container so the header
-  // can be recomputed as a proportional split of the CURRENTLY VISIBLE width —
-  // it moves with the ribbon instead of describing a fixed 50/50 that was never
-  // true. ResizeObserver guarded per this file's own browser-support doctrine
-  // (RadarMap does the same for the same reason: absent on iOS 13.4).
+  // v2.36.4 — the pinned zone caption (below) used to be a static label pair
+  // with no relationship to where the radar/forecast split actually falls in
+  // the canvas underneath it. viewW/scrollX track the scroll container so
+  // the header can be recomputed as a proportional split of the CURRENTLY
+  // VISIBLE width — it moves with the chart instead of describing a fixed
+  // 50/50 that was never true. ResizeObserver guarded per this file's own
+  // browser-support doctrine (RadarMap does the same for the same reason:
+  // absent on iOS 13.4).
   const [viewW, setViewW] = useState(0)
   const [scrollX, setScrollX] = useState(0)
   // v2.36.6 — the canvas's OWN splitIdx/cssW, published by the drawing effect
-  // below. The render body used to recompute an approximation of these from a
-  // separately re-filtered `rslots` array using a freshly-read Date.now() on
-  // EVERY render (including scroll/resize renders) — while the canvas's real
-  // splitIdx/cssW are frozen at whatever `now` was when the effect last ran
-  // ([forecast, theme, t] deps). As real time advanced between data refreshes,
-  // the two "now"s drifted apart, so the caption's divider could sit a slot off
-  // from the canvas's own dashed line even at rest, not just while scrolling.
-  // Publishing the canvas's actual numbers instead of re-deriving a parallel
-  // estimate makes the two structurally unable to disagree.
+  // below, so the pinned caption's divider can never drift from the canvas's
+  // own boundary the way two independent re-derivations of "now" once did.
   const [canvasZone, setCanvasZone] = useState(() => computeInitialZone(forecast))
   useEffect(() => {
     const el = scrollRef.current
@@ -247,8 +246,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const { times, precips } = forecast
     const now = Math.floor(Date.now() / 1000)
 
-    // agree/prob are carried on the slot itself — `i` here is the index into the
-    // forecast arrays, which no longer matches the slot index after filter+slice.
+    // agree/prob are carried on the slot itself — `i` here is the index into
+    // the forecast arrays, which no longer matches the slot index after
+    // filter+slice.
     const slots = bucket30(times
       .map((t, i) => ({
         t, p: precips[i] ?? 0,
@@ -261,14 +261,14 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     if (!slots.length) return
 
     const canvas = canvasRef.current
-    // Render at device-pixel-ratio so the time labels are crisp (not upscaled/
-    // blurry) on retina/mobile screens, then draw in CSS-pixel coordinates.
-    // Cap the backing store below the GPU-texture ceiling (8192px) — the 12h
-    // ribbon at dpr 3 is already ~6800 device px; anything past the ceiling
-    // renders as a silently blank canvas on iOS.
+    // Render at device-pixel-ratio so the time labels are crisp (not
+    // upscaled/blurry) on retina/mobile screens, then draw in CSS-pixel
+    // coordinates. Cap the backing store below the GPU-texture ceiling
+    // (8192px) — the 12h chart at dpr 3 is already ~6800 device px; anything
+    // past the ceiling renders as a silently blank canvas on iOS.
     const cssW = slots.length * SLOT_W
     const dpr  = Math.max(1, Math.min(window.devicePixelRatio || 1, 8192 / cssW))
-    const cssH = BAND_H + SLOT_H + BRACKET_H + LABEL_H
+    const cssH = CHART_H + BRACKET_H + LABEL_H
     canvas.width  = Math.round(cssW * dpr)
     canvas.height = Math.round(cssH * dpr)
     canvas.style.width  = cssW + 'px'
@@ -278,191 +278,210 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, cssW, cssH)
 
-    const pal      = palOf(theme)
-    const slotBg   = theme === 'light' ? '#E8E6E1' : '#111318'
+    const pal      = palOf(theme)     // still needed below: the dry-window bracket stays gold
+    const sky      = skyPalOf(theme)  // the chart's own rain→storm gradient endpoints
     // Brighter/darker than before for a readable label at the larger size.
     const labelCol = theme === 'light' ? '#57544D' : '#9CA3AF'
     const nowCol   = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
-    // The page ground (--c-bg), for knocking the bracket label out of its own line.
+    // The page ground (--c-bg), for knocking the bracket label — and the
+    // ghost/disagreement marker rings — out of the line behind them.
     const bgCol    = theme === 'light' ? '#F2F0EB' : '#08090B'
 
-    // Model series lookup (ghost bars, within the radar zone): nearest model slot
-    // within ±8 min of a ribbon slot. Only meaningful when the bars ARE radar
-    // (isNowcast) — otherwise the bars themselves ARE the model already.
+    // Model series lookup (bleed markers, within the radar zone): only
+    // meaningful when the chart IS radar (isNowcast) — otherwise the points
+    // themselves already ARE the model.
     const mTimes = forecast.isNowcast !== false ? (forecast.modelTimes ?? []) : []
     const mPrecips = forecast.modelPrecips ?? []
-    const modelAt = (t0, t1) => {
-      // A 30-min bar spans two model slots, so the ghost compares against the model's
-      // PEAK across the bar. Taking one instant would let a model spike in the second
-      // half go undrawn — the exact silent-drop v2.18's showGhost fix set out to end.
-      let best = null
-      for (let i = 0; i < mTimes.length; i++) {
-        if (mTimes[i] < t0 - 8 * 60 || mTimes[i] > t1) continue
-        const v = mPrecips[i] ?? 0
-        if (best === null || v > best) best = v
-      }
-      return best
-    }
 
-    // v2.2: radar only covers ~3h; beyond radarUntil the bars ARE the model (no radar
-    // to compare against), so they're drawn as dashed/lighter to stay honest about
-    // being an estimate rather than a radar-precise reading.
-    // Fallback timelines (isNowcast === false) are model end-to-end — the whole
-    // band must say "forecast", never claim a radar zone that doesn't exist.
-    // v2.34: also model-only when the radar zone has shrunk to nothing — a served
-    // nowcast whose last slot is nearly behind us leaves a sliver the band would
-    // tint gold and the caption would call "the first 0 h". One predicate decides
-    // it for both, so the picture and the sentence can never disagree.
+    // v2.2: radar only covers ~3h; beyond radarUntil the points ARE the
+    // model (no radar to compare against), so they're drawn as a dashed line
+    // with no fill to stay honest about being an estimate rather than a
+    // radar-precise reading. Fallback timelines (isNowcast === false) are
+    // model end-to-end — nothing is ever filled in that case. v2.34: also
+    // model-only when the radar zone has shrunk to nothing — hasRadarZone
+    // decides it for both the fill boundary and the pinned caption, so the
+    // picture and the sentence can never disagree.
     const modelOnly  = !hasRadarZone(forecast.radarUntil, now, forecast.isNowcast)
     const radarUntil = modelOnly ? -Infinity : (forecast.radarUntil ?? Infinity)
-    // A 30-min bar that only PARTLY overlaps the radar horizon is not a radar bar —
-    // drawing it solid would claim a precision we don't have for half of it, so the
-    // split is taken on the bar's END. Errs toward "estimate", the honest direction.
-    const splitIdx   = slots.findIndex(s => s.end > radarUntil)
-    const boundaryX  = splitIdx <= 0 ? null : splitIdx * SLOT_W
+    // A 30-min point that only PARTLY overlaps the radar horizon is not a
+    // radar point — the split is taken on the bucket's END, erring toward
+    // "estimate", the honest direction.
+    const splitIdx  = slots.findIndex(s => s.end > radarUntil)
+    const boundaryX = splitIdx <= 0 ? null : splitIdx * SLOT_W
+    const radarEnd  = splitIdx === -1 ? cssW : splitIdx * SLOT_W
     // v2.36.6 — hand the pinned caption below the exact splitIdx/cssW this
     // drawing pass used, so its divider can never drift from this line.
     setCanvasZone({ splitIdx, cssW })
 
-    // Zone rail (v2.6, silent since v2.35): radar zone tinted in the dry-gold
-    // family, forecast zone in neutral grey — matching the "dimmer = estimate"
-    // language of the bars below. The words that used to sit in here are rendered
-    // as a pinned row above the scroller, so they survive a sideways swipe.
-    const bandRadar = theme === 'light' ? 'rgba(122,94,0,0.22)'    : 'rgba(212,160,23,0.22)'
-    const bandFcst  = theme === 'light' ? 'rgba(87,84,77,0.14)'    : 'rgba(156,163,175,0.12)'
-    const radarEnd  = splitIdx === -1 ? cssW : splitIdx * SLOT_W
+    // ---- the skyline itself (v2.37) ----
+    // One gradient, reused for the fill AND every stroke below — rain at the
+    // bottom (light/low), storm at the top (heavy) of the drawable range.
+    // Height already encodes intensity (precipToHeight), so a gradient fixed
+    // to Y position tracks value automatically: a peak's pixels sample the
+    // red end, a low stretch samples the blue end, with no per-point colour
+    // branching needed. Sharing this one gradient across the fill, both line
+    // strokes, and the bleed/disagreement markers is what makes it genuinely
+    // one continuous scale end to end, rather than a coloured area with a
+    // flat-coloured outline.
+    const grad = ctx.createLinearGradient(0, CHART_H - precipToHeight(GRAD_REF_P), 0, CHART_H)
+    grad.addColorStop(0, sky.storm)
+    grad.addColorStop(1, sky.rain)
+
+    const pts = slots.map((s, i) => ({
+      x: i * SLOT_W + SLOT_W / 2,
+      y: CHART_H - precipToHeight(s.p),
+    }))
+    // Extend flat to the canvas edges for a cleaner silhouette, same
+    // reasoning as the old bars' first/last column.
+    const full = [{ x: 0, y: pts[0].y }, ...pts, { x: cssW, y: pts[pts.length - 1].y }]
+
     if (!modelOnly && radarEnd > 0) {
-      ctx.fillStyle = bandRadar
-      ctx.fillRect(0, 0, radarEnd, BAND_H - 1)
+      // filled area, radar zone only
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, radarEnd, cssH)
+      ctx.clip()
+      ctx.beginPath()
+      ctx.moveTo(full[0].x, CHART_H)
+      full.forEach(p => ctx.lineTo(p.x, p.y))
+      ctx.lineTo(radarEnd, CHART_H)
+      ctx.closePath()
+      ctx.fillStyle = grad
+      ctx.globalAlpha = 0.85
+      ctx.fill()
+      ctx.restore()
+
+      // radar-zone stroke, solid
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, radarEnd + 1, cssH)
+      ctx.clip()
+      ctx.beginPath()
+      full.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+      ctx.strokeStyle = grad
+      ctx.lineWidth = 2
+      ctx.stroke()
+      ctx.restore()
     }
+
     if (radarEnd < cssW) {
-      ctx.fillStyle = bandFcst
-      ctx.fillRect(radarEnd, 0, cssW - radarEnd, BAND_H - 1)
+      // forecast-zone stroke, dashed, no fill — same gradient as the radar
+      // edge, so a dashed segment over a storm-height estimate reads red and
+      // one over a light estimate reads blue, exactly like the fill does.
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(radarEnd - 1, 0, cssW - radarEnd + 1, cssH)
+      ctx.clip()
+      ctx.beginPath()
+      full.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+      ctx.strokeStyle = grad
+      ctx.setLineDash([4, 3])
+      ctx.lineWidth = 2
+      ctx.globalAlpha = 0.85
+      ctx.stroke()
+      ctx.restore()
     }
-    // Bars keep their own SLOT_H coordinate system — shift the origin below the band.
-    ctx.translate(0, BAND_H)
 
+    // Bleed markers (radar zone only, v2.37): the real showGhost() predicate
+    // (gaps.js) — a model reading materially higher than what's actually
+    // measured at this exact slot, still inside the radar's own window. A
+    // small dashed spike breaks up out of the filled area at that one point
+    // — the fill stays an honest picture of what's measured, the spike says
+    // what's expected. This is the same signal the old bar chart's ghost
+    // bars carried (v2.1.0/v2.18.0), just drawn in this chart's own line
+    // language instead of a second bar. Independent per slot — a run of
+    // several disagreeing slots draws several spikes, not just one.
     slots.forEach((slot, i) => {
-      const x = i * SLOT_W
-      const beyondRadar = slot.end > radarUntil
-
-      ctx.fillStyle = beyondRadar
-        ? (theme === 'light' ? '#DEDBD3' : '#0B0D11')   // subtly dimmer — "estimate" zone
-        : slotBg
-      ctx.fillRect(x, 0, SLOT_W - 1, SLOT_H)
-
-      if (beyondRadar) {
-        // Model-only bar. Nothing drawn when dry.
-        if (slot.p >= DRY_THRESHOLD) {
-          const gh    = precipToHeight(slot.p)
-          const trueC = precipToColor(slot.p, pal)
-          const greyC = forecastColor(slot.p, pal, theme)
-          const agree = slot.agree !== false
-          const pr    = slot.prob
-          // v2.36.3: the fill is now a genuine grey blend (see forecastColor), not
-          // a translucent true colour — greying carries "this is an estimate" on
-          // its own, so opacity no longer has to do that job too and can sit much
-          // higher (v2.36.1 and earlier: 0.16-0.38, which on a muted colour would
-          // have all but disappeared). Probability still nudges it, now purely as
-          // a secondary confidence cue. No probability at all (past the fetched
-          // horizon) → treated as unknown, not as low.
-          const prAlpha = typeof pr === 'number' ? 0.55 + 0.35 * Math.min(1, pr / 100) : 0.65
-          ctx.save()
-          ctx.globalAlpha = agree ? prAlpha : prAlpha * 0.7
-          ctx.fillStyle = greyC
-          ctx.fillRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
-          // v2.36.1 — the dashed outline is drawn ONLY when the two models
-          // actually disagree; an ordinary estimate is just the grey fill above,
-          // no outline needed. v2.36.3: the outline is drawn in the bar's TRUE
-          // colour, not the grey fill — the true hue "breaking through" a grey bar
-          // is what makes a contested slot look different from a merely uncertain
-          // one, rather than just a darker edge on the same grey.
-          if (!agree) {
-            ctx.globalAlpha = 0.9
-            ctx.strokeStyle = trueC
-            ctx.setLineDash([1, 3])
-            ctx.lineWidth = 1.5
-            ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
-          }
-          ctx.restore()
-        }
-      } else {
-        // Radar zone: solid bar, ground/radar-trusted.
-        const color = precipToColor(slot.p, pal)
-        const barH  = precipToHeight(slot.p)
-        ctx.fillStyle = color
-        ctx.fillRect(x, SLOT_H - barH, SLOT_W - 1, barH)
-
-        // GHOST bar (v2.1): the FORECAST expects materially more rain than radar sees
-        // here — faint fill + dashed outline (v2.3.1) so it's visible at a glance.
-        // v2.18: was gated on radar being bone-dry (< 0.1), so a 0.14 radar reading
-        // hid a 2.2 mm model expectation entirely while 0.09 would have drawn it full
-        // height — a 0.05 mm cliff, sitting right at the end of the radar zone.
-        const mp = modelAt(slot.t, slot.end)
-        if (showGhost(slot.p, mp)) {
-          const gh = precipToHeight(mp)
-          ctx.save()
-          ctx.globalAlpha = 0.28
-          ctx.fillStyle = pal.rain
-          ctx.fillRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
-          ctx.globalAlpha = 1
-          ctx.strokeStyle = pal.rain
-          ctx.setLineDash([3, 2])
-          ctx.lineWidth = 1.5
-          ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
-          ctx.restore()
-        }
-      }
-
-      // Trace tier (v2.5): sub-threshold echo (0 < p < 0.1) — the "drops on your
-      // face" band. Drawn as a low translucent stub in the drizzle colour, on top of
-      // the dry base bar, so a trace future is VISIBLE instead of rendering as flat
-      // dry (live incident: the nowcast showed the drizzle field an hour ahead as
-      // 0.01 slots and the ribbon claimed nothing was coming).
-      // v2.8: when BOTH independent witnesses contradict the radar-zone carpet
-      // (clear sky + fully quiet RainViewer → forecast.tracePhantom), dim those
-      // stubs below even the model-zone level — still drawn (we never hide data),
-      // but no longer reading as a real drizzle claim on a cloudless afternoon.
-      if (slot.p > 0 && slot.p < DRY_THRESHOLD) {
-        ctx.save()
-        ctx.globalAlpha = beyondRadar ? 0.25 : (forecast.tracePhantom ? 0.12 : 0.45)
-        ctx.fillStyle = pal.rain
-        ctx.fillRect(x, SLOT_H - TRACE_H, SLOT_W - 1, TRACE_H)
-        ctx.restore()
-      }
-
-      // Time labels live in their own strip BELOW the bars (v2.23). They used to be
-      // painted inside the bar area, so any bar taller than the text covered its own
-      // timestamp. Only on the hour: at 30-min bars a label on every bar would sit
-      // 46 px apart for ~36 px of text, which is legible but reads as a wall of
-      // numbers — hourly gridlines are enough to place a bar in time.
-      const d = new Date(slot.t * 1000)
-      if (d.getMinutes() === 0) {
-        ctx.save()
-        ctx.fillStyle = labelCol
-        ctx.font = 'bold 12px "JetBrains Mono", monospace'
-        const label = `${String(d.getHours()).padStart(2, '0')}:00`
-        // Never let the last label overhang the canvas edge.
-        const w = ctx.measureText(label).width
-        if (x + 3 + w <= cssW) ctx.fillText(label, x + 3, SLOT_H + BRACKET_H + LABEL_H - 4)
-        ctx.restore()
-      }
+      if (slot.end > radarUntil) return // forecast zone: no radar to bleed against
+      const mp = modelPeakAt(mTimes, mPrecips, slot.t, slot.end)
+      if (mp == null || !showGhost(slot.p, mp)) return
+      const x  = i * SLOT_W + SLOT_W / 2
+      const gy = CHART_H - precipToHeight(mp)
+      ctx.save()
+      ctx.strokeStyle = grad
+      ctx.setLineDash([3, 2])
+      ctx.lineWidth = 1.5
+      ctx.globalAlpha = 0.9
+      ctx.beginPath()
+      ctx.moveTo(x - SLOT_W / 2 + 3, CHART_H)
+      ctx.lineTo(x, gy)
+      ctx.lineTo(x + SLOT_W / 2 - 3, CHART_H)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+      ctx.setLineDash([])
+      ctx.beginPath()
+      ctx.arc(x, gy, 3, 0, Math.PI * 2)
+      ctx.fillStyle = bgCol
+      ctx.fill()
+      ctx.strokeStyle = grad
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+      ctx.restore()
     })
 
-    // The dry-window bracket (v2.35). Radar zone only — see dryRunIn.
+    // Disagreement markers (forecast zone only): the two forecast models
+    // (modelsAgree, v2.18.0) argue about the same slot. A dashed ring on the
+    // forecast line — same treatment the old hatched hollow bar used to
+    // carry, ported to a line instead of a box. Independent per slot, same
+    // reasoning as the bleed markers above.
+    slots.forEach((slot, i) => {
+      if (slot.end <= radarUntil) return // radar zone: this marker is about two MODELS arguing
+      if (slot.p < DRY_THRESHOLD || slot.agree !== false) return
+      const x = i * SLOT_W + SLOT_W / 2
+      const y = CHART_H - precipToHeight(slot.p)
+      ctx.save()
+      ctx.strokeStyle = labelCol
+      ctx.globalAlpha = 0.55
+      ctx.setLineDash([2, 2])
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(x, y - 10)
+      ctx.lineTo(x, CHART_H)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+      ctx.setLineDash([])
+      ctx.beginPath()
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2)
+      ctx.fillStyle = bgCol
+      ctx.fill()
+      ctx.strokeStyle = grad
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+      ctx.restore()
+    })
+
+    // Time labels live in their own strip BELOW the chart (v2.23). Only on
+    // the hour: at 30-min points a label on every one would sit 46px apart
+    // for ~36px of text — legible but reads as a wall of numbers. Hourly
+    // gridlines are enough to place a point in time.
+    slots.forEach((s, i) => {
+      const x = i * SLOT_W
+      const d = new Date(s.t * 1000)
+      if (d.getMinutes() !== 0) return
+      ctx.save()
+      ctx.fillStyle = labelCol
+      ctx.font = 'bold 12px "JetBrains Mono", monospace'
+      const label = `${String(d.getHours()).padStart(2, '0')}:00`
+      // Never let the last label overhang the canvas edge.
+      const w = ctx.measureText(label).width
+      if (x + 3 + w <= cssW) ctx.fillText(label, x + 3, CHART_H + BRACKET_H + LABEL_H - 4)
+      ctx.restore()
+    })
+
+    // The dry-window bracket (v2.35). Radar zone only — see dryRunIn. Stays
+    // gold (pal.dry) — this is a textual annotation about a measured span,
+    // not the chart's own "colour for dry", which is exactly the thing this
+    // redesign removed.
     const lastRadarIdx = (splitIdx === -1 ? slots.length : splitIdx) - 1
     const dryRun = dryRunIn(slots, lastRadarIdx)
     if (dryRun) {
       const x0 = dryRun.a * SLOT_W + 2
       const x1 = (dryRun.b + 1) * SLOT_W - 3
-      // Sits fully inside the bracket strip: the label's knock-out box runs from
-      // y-8 to y+2, which at SLOT_H+8 starts exactly at the foot of the bars rather
-      // than clipping a pixel off them.
-      const y  = SLOT_H + 8
-      // The run reaches the end of what radar can see AND the model keeps it dry
-      // past there: cap the bracket with an arrow rather than a closing tick. The
-      // measurement ended; the expectation did not, and the two are not the same
-      // claim — which is the whole reason the bracket stops at the boundary.
+      const y  = CHART_H + 8
+      // The run reaches the end of what radar can see AND the model keeps it
+      // dry past there: cap the bracket with an arrow rather than a closing
+      // tick. The measurement ended; the expectation did not, and the two
+      // are not the same claim.
       const openEnd = dryRun.b === lastRadarIdx &&
         slots.slice(lastRadarIdx + 1).every(s => s.p < DRY_THRESHOLD)
       ctx.save()
@@ -489,8 +508,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         : ''
       ctx.font = 'bold 9px "JetBrains Mono", monospace'
       const tw = ctx.measureText(txt).width
-      // Only label a bracket wide enough to hold the label inside its own span —
-      // a caption spilling past the end marks a window we did not measure.
+      // Only label a bracket wide enough to hold the label inside its own
+      // span — a caption spilling past the end marks a window we did not
+      // measure.
       if (txt && tw + 12 < x1 - x0) {
         const cx = (x0 + x1) / 2
         ctx.globalAlpha = 1
@@ -502,9 +522,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.restore()
     }
 
-    // Radar → model handoff marker: a dashed vertical line through band + bars so
-    // the zone switch has a crisp edge (the labelled band above names the zones,
-    // replacing the old floating "model →" tag).
+    // Radar → model handoff marker: a dashed vertical line through the whole
+    // canvas so the zone switch has a crisp edge (the pinned row above the
+    // chart names the zones in words).
     if (boundaryX !== null) {
       ctx.save()
       ctx.strokeStyle = labelCol
@@ -512,95 +532,77 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.setLineDash([2, 3])
       ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.moveTo(boundaryX, -BAND_H)
-      ctx.lineTo(boundaryX, SLOT_H + BRACKET_H + LABEL_H)
+      ctx.moveTo(boundaryX, 0)
+      ctx.lineTo(boundaryX, cssH)
       ctx.stroke()
       ctx.restore()
     }
 
-    // "now" marker — through the zone band too, so "now" and "radar zone" visibly
-    // start together. v2.23: positioned WITHIN the first bar rather than pinned to
-    // x=0. Bars are aligned to :00/:30, so the first one can begin up to 30 min in
-    // the past — at 15-min slots that error was ≤5 min and invisible, at 30-min bars
-    // a marker nailed to the left edge would claim "now" for a time already gone.
+    // "now" marker. v2.23: positioned WITHIN the first point rather than
+    // pinned to x=0 — points are aligned to :00/:30, so the first one can
+    // begin up to 30 min in the past.
     const nowX = Math.max(0, Math.min(SLOT_W - 2,
       Math.round(((now - slots[0].t) / BUCKET_S) * SLOT_W)))
     ctx.fillStyle = nowCol
-    ctx.fillRect(nowX, -BAND_H, 2, BAND_H + SLOT_H + BRACKET_H + LABEL_H)
+    ctx.fillRect(nowX, 0, 2, cssH)
 
   }, [forecast, theme, t])
 
-  // v2.34: the ribbon no longer auto-scrolls. The drift existed so phone users
-  // would see all 12 h without knowing they could swipe, but it moved the bars out
-  // from under the reader's eye mid-glance — on an app whose whole promise is a
-  // fast decision, a chart that walks away is worse than one you have to nudge.
-  // It stays horizontally scrollable; only the self-driving part is gone.
+  // v2.34: the chart no longer auto-scrolls. The drift existed so phone
+  // users would see all 12 h without knowing they could swipe, but it moved
+  // the shape out from under the reader's eye mid-glance. It stays
+  // horizontally scrollable; only the self-driving part is gone.
 
-  const pal = palOf(theme)
-
-  // A flat all-dry ribbon looks identical to a failed/empty one — label it so a
-  // dry forecast never reads as "broken". No data at all → "waiting for data".
+  // A flat all-dry chart looks identical to a failed/empty one — label it so
+  // a dry forecast never reads as "broken". No data at all → "waiting for
+  // data".
   const nowS = Math.floor(Date.now() / 1000)
   const rslots = (forecast?.times || [])
     .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i] }))
     .filter(s => s.t >= nowS - 300)
     .slice(0, MAX_SLOTS)
-  // The key describes the PICTURE, so it is computed from the same 30-min bars the
-  // canvas draws, not from the raw 15-min slots. A bar takes the max of its two
-  // slots, so a slot's class can vanish in the fold — and a key naming a colour
-  // that is nowhere on the chart is the v2.34 label-drift bug in miniature.
+  // The legend chips below describe the PICTURE, so they're computed from
+  // the same 30-min points the canvas draws, not the raw 15-min slots.
   const rbars = bucket30(rslots)
-  // Only a WET slot the two models argue about is worth a legend entry — two models
-  // disagreeing about nothing is not a disagreement a user needs to see.
   const hasDisagreement = rslots.some(s => s.agree === false && s.p >= DRY_THRESHOLD)
   const hasData = rslots.length > 0
-  // The radar span, in words, for the caption below. Derived from the same
-  // forecast.radarUntil the canvas band is drawn from, so the sentence and the
-  // picture can never name different boundaries (the v2.18.0 lesson).
   const showRadarZone = hasRadarZone(forecast?.radarUntil, nowS, forecast?.isNowcast)
   const spanLabel = radarSpanLabel(forecast?.radarUntil, nowS)
-  // A sub-threshold stub is only worth naming when one is actually drawn.
-  //
-  // NOTE the optional chaining below: `forecast` is null on the very first render,
-  // before any data has arrived, and every other read in this render body is
-  // written that way for exactly that reason. v2.30.0 shipped a line unguarded
-  // here and it threw a TypeError on first paint, which unmounted the whole app —
-  // a blank page on every device. Pinned by a render test that mounts this
-  // component with forecast={null}.
+  // "Does a bleed marker actually get drawn" — same modelPeakAt/showGhost
+  // pair the effect uses, so the chip can never claim a marker that isn't
+  // really on the chart (the v2.18.0 lesson, applied to a legend chip this
+  // time instead of a caption).
+  const mTimesR   = forecast?.isNowcast !== false ? (forecast?.modelTimes ?? []) : []
+  const mPrecipsR = forecast?.modelPrecips ?? []
+  const rUntilForBleed = showRadarZone ? (forecast?.radarUntil ?? Infinity) : -Infinity
+  const hasBleed = showRadarZone && rbars.some(b => {
+    if (b.end > rUntilForBleed) return false
+    const mp = modelPeakAt(mTimesR, mPrecipsR, b.t, b.end)
+    return mp != null && showGhost(b.p, mp)
+  })
+
+  // NOTE the optional chaining below: `forecast` is null on the very first
+  // render, before any data has arrived, and every other read in this render
+  // body is written that way for exactly that reason (v2.30.0 shipped a line
+  // unguarded here and it threw on first paint, unmounting the whole app —
+  // pinned by a render test that mounts this component with forecast={null}).
   const hasTrace = rslots.some(s => s.p > 0 && s.p < DRY_THRESHOLD)
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
-  // The bracket, recomputed here from the same pure function and the same bars the
-  // canvas uses, so the two cannot disagree about whether a dry span was drawn.
   const rUntil = showRadarZone ? (forecast?.radarUntil ?? Infinity) : -Infinity
   const rSplit = rbars.findIndex(b => b.end > rUntil)
   const hasBracket = !!dryRunIn(rbars, (rSplit === -1 ? rbars.length : rSplit) - 1)
-  // Trace slots only (all sub-threshold, at least one non-zero): the overlay must
-  // not claim "no rain in 3h" over visible drizzle stubs — name what's there.
-  // v2.8: unless both instruments call the carpet phantom (clear sky + quiet
-  // RainViewer) — then the dry line is the honest headline, not "faint drizzle".
   const traceOnly = allDry && rslots.some(s => s.p > 0) && forecast.tracePhantom !== true
-  // v2.35: on a plain dry day the bracket now states the same fact WITH a length on
-  // it, so the floating pill becomes a second voice on one message — the duplicate
-  // v2.18.1 removed for thunderstorms. It stays for every case the bracket cannot
-  // express: no data at all, trace echo, the model disagreeing with a radar
-  // all-clear, and unstable air. Those all say something a drawn span cannot.
   const plainDryOnly = hasData && !traceOnly && modelRainMin == null && !unstable
   const showDryLabel = (allDry || !hasData) && !(plainDryOnly && hasBracket)
 
   // v2.36.4/v2.36.6 — where the pinned caption splits: read from canvasZone
-  // (the drawing effect's OWN splitIdx/cssW, set with setCanvasZone above), not
-  // recomputed from rbars/rSplit — those are re-derived every render from a
-  // freshly-read Date.now(), which drifts from the canvas's frozen "now" as time
-  // passes between data refreshes (the v2.36.6 fix). boundaryX / contentW are
-  // content-space pixels — the same SLOT_W units the canvas draws in — not yet
-  // corrected for scroll.
+  // (the drawing effect's OWN splitIdx/cssW), not recomputed here from a
+  // freshly-read Date.now(), which would drift from the canvas's frozen
+  // "now" as time passes between data refreshes.
   const contentW  = canvasZone.cssW
   const boundaryX = !showRadarZone || canvasZone.splitIdx == null ? null
     : canvasZone.splitIdx === -1 ? contentW
     : canvasZone.splitIdx * SLOT_W
-  // view0/view1: the slice of CONTENT currently visible, in those same pixels.
-  // viewW falls back to contentW before the first measurement so the caption
-  // still renders something sane on the very first paint.
   const viewSpan = viewW || contentW
   const view0 = scrollX
   const view1 = scrollX + viewSpan
@@ -625,16 +627,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           {!showRadarZone && <span className="ml-1 opacity-50">·&nbsp;est</span>}
         </span>
       </div>
-      {/* v2.35 — the zone row, PINNED outside the scroller (so it can never scroll
-          fully out of view — the v2.34.0 bug this fix exists to prevent). v2.36.4
-          — but pinned no longer meant STATIC: the row now tracks scroll, so the
-          split between "RADAR" and "FORECAST" sits at the same proportion of the
-          visible width as the actual boundary line sitting in the canvas right
-          below it, and slides as you scroll the ribbon instead of describing a
-          fixed 50/50 that often wasn't true. Once the boundary scrolls out of
-          the visible slice entirely, the row collapses to naming just the one
-          zone that's on screen — it still never claims a boundary the canvas
-          hasn't drawn (the v2.18.0 lesson). */}
+      {/* v2.35/v2.36.4 — the zone row, pinned outside the scroller so it can never
+          scroll fully out of view, and tracking scroll position so the split
+          between "RADAR" and "FORECAST" sits at the same proportion of the visible
+          width as the actual boundary drawn in the canvas right below it. */}
       {hasData && (
         <div className="flex items-center px-4 pb-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-muted">
           {!showRadarZone ? (
@@ -661,55 +657,33 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           style={{ display: 'block' }}
         />
         {showDryLabel && (
-          // Centred on the BARS, not the whole canvas — the zone band above and the
-          // time strip below are chrome, and letting them pull the label off-centre
-          // drifts it toward the bars it is meant to sit clear of.
+          // Centred on the chart itself, not the whole canvas — the time
+          // strip below is chrome, and letting it pull the label off-centre
+          // drifts it toward the chart it's meant to sit clear of.
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
-               style={{ paddingTop: BAND_H, paddingBottom: BRACKET_H + LABEL_H }}>
+               style={{ paddingBottom: BRACKET_H + LABEL_H }}>
             <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
               {/* Honest attribution, in priority order: the MODEL disagreeing with a
                   radar all-clear beats everything (frontal rain the radar can't see
-                  yet — the missed-evening-rain case); then CAPE instability; then the
-                  plain radar-attributed dry line. Never an unqualified promise. */}
+                  yet); then CAPE instability; then the plain radar-attributed dry
+                  line. Never an unqualified promise. */}
               {traceOnly ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin)}
             </span>
           </div>
         )}
       </div>
-      {/* v2.36 — the intensity swatch key is gone. It named DRY/LIGHT/MOD/HEAVY/STORM
-          for a five-colour ramp; the palette is now two wet colours plus height
-          (already continuous since v2.23), so a bar's own colour and height say what
-          the key used to spell out in words. What is left here is the thing colour
-          and height genuinely cannot show: CONFIDENCE — a trace echo, two models in
-          disagreement. Each chip is still gated on something actually being drawn
-          that it explains (v2.18.0's reasoning, unchanged).
-          v2.36.1 — the "forecast" chip is gone too. It explained the dashed outline
-          on every model-zone bar; now that dashing is reserved for disagreement
-          only (see the canvas code above), a plain dimmer bar is what "estimate"
-          looks like, and the pinned zone row above the chart already names that
-          zone in words ("RADAR · NEXT X H  ⋯  FORECAST · MODEL") — a second chip
-          repeating it was the exact redundancy this whole legend pass exists to
-          remove. "Models disagree" gets an actual swatch instead of bare text —
-          it used to be the one chip you couldn't match to anything on the chart. */}
+      {/* v2.37 — two chips, gated on something actually being drawn that they
+          explain (v2.18.0's reasoning, carried through the redesign): a trace echo,
+          a bleed spike, or a real models-disagree marker. Colour+height+shape (solid
+          fill vs. dashed line) already say everything else — nothing left to spell
+          out in a swatch key. */}
       {hasData && (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.07em] text-muted">
-          {hasTrace && (
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-1.5 rounded-[1px] shrink-0 opacity-[0.45]"
-                    style={{ background: pal.rain }} aria-hidden="true" />
-              {t('legend_trace')}
-            </span>
-          )}
-          {hasDisagreement && (
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-2 rounded-[1px] shrink-0 border border-dashed border-current"
-                    aria-hidden="true" />
-              {t('legend_uncertain')}
-            </span>
-          )}
+          {hasTrace && <span>{t('legend_trace')}</span>}
+          {hasBleed && <span>{t('legend_bleed')}</span>}
+          {hasDisagreement && <span>{t('legend_uncertain')}</span>}
         </div>
       )}
     </div>
   )
 }
-

@@ -1,4 +1,4 @@
-import { forecastColor, palOf } from './RainRibbon'
+import { skyPalOf } from './RainRibbon'
 
 // Donation link. Paste your PayPal.me / Stripe Payment Link / Ko-fi URL here,
 // or set VITE_DONATE_URL in Railway to override without editing code.
@@ -206,55 +206,63 @@ export default function InfoPanel({ open, onClose, onPrivacy, t, theme }) {
   )
 }
 
-// A miniature of the real ribbon, drawn as SVG rather than shipped as a picture:
-// it reads the same CSS colour tokens the chart itself uses, so it stays correct in
+// A miniature of the real chart, drawn as SVG rather than shipped as a picture:
+// it reads the same colour tokens the chart itself uses, so it stays correct in
 // both themes and cannot drift out of date the way a screenshot would.
-// Deliberately shows one story — raining, easing to a dry window, rain returning,
-// then the model zone — because that is the shape people need to recognise.
+// v2.37 — redrawn as a filled skyline (area + line) instead of bars, matching the
+// real ribbon's own bars→skyline redesign. A bar-shaped guide describing a chart
+// the app no longer draws is exactly the v2.18.0 lesson (the guide must never
+// drift from the picture it explains) — this keeps the two in lockstep the same
+// way DayGuide below stays honest about DayStrip's own, separate colour scale.
+// Deliberately shows one story: dry, a bleed the model already sees, the storm
+// itself, easing — then, past the radar horizon, a forecast line the two models
+// disagree about — because that is the shape people need to learn to read.
 function RibbonGuide({ t, theme }) {
-  const W = 40, BASE = 66, SPLIT = 6 * W
-  // v2.36: two wet colours only — wait (rain) and stuck (storm) — plus the gold dry
-  // baseline. Height still carries the fine-grained intensity within each colour.
-  // v2.36.3: the model zone is no longer a dimmed true colour — it is pulled
-  // toward grey (the exact same forecastColor() the real ribbon draws with, so
-  // this diagram cannot drift from the picture it explains), so "measured" vs
-  // "estimated" is a hue difference, not just a fainter one. Disagreement is a
-  // dashed outline in the bar's TRUE colour breaking through the grey fill.
-  const pal = palOf(theme)
-  const greyWait  = forecastColor(0.3, pal, theme) // any value in the "rain" tier
-  const greyStuck = forecastColor(2,   pal, theme) // any value in the "storm" tier
-  const bars = [
-    { h: 32, c: pal.storm },                       // storm
-    { h: 19, c: pal.rain  },
-    { h: 6,  c: pal.rain, faint: true },           // trace: a hairline, never taller than real rain
-    { h: 4,  c: 'var(--c-go)'    },                // the dry window
-    { h: 4,  c: 'var(--c-go)'    },
-    { h: 19, c: pal.rain  },
-    { h: 22, c: greyWait  },                       // ordinary model-zone estimate: greyed, no outline
-    { h: 32, c: greyStuck, true_: pal.storm, dash: true }, // the models disagree here
-  ]
+  const W = 40, BASE = 66, N = 8, SPLIT = 6 * W
+  const sky = skyPalOf(theme)
+  const vals = [0, 0, 0.3, 1.6, 2.3, 0.4, 0.5, 1.9]
+  const h = v => (v < 0.1 ? 2 : 6 + Math.min(1, v / 2.4) * 56)
+  const pts = vals.map((v, i) => ({ x: i * W + W / 2, y: BASE - h(v) }))
+  const full = [{ x: 0, y: pts[0].y }, ...pts, { x: N * W, y: pts[N - 1].y }]
+  const path = full.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
+  const areaPath = `M0,${BASE} ${full.map(p => `L${p.x},${p.y}`).join(' ')} L${SPLIT},${BASE} Z`
+  // The bleed: still inside the radar zone (index 1, still measured dry), the
+  // model already expects the rise that only actually arrives at index 3.
+  const bleedX = 1 * W + W / 2, bleedY = BASE - h(1.6)
+  // The argument: past the radar horizon, the two models disagree about index 7.
+  const argX = pts[7].x, argY = pts[7].y
   return (
     // w-full alone let the 320-wide viewBox stretch to the full panel on desktop —
     // ~6x scale, so the 7px zone captions rendered larger than the headings. Capped at
     // roughly its natural size: fills the width on a phone, stays a diagram on a laptop.
     <svg viewBox="0 0 320 82" className="w-full max-w-[360px] h-auto text-primary mb-4"
          role="img" aria-label={t('guide_ribbon_title')}>
-      {/* zone band */}
-      <rect x="0" y="0" width={SPLIT} height="12" fill="var(--c-go)" opacity="0.22" />
-      <rect x={SPLIT} y="0" width={320 - SPLIT} height="12" fill="var(--c-muted)" opacity="0.14" />
+      <defs>
+        <linearGradient id="skyGuideGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={sky.storm} />
+          <stop offset="100%" stopColor={sky.rain} />
+        </linearGradient>
+        <clipPath id="skyGuideRadar"><rect x="0" y="0" width={SPLIT} height={BASE + 2} /></clipPath>
+        <clipPath id="skyGuideFcst"><rect x={SPLIT} y="0" width={320 - SPLIT} height={BASE + 2} /></clipPath>
+      </defs>
       <text x="6" y="9" fontSize="7" fontFamily="monospace" fill="var(--c-muted)">RADAR</text>
       <text x={SPLIT + 6} y="9" fontSize="7" fontFamily="monospace" fill="var(--c-muted)">
         {t('guide_ribbon_lbl_model')}
       </text>
-      {bars.map((b, i) => {
-        const x = i * W + 1, y = BASE - b.h
-        if (b.dash) {
-          return <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c}
-                       stroke={b.true_} strokeWidth="1.2" strokeDasharray="1.5 3" />
-        }
-        return <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c}
-                     fillOpacity={b.faint ? 0.45 : 1} />
-      })}
+      {/* filled radar zone */}
+      <path d={areaPath} fill="url(#skyGuideGrad)" fillOpacity="0.85" clipPath="url(#skyGuideRadar)" />
+      <path d={path} stroke="url(#skyGuideGrad)" strokeWidth="2" fill="none" clipPath="url(#skyGuideRadar)" />
+      {/* dashed forecast continuation, no fill */}
+      <path d={path} stroke="url(#skyGuideGrad)" strokeWidth="2" fill="none"
+            strokeDasharray="4 3" clipPath="url(#skyGuideFcst)" />
+      {/* bleed spike */}
+      <path d={`M${bleedX - W / 2 + 3},${BASE} L${bleedX},${bleedY} L${bleedX + W / 2 - 3},${BASE}`}
+            stroke={sky.storm} strokeWidth="1.5" strokeDasharray="3 2" fill="none" />
+      <circle cx={bleedX} cy={bleedY} r="3" fill="var(--c-bg)" stroke={sky.storm} strokeWidth="1.5" />
+      {/* disagreement ring */}
+      <line x1={argX} y1={argY - 10} x2={argX} y2={BASE} stroke="var(--c-primary)"
+            strokeWidth="1" strokeDasharray="2 2" opacity="0.55" />
+      <circle cx={argX} cy={argY} r="3.5" fill="var(--c-bg)" stroke={sky.storm} strokeWidth="1.5" />
       {/* radar → model divider */}
       <line x1={SPLIT} y1="0" x2={SPLIT} y2={BASE + 14} stroke="var(--c-muted)"
             strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
