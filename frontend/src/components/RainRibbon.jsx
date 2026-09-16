@@ -128,6 +128,26 @@ function precipToHeight(p) {
   return Math.round(MIN_REAL_H + Math.min(1, f) * (MAX_BAR_H - MIN_REAL_H))
 }
 
+// Collapse a run of consecutive TRUE flags into spans — same "one annotation
+// per contiguous stretch" doctrine as dryRunIn below, applied to the
+// bleed/disagreement markers (v2.37.1). Live data showed WHY this matters:
+// a real forecast can disagree with itself across many consecutive slots at
+// once, and a marker on every one of them reads as a wall of circles rather
+// than "here's where the sources diverge" — exactly the "more confusing
+// than the reference" report this was built to fix. One marker per run, at
+// its peak, keeps the real signal (a disagreement/bleed still gets flagged,
+// nothing is hidden — leads forgiven, lags never) without the clutter.
+function collapseRuns(flags) {
+  const runs = []
+  let start = null
+  flags.forEach((f, i) => {
+    if (f) { if (start === null) start = i }
+    else if (start !== null) { runs.push({ a: start, b: i - 1 }); start = null }
+  })
+  if (start !== null) runs.push({ a: start, b: flags.length - 1 })
+  return runs
+}
+
 // The model's own reading nearest a given radar-zone window — extracted to
 // module scope (v2.37) so both the drawing effect and the legend-gating
 // logic in the render body call the exact same function; two independent
@@ -385,18 +405,30 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // Bleed markers (radar zone only, v2.37): the real showGhost() predicate
     // (gaps.js) — a model reading materially higher than what's actually
     // measured at this exact slot, still inside the radar's own window. A
-    // small dashed spike breaks up out of the filled area at that one point
-    // — the fill stays an honest picture of what's measured, the spike says
+    // small dashed spike breaks up out of the filled area at that point —
+    // the fill stays an honest picture of what's measured, the spike says
     // what's expected. This is the same signal the old bar chart's ghost
     // bars carried (v2.1.0/v2.18.0), just drawn in this chart's own line
-    // language instead of a second bar. Independent per slot — a run of
-    // several disagreeing slots draws several spikes, not just one.
-    slots.forEach((slot, i) => {
-      if (slot.end > radarUntil) return // forecast zone: no radar to bleed against
+    // language instead of a second bar.
+    // v2.37.1 — ONE marker per contiguous run (collapseRuns), at the run's
+    // highest model reading, not one per slot. Live data showed several
+    // consecutive slots bleeding at once is the common case, not the rare
+    // one, and a marker on every single one of them was the "wall of
+    // circles" a live report flagged as more confusing than the design
+    // mockup it was built from.
+    const bleedFlags = slots.map(slot => {
+      if (slot.end > radarUntil) return false // forecast zone: no radar to bleed against
       const mp = modelPeakAt(mTimes, mPrecips, slot.t, slot.end)
-      if (mp == null || !showGhost(slot.p, mp)) return
-      const x  = i * SLOT_W + SLOT_W / 2
-      const gy = CHART_H - precipToHeight(mp)
+      return mp != null && showGhost(slot.p, mp)
+    })
+    collapseRuns(bleedFlags).forEach(run => {
+      let peakI = run.a, peakMp = -Infinity
+      for (let i = run.a; i <= run.b; i++) {
+        const mp = modelPeakAt(mTimes, mPrecips, slots[i].t, slots[i].end)
+        if (mp > peakMp) { peakMp = mp; peakI = i }
+      }
+      const x  = peakI * SLOT_W + SLOT_W / 2
+      const gy = CHART_H - precipToHeight(peakMp)
       ctx.save()
       ctx.strokeStyle = grad
       ctx.setLineDash([3, 2])
@@ -422,13 +454,19 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // Disagreement markers (forecast zone only): the two forecast models
     // (modelsAgree, v2.18.0) argue about the same slot. A dashed ring on the
     // forecast line — same treatment the old hatched hollow bar used to
-    // carry, ported to a line instead of a box. Independent per slot, same
-    // reasoning as the bleed markers above.
-    slots.forEach((slot, i) => {
-      if (slot.end <= radarUntil) return // radar zone: this marker is about two MODELS arguing
-      if (slot.p < DRY_THRESHOLD || slot.agree !== false) return
-      const x = i * SLOT_W + SLOT_W / 2
-      const y = CHART_H - precipToHeight(slot.p)
+    // carry, ported to a line instead of a box.
+    // v2.37.1 — same run-collapsing as the bleed markers above, and for the
+    // same live-data reason: a real model disagreement often spans many
+    // consecutive slots, not one.
+    const argueFlags = slots.map(slot =>
+      slot.end > radarUntil && slot.p >= DRY_THRESHOLD && slot.agree === false)
+    collapseRuns(argueFlags).forEach(run => {
+      let peakI = run.a, peakP = -Infinity
+      for (let i = run.a; i <= run.b; i++) {
+        if (slots[i].p > peakP) { peakP = slots[i].p; peakI = i }
+      }
+      const x = peakI * SLOT_W + SLOT_W / 2
+      const y = CHART_H - precipToHeight(peakP)
       ctx.save()
       ctx.strokeStyle = labelCol
       ctx.globalAlpha = 0.55

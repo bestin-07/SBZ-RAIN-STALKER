@@ -1361,7 +1361,7 @@ export default function App() {
           </div>
           <div
             ref={scrollRef}
-            className="h-full overflow-y-auto overscroll-y-contain scrollbar-none flex flex-col gr-col"
+            className="h-full overflow-x-hidden overflow-y-auto overscroll-y-contain scrollbar-none flex flex-col gr-col"
             style={{
               transform: pullDistance ? `translateY(${pullDistance}px)` : undefined,
               transition: pullActive ? 'none' : 'transform 0.2s ease',

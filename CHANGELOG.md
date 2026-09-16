@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.37.1] - 2026-09-16 - Gemma Raus just got better: fewer circles, and the page holds still sideways 🩹
+
+*Two real reports from v2.37.0, live within the hour.*
+
+**What happened**
+
+The skyline chart's new markers — flagging where the model expects more than radar sees, or where the two forecast models argue — were drawn one per matching 30-minute slot. Live data showed several slots in a row often trip the same flag together, so a genuinely uncertain stretch drew a whole row of little circles instead of one clear flag — busier and harder to read than the mockup it was built from. Separately, yesterday's browser-bar fix (v2.36.8/.9) traded away a bit of sideways containment it didn't mean to: the page could be nudged a little to the right, which it never used to do.
+
+**What's new for you**
+
+- **One marker per stretch, not one per slot.** When several slots in a row agree that something's off, that whole stretch now gets a single marker at its strongest point, instead of a chain of circles down the line.
+- **The page holds still sideways again.** No more accidental nudge to the right.
+
+**Nothing about the verdict changed.**
+
+---
+
 ## [2.37.0] - 2026-09-16 - Gemma Raus just got better: today's chart is a skyline now, and one more scroll gap is closed 🌤️
 
 *A design pass on today's rain chart, worked through against a few mocked-up options before picking one — plus a follow-up to yesterday's scroll fix.*
