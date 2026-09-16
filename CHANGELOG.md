@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.8] - 2026-09-16 - Gemma Raus just got better: nothing gets stuck behind your browser's own bar 🧾
+
+*A real gap left over from removing the page scroll.*
+
+**What happened**
+
+On some mobile browsers (in a regular tab, not the installed app), the very bottom of the screen was hidden behind the browser's own toolbar — and because the app deliberately doesn't scroll, there was no way to reach it.
+
+**What's new for you**
+
+- **The app now measures the real visible space more reliably**, using the same signal the browser itself uses for things like the on-screen keyboard, instead of trusting a CSS setting alone.
+- **As a safety net, the app can now be scrolled** if a browser's own chrome still doesn't leave the space we expect. On a device where everything already fit, this changes nothing — there's simply nothing to scroll.
+
+**Nothing about the verdict changed.**
+
+---
+
 ## [2.36.7] - 2026-09-16 - Gemma Raus just got better: the headline never wraps again 🧾
 
 *A real bug from yesterday's font change, fixed properly.*

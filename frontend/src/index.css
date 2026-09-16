@@ -57,7 +57,9 @@ html.light {
   }
 
   html, body, #root {
-    height: 100%;
+    /* v2.36.8: --app-vh (main.jsx, from window.visualViewport) wins whenever
+       JS has run; 100% is the pre-JS/no-JS fallback, unchanged from before. */
+    height: var(--app-vh, 100%);
     margin: 0;
     padding: 0;
     background: var(--c-bg);
@@ -68,10 +70,13 @@ html.light {
 
   /* iOS Safari: 100% tracks the shifting toolbar poorly; the dynamic viewport
      unit sizes the app shell exactly, so the map bottom is never hidden behind
-     the collapsed toolbar. Browsers without dvh keep the 100% above. */
+     the collapsed toolbar. Browsers without dvh keep the 100% above.
+     v2.36.8: --app-vh still wins over dvh where JS has run — see main.jsx for
+     why dvh alone wasn't always enough (a live report of cropped content with
+     no way to scroll to it). */
   @supports (height: 100dvh) {
     html, body, #root {
-      height: 100dvh;
+      height: var(--app-vh, 100dvh);
     }
   }
 

@@ -1271,7 +1271,17 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-bg text-primary overflow-hidden">
+    // v2.36.8 — overflow-hidden -> overflow-y-auto, as a safety net alongside
+    // the --app-vh fix above (main.jsx/index.css): if the visible viewport is
+    // ever STILL smaller than what we computed (an odd browser/webview whose
+    // chrome even visualViewport can't fully account for), the user can now
+    // reach the cropped bottom by scrolling the whole app shell, instead of it
+    // being permanently unreachable behind a browser's own bottom bar. A no-op
+    // everywhere the height is already correct — there's nothing to scroll, so
+    // this changes nothing on a device where --app-vh/100dvh already matched.
+    // overscroll-y-contain keeps a big scroll-past here from chaining into the
+    // browser's own pull gesture, matching body's existing overscroll rule.
+    <div className="flex flex-col h-full bg-bg text-primary overflow-y-auto overscroll-y-contain">
       <Header {...headerProps} />
 
       <UpdateNote t={t} />

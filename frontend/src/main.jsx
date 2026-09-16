@@ -93,6 +93,36 @@ if ('serviceWorker' in navigator) {
 // build immediately rather than waiting for the first resume.
 window.addEventListener('load', () => { setTimeout(checkForNewBuild, 2000) })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Real visible height (v2.36.8).
+//
+// CSS `100dvh` (index.css) is meant to track a mobile browser's own collapsing
+// toolbar, but it's the BROWSER that decides when it's settled — and this page
+// never scrolls by design (v2.36.1), which is exactly the gesture some mobile
+// browsers use to decide the toolbar can collapse. Live report: the bottom of
+// the app was cropped behind a browser's own bottom bar with no way to reach
+// it, since the app has no scroll to fall back on.
+//
+// window.visualViewport.height is the browser's own live answer to "how much
+// is actually visible right now" — updated continuously, and a more reliable
+// signal across browsers/webviews than the CSS unit alone. Synced onto a
+// custom property that index.css's height rules read ahead of the dvh/percent
+// fallback, so nothing changes anywhere dvh was already correct, and the app
+// self-corrects anywhere it wasn't. Guarded for browsers without
+// visualViewport (Safari < 13, some older Android WebViews): falls back to
+// window.innerHeight/resize, which is the same value dvh itself degrades to.
+function syncViewportHeight() {
+  const h = window.visualViewport?.height ?? window.innerHeight
+  document.documentElement.style.setProperty('--app-vh', `${h}px`)
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncViewportHeight)
+  window.visualViewport.addEventListener('scroll', syncViewportHeight)
+} else {
+  window.addEventListener('resize', syncViewportHeight)
+}
+syncViewportHeight()
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
