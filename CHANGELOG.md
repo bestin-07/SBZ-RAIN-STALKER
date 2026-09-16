@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.0] - 2026-09-16 - Gemma Raus just got better: today and the outlook, split apart 📑
+
+*A design pass, worked out with users before it shipped.*
+
+**What's new for you**
+
+- **Today and the outlook now live behind two tabs.** The rain chart and the five-day forecast used to sit stacked on top of each other, so the picture for the next few hours and the picture for the weekend read as one long scroll. **Today** now holds the radar chart and the map; **Coming days** holds the outlook. Nothing about either one changed — they're just no longer competing for the same glance.
+- **The rain chart lost its colour key.** It used to explain five shades — dry, light, moderate, heavy, storm — in small print underneath. The bar's own height already said how heavy the rain was, so the key was repeating the picture in words. It's down to two rain colours now, and the height still does the talking.
+- **The five-day outlook finally says *when*.** Each day drew a shape for its 24 hours with nothing marking the hours themselves, so "rain in the colored part" didn't tell you if that meant morning or evening. A small 00–24 scale now sits above the five days, shared across all of them, so a wet stretch reads as a time of day, not just a smear of colour.
+- **Today's sky facts sit in their own little capsule** — the cloud icon, condition, temperature and wind — instead of floating loose above the headline.
+
+**Nothing about the verdict changed.** Every threshold, countdown, and decision this app makes is untouched — this release only changes what's drawn and how it's grouped on screen.
+
+---
+
 ## [2.35.1] - 2026-09-15 - Gemma Raus just got better: readable in daylight 🔆
 
 *A few spots that only looked right at night.*

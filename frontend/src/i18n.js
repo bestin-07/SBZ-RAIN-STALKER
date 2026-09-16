@@ -110,14 +110,6 @@ export const translations = {
     zone_radar: 'RADAR · NÄCHSTE {h} STD',
     zone_forecast: 'PROGNOSE · MODELL',
     legend_uncertain: 'Modelle uneinig',
-    // v2.35 — kurze Beschriftungen für die Farbskala unter dem Balkendiagramm.
-    // Bewusst NICHT die längeren `light_rain`/`mod_rain`-Strings: die Skala ist
-    // eine Legende, keine Beschreibung, und muss in eine Zeile passen.
-    key_dry:   'TROCKEN',
-    key_light: 'LEICHT',
-    key_mod:   'MÄSSIG',
-    key_heavy: 'STARK',
-    key_storm: 'STURM',
     // Beschriftung der trockenen Spanne im Diagramm (v2.35).
     bracket_dry_min: 'TROCKEN · {min} MIN',
     bracket_dry_h:   'TROCKEN · {h} STD',
@@ -221,6 +213,10 @@ export const translations = {
     wx_thunder: 'Gewitter',
     days_title: 'Nächste 5 Tage',
     days_title_forecast: 'Kommende Tage · Prognose',
+    // v2.36 — Reiter über Ribbon/Tagesübersicht: heute (Radar) vs. kommende Tage
+    // (Prognose). Kurz gehalten wie ein Segmented Control, kein neuer Begriff.
+    tab_today: 'HEUTE',
+    tab_days:  'KOMMENDE TAGE',
     zone_caption_model: 'Gerade kein Live-Radar — alles hier, und jeder der Tage unten, ist eine Prognose.',
     today_short: 'HEUTE',
     // Deliberately "Fenster", not "raus": this is a PLAN for another day, and it
@@ -343,7 +339,7 @@ export const translations = {
     guide_ribbon_2: 'Eine flache, niedrige Stelle ist eine trockene Lücke — genau das Fenster, das du suchst.',
     guide_ribbon_3: 'Durchgezogene Balken kommen vom Radar — die ersten rund 2½ Stunden, also was tatsächlich fällt. Gestrichelte kommen vom Wettermodell und sind weniger sicher.',
     guide_ribbon_4: 'Der senkrechte Strich ganz links ist „jetzt“, nach rechts geht es in die Zukunft. Ein ganz dünner Balken heißt: kaum mehr als ein Hauch Niesel.',
-    guide_ribbon_5: 'Die Farben gehen von Gold (trocken) über Hellblau (leicht) und Blau (mäßig) bis Dunkelblau (stark) und Orange (Sturm) — dieselbe Skala wie bei den Tagen darunter.',
+    guide_ribbon_5: 'Gold heißt trocken, Blau heißt Regen, Dunkelblau heißt Starkregen — wie stark, zeigt die Höhe des Balkens, nicht die Farbe. Dieselbe Skala wie bei den Tagen darunter.',
     guide_ribbon_6: 'Nur der Radar-Teil ist gemessen. Alles rechts davon — und jeder einzelne der kommenden Tage — ist Prognose.',
     guide_weather:    'Unter dem Status gibt es Hinweise zu Temperatur, Wind oder Schnee — immer bezogen auf deinen Standort.',
     guide_locate:     'Auf der Karte zeigt ein kleines Banner die Radar-Zeit (Radar/Vorschau). Tippe auf das Fadenkreuz, um deinen Standort neu zu bestimmen — praktisch, wenn du unterwegs warst.',
@@ -467,14 +463,6 @@ export const translations = {
     zone_radar: 'RADAR · NEXT {h} H',
     zone_forecast: 'FORECAST · MODEL',
     legend_uncertain: 'models disagree',
-    // v2.35 — short labels for the colour scale under the chart. Deliberately NOT
-    // the longer `light_rain`/`mod_rain` strings: the scale is a legend, not a
-    // description, and it has to fit on one line.
-    key_dry:   'DRY',
-    key_light: 'LIGHT',
-    key_mod:   'MOD',
-    key_heavy: 'HEAVY',
-    key_storm: 'STORM',
     // Label on the dry span drawn in the chart (v2.35).
     bracket_dry_min: 'DRY · {min} MIN',
     bracket_dry_h:   'DRY · {h} H',
@@ -572,6 +560,10 @@ export const translations = {
     wx_thunder: 'Thunderstorm',
     days_title: 'Next 5 days',
     days_title_forecast: 'Coming days · forecast',
+    // v2.36 — tab labels over the ribbon/day-strip: today (radar) vs. coming days
+    // (forecast). Kept short, like a segmented control, no new concept.
+    tab_today: 'TODAY',
+    tab_days:  'COMING DAYS',
     zone_caption_model: 'no live radar right now — everything here, and every one of the days below, is a forecast.',
     today_short: 'TODAY',
     best_window: 'best window: {day} {from}–{to}',
@@ -690,7 +682,7 @@ export const translations = {
     guide_ribbon_2: 'a low, flat stretch is a dry gap — that is the window you are looking for.',
     guide_ribbon_3: 'solid bars come from radar — the first 2½ hours or so, what is actually falling. dashed bars come from the weather model, so they are less certain.',
     guide_ribbon_4: 'the vertical line on the left is "now", and everything to the right is still ahead. a very thin bar means barely more than a hint of drizzle.',
-    guide_ribbon_5: 'colours run from gold (dry) through light blue (light) and blue (moderate) to deep blue (heavy) and orange (storm) — the same scale as the days below.',
+    guide_ribbon_5: 'Gold means dry, blue means rain, dark blue means a downpour — how heavy is the bar\'s height, not its colour. Same scale as the days below.',
     guide_ribbon_6: 'only the radar part is measured. everything to the right of it — and every single one of the coming days — is a forecast.',
     guide_weather:    'below the main status you get notes on temperature, wind or snow. always based on your location.',
     guide_locate:     'on the map a small banner shows the radar time (radar/nowcast). tap the crosshair to re-fetch your location — handy after you have been on the move.',

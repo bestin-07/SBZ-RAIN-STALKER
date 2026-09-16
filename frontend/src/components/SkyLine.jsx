@@ -34,7 +34,10 @@ export default function SkyLine({ weather, t, compact = false }) {
 
   return (
     <div className={compact
-      ? 'flex items-center gap-2 mb-2.5'
+      // v2.36 — a rounded chip instead of a bare row, so the sky facts read as
+      // one self-contained fact (Apple Weather's "today" capsule) rather than
+      // floating loose above the headline they sit next to.
+      ? 'flex items-center gap-2 mb-3 bg-surface border border-border rounded-2xl px-3 py-2 shadow-sm'
       : 'px-4 py-2.5 border-b border-border shrink-0 flex items-center gap-2.5'}>
       <WeatherGlyph code={weather.code} size={compact ? 18 : 22} />
       <span className={'font-mono flex-1 min-w-0 truncate '

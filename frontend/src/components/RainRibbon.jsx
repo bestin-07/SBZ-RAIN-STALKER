@@ -42,27 +42,28 @@ const BRACKET_H = 12
 const MAX_SLOTS = 49
 const DRY_THRESHOLD = 0.1
 
-// Theme-aware rain palette. The dry / moderate / heavy values are kept identical
-// to the GO / WAIT / STUCK headline colours (--c-go / --c-wait / --c-stuck in
-// index.css) so the status headline always matches its legend swatch and bars —
-// in dark AND light mode. Light-mode values are darkened for contrast on cream.
+// Theme-aware rain palette (v2.36 — collapsed from five intensity colours to two:
+// height was already continuous (v2.23), so a five-way ramp was colour and height
+// both saying the same thing. `rain` and `storm` are kept identical to the WAIT /
+// STUCK headline colours (--c-wait / --c-stuck in index.css) — the two remaining
+// wet colours were already the two that matched the app's own status doctrine;
+// the ones dropped (the old `light` and the orange `storm`) were the two that
+// didn't. Dry stays the GO colour, drawn only as the thin baseline it always was.
 const PALETTE = {
-  dark:  { dry: '#D4A017', light: '#6CD1EB', mod: '#1BAEE2', heavy: '#0077AA', storm: '#E05C00' },
-  light: { dry: '#7A5E00', light: '#1E86B0', mod: '#0A6E9C', heavy: '#024D6E', storm: '#B34A00' },
+  dark:  { dry: '#D4A017', rain: '#1BAEE2', storm: '#0077AA' },
+  light: { dry: '#7A5E00', rain: '#0A6E9C', storm: '#024D6E' },
 }
 export function palOf(theme) { return PALETTE[theme === 'light' ? 'light' : 'dark'] }
 
-// The intensity class of a reading. ONE definition, used by the colour, by the
-// height ramp's stops and (v2.35) by the colour key under the chart — so a key
-// that lists MOD is a key drawn over a bar that actually reached the mod class.
-export const TIERS = ['dry', 'light', 'mod', 'heavy', 'storm']
+// Three classes only: dry, rain, storm. The storm line sits at the app's own
+// DOWNPOUR_MM (1.5 mm/15min, App.jsx) rather than a new number — the ribbon's
+// "storm" now means the same threshold the downpour warning already means.
+const STORM_THRESHOLD = 1.5
 
 export function tierOf(p) {
-  if (p < DRY_THRESHOLD) return 'dry'
-  if (p < 0.5)           return 'light'
-  if (p < 2)             return 'mod'
-  if (p < 5)             return 'heavy'
-  return                        'storm'
+  if (p < DRY_THRESHOLD)      return 'dry'
+  if (p < STORM_THRESHOLD)    return 'rain'
+  return                             'storm'
 }
 
 export function precipToColor(p, pal) { return pal[tierOf(p)] }
@@ -319,10 +320,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           const gh = precipToHeight(mp)
           ctx.save()
           ctx.globalAlpha = 0.28
-          ctx.fillStyle = pal.light
+          ctx.fillStyle = pal.rain
           ctx.fillRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
           ctx.globalAlpha = 1
-          ctx.strokeStyle = pal.light
+          ctx.strokeStyle = pal.rain
           ctx.setLineDash([3, 2])
           ctx.lineWidth = 1.5
           ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
@@ -342,7 +343,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       if (slot.p > 0 && slot.p < DRY_THRESHOLD) {
         ctx.save()
         ctx.globalAlpha = beyondRadar ? 0.25 : (forecast.tracePhantom ? 0.12 : 0.45)
-        ctx.fillStyle = pal.light
+        ctx.fillStyle = pal.rain
         ctx.fillRect(x, SLOT_H - TRACE_H, SLOT_W - 1, TRACE_H)
         ctx.restore()
       }
@@ -490,9 +491,6 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const hasModelZone = rbars.some(b =>
     (!showRadarZone || b.t > (forecast?.radarUntil ?? Infinity)) && b.p >= DRY_THRESHOLD)
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
-  // Which intensity classes the chart actually reaches. `dry` is always in, because
-  // the gold baseline is drawn under every bar.
-  const tiersShown = TIERS.filter(k => k === 'dry' || rbars.some(b => tierOf(b.p) === k))
   // The bracket, recomputed here from the same pure function and the same bars the
   // canvas uses, so the two cannot disagree about whether a dry span was drawn.
   const rUntil = showRadarZone ? (forecast?.radarUntil ?? Infinity) : -Infinity
@@ -566,30 +564,19 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           </div>
         )}
       </div>
-      {/* v2.32 replaced a six-swatch key with two lines of prose; v2.35 puts a key
-          back, but a CONDITIONAL one. The instrument question the prose answered is
-          now answered by the pinned zone row above, in fewer words and in the right
-          place — and what is left for this row is the thing a reader genuinely
-          cannot deduce from the picture: which colour means what. Every entry is
-          gated on something actually being drawn that it explains (v2.18.0's own
-          reasoning for the disagreement chip, extended to all of them), so a dry
-          day collapses to a single swatch and a storm shows the whole ramp.
-
-          The full scale, including the tiers a calm day never reaches, stays in the
-          guide (guide_ribbon_5) where someone learning it is already looking. */}
+      {/* v2.36 — the intensity swatch key is gone. It named DRY/LIGHT/MOD/HEAVY/STORM
+          for a five-colour ramp; the palette is now two wet colours plus height
+          (already continuous since v2.23), so a bar's own colour and height say what
+          the key used to spell out in words. What is left here is the thing colour
+          and height genuinely cannot show: CONFIDENCE — a trace echo, a model-only
+          estimate, two models in disagreement. Each chip is still gated on something
+          actually being drawn that it explains (v2.18.0's reasoning, unchanged). */}
       {hasData && (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.07em] text-muted">
-          {tiersShown.map(k => (
-            <span key={k} className="flex items-center gap-1">
-              <span className="inline-block w-3 h-1.5 rounded-[1px] shrink-0"
-                    style={{ background: pal[k] }} aria-hidden="true" />
-              {t('key_' + k)}
-            </span>
-          ))}
           {hasTrace && (
             <span className="flex items-center gap-1">
               <span className="inline-block w-3 h-1.5 rounded-[1px] shrink-0 opacity-[0.45]"
-                    style={{ background: pal.light }} aria-hidden="true" />
+                    style={{ background: pal.rain }} aria-hidden="true" />
               {t('legend_trace')}
             </span>
           )}

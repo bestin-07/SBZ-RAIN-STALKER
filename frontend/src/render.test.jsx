@@ -136,36 +136,35 @@ for (const lang of ['de', 'en']) {
                     unstable={false} modelRainMin={null} />)
       expect(html).not.toContain(esc(t('zone_caption_model').slice(0, 20)))
       expect(html).not.toContain(esc(t('zone_radar', { h: '3' })))
-      // …and no colour key either: a key describes a picture, and there isn't one.
-      expect(html).not.toContain(esc(t('key_dry')))
     })
 
-    // v2.35 — the colour key is conditional. Every entry has to be explaining
-    // something that is actually drawn, which is v2.18.0's reasoning for the
-    // disagreement chip applied to all of them. A key naming a colour that is
-    // nowhere on the chart is the v2.34 label-drift bug in miniature.
-    it('the colour key names only the tiers the chart actually reaches', () => {
+    // v2.36 — the intensity swatch key (DRY/LIGHT/MOD/HEAVY/STORM) is gone from
+    // the ribbon: the palette collapsed to two wet colours, and height was
+    // already continuous (v2.23), so a bar's own colour+height already say what
+    // the key used to spell out in words. Pinning the deletion at the i18n level
+    // — the canvas colours themselves are an imperative side effect invisible to
+    // renderToStaticMarkup, so a colour is not something this suite can assert.
+    it('drops the intensity swatch key strings entirely', () => {
+      for (const k of ['key_dry', 'key_light', 'key_mod', 'key_heavy', 'key_storm']) {
+        expect(translations[lang][k]).toBeUndefined()
+      }
+    })
+
+    // The confidence chips (trace / model-only / disagreement) are unaffected by
+    // the palette simplification — still conditional, still there when earned.
+    it('keeps the confidence chips (trace, model estimate, disagreement)', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
-      const ribbon = precips => renderToStaticMarkup(
-        <RainRibbon forecast={{ times, precips, isNowcast: true, radarUntil: now + 2.66 * 3600 }}
-                    theme="light" t={t} unstable={false} modelRainMin={null} />)
-
-      // Matched as a whole key entry, not as a substring: "MOD" also occurs inside
-      // "FORECAST · MODEL" in the zone row two lines above it.
-      const entry = k => esc(t(k)) + '</span>'
-
-      const dry = ribbon(times.map(() => 0))
-      expect(dry).toContain(entry('key_dry'))
-      for (const k of ['key_light', 'key_mod', 'key_heavy', 'key_storm']) {
-        expect(dry).not.toContain(entry(k))
-      }
-
-      // A storm slot pulls in every class below it that the bars also reach.
-      const wet = ribbon(times.map((_, i) => [0, 0.3, 1.2, 3, 7][i % 5]))
-      for (const k of ['key_dry', 'key_light', 'key_mod', 'key_heavy', 'key_storm']) {
-        expect(wet).toContain(entry(k))
-      }
+      // radarUntil 5 min out → below MIN_RADAR_ZONE_MIN, so the whole timeline
+      // draws as the model-only zone: one trace slot (0.05) and one real wet
+      // slot (0.3) are enough to earn both chips.
+      const html = renderToStaticMarkup(
+        <RainRibbon forecast={{
+          times, precips: times.map((_, i) => [0.05, 0.3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0][i]),
+          isNowcast: true, radarUntil: now + 300,
+        }} theme="light" t={t} unstable={false} modelRainMin={null} />)
+      expect(html).toContain(esc(t('legend_trace')))
+      expect(html).toContain(esc(t('legend_model')))
     })
 
     it('DayStrip renders nothing without data', () => {

@@ -38,6 +38,14 @@ function fmtHour(ts, lang) {
   }).format(new Date(ts * 1000))
 }
 
+// Hour-only, for the axis strip above the rows — an orientation tick, not a
+// reading, so minutes would just be noise.
+function fmtHourOnly(ts, lang) {
+  return new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', {
+    hour: '2-digit', timeZone: TZ, hourCycle: 'h23',
+  }).format(new Date(ts * 1000))
+}
+
 // `skipToday` (v2.32): today is drawn above as the tall tile, from radar + model,
 // so repeating it here as a thin row would be the same day claimed twice by two
 // different instruments at two different resolutions. The rows below are therefore
@@ -79,6 +87,18 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
     if (w) best = preferWindow(best, { ...w, day: days[i].start, rain: days[i].rain })
   }
 
+  // v2.36 — a shared hour axis above the rows: every day's shape is the same 12
+  // buckets, so one scale is enough, and the reader can finally tell WHEN in the
+  // row a wet bucket falls. Ticks come from the first VISIBLE day's own start/end,
+  // not from hardcoded clock times — dayBuckets divides the real span into 12
+  // equal parts, and on the two DST days a year that span is ~1h55 or ~2h05, not
+  // exactly 2h. Reading the tick off the same math keeps the axis honest instead
+  // of just looking round.
+  const axisDay = days.find((_, i) => !(skipToday && i === 0))
+  const axisTicks = axisDay
+    ? [0, 0.25, 0.5, 0.75].map(f => fmtHourOnly(axisDay.start + f * (axisDay.end - axisDay.start), lang))
+    : null
+
   return (
     <div className="border-b border-border shrink-0 px-4 py-2.5">
       {/* One line, always (v2.35). The title never shrinks and never wraps; the
@@ -100,6 +120,31 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
             : t('best_window_none')}
         </span>
       </div>
+
+      {/* v2.36 — the shared hour axis, aligned to the exact same widths/gap as a
+          day row below so its ticks land over the day-shape column, not beside
+          it. Purely orientation, so it's aria-hidden — the times it names aren't
+          read out anywhere else, the shape below it is. */}
+      {axisTicks && (
+        <div className="flex items-center gap-2.5 pb-1" aria-hidden="true">
+          <span className="w-12 shrink-0" />
+          <span className="w-5 shrink-0" />
+          <span className="flex-1 min-w-0 max-w-[460px] relative h-3">
+            {axisTicks.map((lbl, i) => (
+              <span
+                key={i}
+                className="absolute top-0 font-mono text-[8px] text-muted tabular-nums"
+                style={{ left: `${i * 25}%`, transform: i === 0 ? undefined : 'translateX(-50%)' }}
+              >
+                {lbl}
+              </span>
+            ))}
+            <span className="absolute top-0 right-0 font-mono text-[8px] text-muted tabular-nums">24</span>
+          </span>
+          <span className="w-9 shrink-0" />
+          <span className="w-14 shrink-0" />
+        </div>
+      )}
 
       {days.filter((_, i) => !(skipToday && i === 0)).map((d, i0) => (
         <div

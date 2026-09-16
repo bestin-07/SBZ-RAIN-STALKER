@@ -125,6 +125,10 @@ export default function App() {
   // v2.35 — is the weather-alert stack expanded? Collapsed by default; the `alerts`
   // array below explains why the stack is folded at all.
   const [alertsOpen, setAlertsOpen] = useState(false)
+  // v2.36 — today (radar ribbon + map) vs. coming days (forecast strip). Display
+  // only: both panels already fetch and compute exactly as before, this just
+  // decides which one is on screen.
+  const [dayTab, setDayTab] = useState('now')
   const [stormCape, setStormCape] = useState(null)
   const [unsettled, setUnsettled] = useState(false)   // convective-watch Layer 1 (regime)
   const [capeUnstable, setCapeUnstable] = useState(false) // CAPE ≥ 300 → ribbon dry-label says "can change fast"
@@ -1418,9 +1422,35 @@ export default function App() {
               </span>
             </div>
           )}
-          <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
-          <DayStrip daily={daily} theme={theme} t={t} lang={lang} skipToday />
-          <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
+          {/* v2.36 — today (radar ribbon + map) split from the forecast (coming days)
+              behind two tabs. Neither panel's data or logic changed: this only
+              decides which of the two already-computed blocks is on screen. The map
+              stays with "today" because it's a NOW instrument (live radar overlay,
+              live town readings) — it has nothing to say about Friday. */}
+          <div className="flex px-4 pt-2.5 pb-1.5 gap-1.5 shrink-0" role="tablist" aria-label={t('tab_today') + ' / ' + t('tab_days')}>
+            {['now', 'days'].map(id => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={dayTab === id}
+                onClick={() => setDayTab(id)}
+                className={'flex-1 font-mono text-[10px] uppercase tracking-[0.1em] font-bold py-2 rounded-xl border transition-colors '
+                  + (dayTab === id
+                    ? 'bg-surface border-border text-primary'
+                    : 'border-transparent text-muted')}
+              >
+                {t(id === 'now' ? 'tab_today' : 'tab_days')}
+              </button>
+            ))}
+          </div>
+          {dayTab === 'now' ? (
+            <>
+              <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
+              <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
+            </>
+          ) : (
+            <DayStrip daily={daily} theme={theme} t={t} lang={lang} skipToday />
+          )}
           </div>
         </div>
       )}

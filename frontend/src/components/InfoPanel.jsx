@@ -211,15 +211,17 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
 // then the model zone — because that is the shape people need to recognise.
 function RibbonGuide({ t }) {
   const W = 40, BASE = 66, SPLIT = 6 * W
+  // v2.36: two wet colours only — wait (rain) and stuck (storm) — plus the gold dry
+  // baseline. Height still carries the fine-grained intensity within each colour.
   const bars = [
-    { h: 28, c: 'var(--c-wait)'  },
-    { h: 19, c: 'var(--c-light)' },
-    { h: 6,  c: 'var(--c-light)', faint: true },   // trace: a hairline, never taller than real rain
+    { h: 32, c: 'var(--c-stuck)' },                // storm
+    { h: 19, c: 'var(--c-wait)'  },
+    { h: 6,  c: 'var(--c-wait)', faint: true },    // trace: a hairline, never taller than real rain
     { h: 4,  c: 'var(--c-go)'    },                // the dry window
     { h: 4,  c: 'var(--c-go)'    },
-    { h: 19, c: 'var(--c-light)' },
-    { h: 28, c: 'var(--c-wait)',  dash: true },    // model zone
-    { h: 19, c: 'var(--c-light)', dash: true },
+    { h: 19, c: 'var(--c-wait)'  },
+    { h: 32, c: 'var(--c-stuck)', dash: true },    // model zone
+    { h: 19, c: 'var(--c-wait)',  dash: true },
   ]
   return (
     // w-full alone let the 320-wide viewBox stretch to the full panel on desktop —
