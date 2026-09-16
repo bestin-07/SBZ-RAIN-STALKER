@@ -100,13 +100,22 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
     : null
 
   return (
-    <div className="border-b border-border shrink-0 px-4 py-2.5">
+    // v2.36.3 — this panel is the ONLY thing under the "Coming days" tab (App.jsx
+    // has no sibling to give the leftover space to, unlike "Today" where RadarMap's
+    // own flex-1 does this job). Without growing, five thin rows sat pinned to the
+    // top of a fixed-height column with the rest of the screen empty — worse on a
+    // tall phone than on desktop. flex-1 lets it claim that space; the row list
+    // below distributes it, the header/axis above stay their natural size.
+    // min-h floor mirrors RadarMap's own (v2.36.1): on a day with several banners
+    // stacked above, this panel should shrink before rows overlap, but never past
+    // the point of being unreadable.
+    <div className="border-b border-border shrink-0 px-4 py-2.5 flex-1 min-h-[200px] flex flex-col">
       {/* One line, always (v2.35). The title never shrinks and never wraps; the
           window text takes whatever is left and truncates inside it. Without the
           shrink-0 / min-w-0 pair a long window label pushed the title onto a second
           line on narrow phones, and `truncate` on a flex child does nothing unless
           that child is allowed to shrink below its content width. */}
-      <div className="flex items-baseline gap-3 mb-1.5">
+      <div className="flex items-baseline gap-3 mb-1.5 shrink-0">
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted shrink-0 whitespace-nowrap">
           {t(skipToday ? 'days_title_forecast' : 'days_title')}
         </span>
@@ -126,71 +135,77 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
           it. Purely orientation, so it's aria-hidden — the times it names aren't
           read out anywhere else, the shape below it is. */}
       {axisTicks && (
-        <div className="flex items-center gap-2.5 pb-1" aria-hidden="true">
-          <span className="w-12 shrink-0" />
-          <span className="w-5 shrink-0" />
+        <div className="flex items-center gap-3 pb-1 shrink-0" aria-hidden="true">
+          <span className="w-14 shrink-0" />
+          <span className="w-7 shrink-0" />
           <span className="flex-1 min-w-0 max-w-[460px] relative h-3">
             {axisTicks.map((lbl, i) => (
               <span
                 key={i}
-                className="absolute top-0 font-mono text-[8px] text-muted tabular-nums"
+                className="absolute top-0 font-mono text-[9px] text-muted tabular-nums"
                 style={{ left: `${i * 25}%`, transform: i === 0 ? undefined : 'translateX(-50%)' }}
               >
                 {lbl}
               </span>
             ))}
-            <span className="absolute top-0 right-0 font-mono text-[8px] text-muted tabular-nums">24</span>
+            <span className="absolute top-0 right-0 font-mono text-[9px] text-muted tabular-nums">24</span>
           </span>
-          <span className="w-9 shrink-0" />
-          <span className="w-14 shrink-0" />
+          <span className="w-10 shrink-0" />
+          <span className="w-16 shrink-0" />
         </div>
       )}
 
-      {days.filter((_, i) => !(skipToday && i === 0)).map((d, i0) => (
-        <div
-          key={d.start}
-          className={'flex items-center gap-2.5 py-1.5' + (i0 === 0 ? '' : ' border-t border-border')}
-        >
-          <span
-            className={'font-mono text-[11px] w-12 shrink-0 tracking-wide' + (d.isToday ? ' font-bold' : '')}
-            style={d.isToday ? { color: 'var(--c-go)' } : undefined}
+      {/* v2.36.3 — the rows themselves grow (flex-1) and share out whatever height
+          the panel above just claimed, each one vertically centering its own
+          content. Bigger glyph/text/bar sizes throughout so the extra room reads
+          as "easier to read at a glance on a phone", not just as wider gaps. */}
+      <div className="flex-1 min-h-0 flex flex-col justify-around">
+        {days.filter((_, i) => !(skipToday && i === 0)).map((d, i0) => (
+          <div
+            key={d.start}
+            className={'flex items-center gap-3 py-2' + (i0 === 0 ? '' : ' border-t border-border')}
           >
-            {d.isToday ? t('today_short') : fmtDay(d.start, lang)}
-          </span>
+            <span
+              className={'font-mono text-sm w-14 shrink-0 tracking-wide' + (d.isToday ? ' font-bold' : '')}
+              style={d.isToday ? { color: 'var(--c-go)' } : undefined}
+            >
+              {d.isToday ? t('today_short') : fmtDay(d.start, lang)}
+            </span>
 
-          <span className="w-5 shrink-0 flex justify-center">
-            <WeatherGlyph code={d.code} size={19} label={d.group ? t('wx_' + d.group) : null} />
-          </span>
+            <span className="w-7 shrink-0 flex justify-center">
+              <WeatherGlyph code={d.code} size={28} label={d.group ? t('wx_' + d.group) : null} />
+            </span>
 
-          {/* The day shape: 12 × 2 h, drawn on the SAME ramp as the rain ribbon, so
-              a wet afternoon is the same colour in both places. Capped in width —
-              on a desktop window a full-bleed strip stretches 12 buckets into a
-              meaningless smear and pulls the numbers away from the day they belong
-              to. A day with no hourly data draws nothing rather than a flat dry
-              strip that would read as a promise. */}
-          <span className="flex-1 min-w-0 max-w-[460px] flex items-end gap-px h-4">
-            {(d.shape || []).map((v, b) => (
-              <i
-                key={b}
-                className="flex-1 block rounded-[1px]"
-                style={{
-                  height: v < DRY_THRESHOLD ? '2px' : `${Math.max(4, Math.round(Math.sqrt(v / 2.5) * 16))}px`,
-                  background: precipToColor(v, pal),
-                  opacity: v < DRY_THRESHOLD ? 0.45 : 1,
-                }}
-              />
-            ))}
-          </span>
+            {/* The day shape: 12 × 2 h, drawn on the SAME ramp as the rain ribbon, so
+                a wet afternoon is the same colour in both places. Capped in width —
+                on a desktop window a full-bleed strip stretches 12 buckets into a
+                meaningless smear and pulls the numbers away from the day they belong
+                to. A day with no hourly data draws nothing rather than a flat dry
+                strip that would read as a promise. */}
+            <span className="flex-1 min-w-0 max-w-[460px] flex items-end gap-px h-7">
+              {(d.shape || []).map((v, b) => (
+                <i
+                  key={b}
+                  className="flex-1 block rounded-[1px]"
+                  style={{
+                    height: v < DRY_THRESHOLD ? '3px' : `${Math.max(7, Math.round(Math.sqrt(v / 2.5) * 28))}px`,
+                    background: precipToColor(v, pal),
+                    opacity: v < DRY_THRESHOLD ? 0.45 : 1,
+                  }}
+                />
+              ))}
+            </span>
 
-          <span className="font-mono text-[10px] text-muted w-9 text-right shrink-0 tabular-nums ml-auto">
-            {d.prob !== null ? `${d.prob}%` : '—'}
-          </span>
-          <span className="font-mono text-[11px] w-14 text-right shrink-0 tabular-nums">
-            {d.hi !== null && <b className="font-bold">{d.hi}°</b>}
-            {d.lo !== null && <span className="text-muted"> {d.lo}°</span>}
-          </span>
-        </div>
-      ))}
+            <span className="font-mono text-xs text-muted w-10 text-right shrink-0 tabular-nums ml-auto">
+              {d.prob !== null ? `${d.prob}%` : '—'}
+            </span>
+            <span className="font-mono text-sm w-16 text-right shrink-0 tabular-nums">
+              {d.hi !== null && <b className="font-bold">{d.hi}°</b>}
+              {d.lo !== null && <span className="text-muted"> {d.lo}°</span>}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

@@ -1463,7 +1463,7 @@ export default function App() {
         </div>
       )}
 
-      <InfoPanel open={infoOpen} onClose={closeInfo} onPrivacy={() => openPrivacy('info')} t={t} />
+      <InfoPanel open={infoOpen} onClose={closeInfo} onPrivacy={() => openPrivacy('info')} t={t} theme={theme} />
 
       {notifyModalOpen && (
         <NotifyModal

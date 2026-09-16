@@ -68,6 +68,29 @@ export function tierOf(p) {
 
 export function precipToColor(p, pal) { return pal[tierOf(p)] }
 
+// v2.36.3 — forecast-zone bars are pulled toward the app's own muted grey instead
+// of just fading the true colour's opacity. A live review of the dimmed-opacity
+// look (v2.36.1) found it still read as "faded rain", not clearly "a different
+// kind of reading" — a forecast estimate is a different CLASS of evidence than a
+// radar measurement, not just a fainter one. Blending toward grey says that in one
+// glance; the radar zone keeps the true, saturated colour untouched, so "measured"
+// vs "estimated" is now a hue difference the eye catches before it reads a caption.
+const MUTED_RGB = { dark: [107, 114, 128], light: [85, 82, 75] } // --c-muted, both themes
+const FORECAST_GREY_MIX = 0.55 // fraction of the true colour pulled toward grey
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+export function forecastColor(p, pal, theme) {
+  const [r1, g1, b1] = hexToRgb(precipToColor(p, pal))
+  const [r2, g2, b2] = MUTED_RGB[theme === 'light' ? 'light' : 'dark']
+  const m = FORECAST_GREY_MIX
+  const mix = (a, b) => Math.round(a + (b - a) * m)
+  return `rgb(${mix(r1, r2)}, ${mix(g1, g2)}, ${mix(b1, b2)})`
+}
+
 // Label priority when the drawn ribbon is dry/empty: MODEL disagreeing with a radar
 // all-clear beats everything (frontal rain the radar can't see yet), then CAPE
 // instability, then the plain radar-attributed dry line.
@@ -273,37 +296,34 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.fillRect(x, 0, SLOT_W - 1, SLOT_H)
 
       if (beyondRadar) {
-        // Model-only bar: faint translucent fill at the model's own intensity —
-        // visible as a real bar at a glance (v2.3.1), dimmer than a radar bar so
-        // it reads as "estimate" without needing an outline to say so. Nothing
-        // drawn when dry.
+        // Model-only bar. Nothing drawn when dry.
         if (slot.p >= DRY_THRESHOLD) {
-          const gh = precipToHeight(slot.p)
-          const c  = precipToColor(slot.p, pal)
+          const gh    = precipToHeight(slot.p)
+          const trueC = precipToColor(slot.p, pal)
+          const greyC = forecastColor(slot.p, pal, theme)
           const agree = slot.agree !== false
           const pr    = slot.prob
-          // Probability scales the fill within a modest range so a low-confidence hour
-          // reads fainter without ever vanishing (we never hide data). No probability
-          // at all (past the fetched horizon) → treated as unknown, not as low.
-          const prAlpha = typeof pr === 'number' ? 0.16 + 0.22 * Math.min(1, pr / 100) : 0.28
+          // v2.36.3: the fill is now a genuine grey blend (see forecastColor), not
+          // a translucent true colour — greying carries "this is an estimate" on
+          // its own, so opacity no longer has to do that job too and can sit much
+          // higher (v2.36.1 and earlier: 0.16-0.38, which on a muted colour would
+          // have all but disappeared). Probability still nudges it, now purely as
+          // a secondary confidence cue. No probability at all (past the fetched
+          // horizon) → treated as unknown, not as low.
+          const prAlpha = typeof pr === 'number' ? 0.55 + 0.35 * Math.min(1, pr / 100) : 0.65
           ctx.save()
-          ctx.globalAlpha = agree ? prAlpha : prAlpha * 0.55
-          ctx.fillStyle = c
+          ctx.globalAlpha = agree ? prAlpha : prAlpha * 0.7
+          ctx.fillStyle = greyC
           ctx.fillRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
-          // v2.36.1 — the dashed outline is now drawn ONLY when the two models
-          // actually disagree. It used to mark every model-zone bar (agree or
-          // not), which meant "dashed" carried two different meanings at once —
-          // "this is an estimate" AND "the estimate is contested" — and at 46px
-          // bar width the two dash densities that were supposed to tell them
-          // apart (dense [3,2] vs sparse [1,3]) read almost the same to the eye
-          // (a live screenshot showed exactly this: users could not tell why
-          // some bars had a visible dotted edge and most didn't). Now "dashed"
-          // means one thing only: the models disagree. An ordinary estimate is
-          // just a dimmer solid bar — the opacity step already says "less sure
-          // than radar" on its own.
+          // v2.36.1 — the dashed outline is drawn ONLY when the two models
+          // actually disagree; an ordinary estimate is just the grey fill above,
+          // no outline needed. v2.36.3: the outline is drawn in the bar's TRUE
+          // colour, not the grey fill — the true hue "breaking through" a grey bar
+          // is what makes a contested slot look different from a merely uncertain
+          // one, rather than just a darker edge on the same grey.
           if (!agree) {
-            ctx.globalAlpha = 0.45
-            ctx.strokeStyle = c
+            ctx.globalAlpha = 0.9
+            ctx.strokeStyle = trueC
             ctx.setLineDash([1, 3])
             ctx.lineWidth = 1.5
             ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)

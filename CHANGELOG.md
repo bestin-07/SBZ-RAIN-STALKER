@@ -12,6 +12,19 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.3] - 2026-09-16 - Gemma Raus just got better: grey means "estimate", and Coming days finally fills the screen 🧾
+
+*Two small honesty-and-space fixes on the chart and the outlook tab.*
+
+**What's new for you**
+
+- **The forecast side of the chart is grey now, not just faded blue.** Radar bars — what's actually falling right now — keep their full colour. Bars past that point, which come from the weather model instead of radar, are pulled toward grey: a clearer way of saying "this is a different kind of reading, not just a fainter one." A contested bar (where our two weather models disagree) still gets a dashed edge — now in its true colour, poking through the grey.
+- **Coming days no longer sits in the top third of the screen.** The five-day outlook used to leave most of the phone screen empty below it. The rows now stretch to fill the space, with bigger icons, bars and text — easier to read at a glance, especially on mobile.
+
+**Nothing about the verdict changed.** Both are purely how the chart and the outlook tab look — what counts as rain, a break, or a warning is untouched.
+
+---
+
 ## [2.36.2] - 2026-09-16 - Gemma Raus just got better: a dashed edge now means one thing 🧾
 
 *A small honesty fix on the radar chart.*

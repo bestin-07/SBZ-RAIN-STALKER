@@ -1,9 +1,11 @@
+import { forecastColor, palOf } from './RainRibbon'
+
 // Donation link. Paste your PayPal.me / Stripe Payment Link / Ko-fi URL here,
 // or set VITE_DONATE_URL in Railway to override without editing code.
 // e.g. 'https://paypal.me/yourhandle'
 const DONATE_URL = import.meta.env.VITE_DONATE_URL || ''
 
-export default function InfoPanel({ open, onClose, onPrivacy, t }) {
+export default function InfoPanel({ open, onClose, onPrivacy, t, theme }) {
   if (!open) return null
 
   return (
@@ -56,7 +58,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
           <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
             {t('guide_ribbon_title')}
           </div>
-          <RibbonGuide t={t} />
+          <RibbonGuide t={t} theme={theme} />
           <div className="space-y-2 mb-5">
             {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4','guide_ribbon_5','guide_ribbon_6','guide_ribbon_7'].map(k => (
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
@@ -209,21 +211,27 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
 // both themes and cannot drift out of date the way a screenshot would.
 // Deliberately shows one story — raining, easing to a dry window, rain returning,
 // then the model zone — because that is the shape people need to recognise.
-function RibbonGuide({ t }) {
+function RibbonGuide({ t, theme }) {
   const W = 40, BASE = 66, SPLIT = 6 * W
   // v2.36: two wet colours only — wait (rain) and stuck (storm) — plus the gold dry
   // baseline. Height still carries the fine-grained intensity within each colour.
-  // v2.36.1: dashing is reserved for the ONE bar the two weather models
-  // disagree on. An ordinary model-zone estimate is just dim, no outline.
+  // v2.36.3: the model zone is no longer a dimmed true colour — it is pulled
+  // toward grey (the exact same forecastColor() the real ribbon draws with, so
+  // this diagram cannot drift from the picture it explains), so "measured" vs
+  // "estimated" is a hue difference, not just a fainter one. Disagreement is a
+  // dashed outline in the bar's TRUE colour breaking through the grey fill.
+  const pal = palOf(theme)
+  const greyWait  = forecastColor(0.3, pal, theme) // any value in the "rain" tier
+  const greyStuck = forecastColor(2,   pal, theme) // any value in the "storm" tier
   const bars = [
-    { h: 32, c: 'var(--c-stuck)' },                // storm
-    { h: 19, c: 'var(--c-wait)'  },
-    { h: 6,  c: 'var(--c-wait)', faint: true },    // trace: a hairline, never taller than real rain
+    { h: 32, c: pal.storm },                       // storm
+    { h: 19, c: pal.rain  },
+    { h: 6,  c: pal.rain, faint: true },           // trace: a hairline, never taller than real rain
     { h: 4,  c: 'var(--c-go)'    },                // the dry window
     { h: 4,  c: 'var(--c-go)'    },
-    { h: 19, c: 'var(--c-wait)'  },
-    { h: 22, c: 'var(--c-wait)',  model: true },   // ordinary model-zone estimate: dim, no outline
-    { h: 32, c: 'var(--c-stuck)', model: true, dash: true }, // the models disagree here
+    { h: 19, c: pal.rain  },
+    { h: 22, c: greyWait  },                       // ordinary model-zone estimate: greyed, no outline
+    { h: 32, c: greyStuck, true_: pal.storm, dash: true }, // the models disagree here
   ]
   return (
     // w-full alone let the 320-wide viewBox stretch to the full panel on desktop —
@@ -241,11 +249,11 @@ function RibbonGuide({ t }) {
       {bars.map((b, i) => {
         const x = i * W + 1, y = BASE - b.h
         if (b.dash) {
-          return <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c} fillOpacity="0.22"
-                       stroke={b.c} strokeWidth="1.2" strokeDasharray="1.5 3" />
+          return <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c}
+                       stroke={b.true_} strokeWidth="1.2" strokeDasharray="1.5 3" />
         }
         return <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c}
-                     fillOpacity={b.faint ? 0.45 : b.model ? 0.35 : 1} />
+                     fillOpacity={b.faint ? 0.45 : 1} />
       })}
       {/* radar → model divider */}
       <line x1={SPLIT} y1="0" x2={SPLIT} y2={BASE + 14} stroke="var(--c-muted)"
