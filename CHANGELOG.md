@@ -12,6 +12,19 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.4] - 2026-09-16 - Gemma Raus just got better: the chart caption keeps up with the chart 🧾
+
+*A follow-up screenshot review turned up two small things.*
+
+**What's new for you**
+
+- **The "RADAR · FORECAST" label above the chart now lines up with the actual chart.** It used to just sit there — radar on the left, forecast on the right, split evenly no matter what the bars underneath actually showed. Now it tracks exactly where the measured part ends and the estimated part begins, and slides along as you scroll the chart sideways.
+- **Tightened two gaps around the main headline** that were larger than they needed to be — a little more of the screen is now given to content instead of empty space.
+
+**Nothing about the verdict changed.** Both are purely positioning and spacing — what counts as rain, a break, or a warning is untouched.
+
+---
+
 ## [2.36.3] - 2026-09-16 - Gemma Raus just got better: grey means "estimate", and Coming days finally fills the screen 🧾
 
 *Two small honesty-and-space fixes on the chart and the outlook tab.*

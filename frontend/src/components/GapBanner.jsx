@@ -62,7 +62,14 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
   const fallback = COLORS[status.type] ?? COLORS.loading
 
   return (
-    <div className="px-4 py-6 shrink-0">
+    // v2.36.4 — py-6 (24px top AND bottom) was flagged live as wasted space on
+    // both edges: 24px above SkyLine sat right under an alert banner that already
+    // carries its own py-2.5, and 24px below the source line stacked with the
+    // tab row's own pt-2.5 into a ~34px gap before the next visible thing. Trimmed
+    // asymmetrically rather than just shrunk uniformly — the top keeps a touch
+    // more room since it's the transition into the headline, the bottom needs
+    // less since the tab row's own padding already does some of that work.
+    <div className="px-4 pt-4 pb-3 shrink-0">
       {/* v2.35 — the sky facts, folded in from what used to be a bordered section
           of its own directly above. Muted and small: this is context for the
           headline, not a competitor to it. */}

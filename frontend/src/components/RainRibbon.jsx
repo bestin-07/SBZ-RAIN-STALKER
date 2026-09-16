@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { showGhost, radarSpanLabel, hasRadarZone, hoursLabel } from '../gaps'
 
 const SLOT_W = 46
@@ -188,6 +188,27 @@ function bucket30(slots) {
 export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
   const canvasRef = useRef(null)
   const scrollRef = useRef(null)
+  // v2.36.4 — the pinned zone caption (below) used to be a static label pair with
+  // no relationship to where the radar/forecast split actually falls in the
+  // canvas underneath it: "FORECAST · MODEL" always sat at the far right of the
+  // viewport regardless of how much of the visible chart was actually forecast.
+  // Live report: on a mostly-forecast view the header implied the opposite of
+  // what the bars showed. viewW/scrollX track the scroll container so the header
+  // can be recomputed as a proportional split of the CURRENTLY VISIBLE width —
+  // it moves with the ribbon instead of describing a fixed 50/50 that was never
+  // true. ResizeObserver guarded per this file's own browser-support doctrine
+  // (RadarMap does the same for the same reason: absent on iOS 13.4).
+  const [viewW, setViewW] = useState(0)
+  const [scrollX, setScrollX] = useState(0)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setViewW(el.clientWidth)
+    if (typeof ResizeObserver !== 'function') return
+    const ro = new ResizeObserver(() => setViewW(el.clientWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     if (!forecast || !canvasRef.current) return
@@ -531,6 +552,27 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const plainDryOnly = hasData && !traceOnly && modelRainMin == null && !unstable
   const showDryLabel = (allDry || !hasData) && !(plainDryOnly && hasBracket)
 
+  // v2.36.4 — where the pinned caption splits, recomputed from the same rbars/
+  // rSplit the bracket above already uses, so the caption cannot name a boundary
+  // the canvas didn't draw (the v2.18.0 lesson, applied to a proportion instead
+  // of a single number). boundaryX / contentW are content-space pixels — the
+  // same SLOT_W units the canvas draws in — not yet corrected for scroll.
+  const contentW  = rbars.length * SLOT_W
+  const boundaryX = !showRadarZone ? null : rSplit === -1 ? contentW : rSplit * SLOT_W
+  // view0/view1: the slice of CONTENT currently visible, in those same pixels.
+  // viewW falls back to contentW before the first measurement so the caption
+  // still renders something sane on the very first paint.
+  const viewSpan = viewW || contentW
+  const view0 = scrollX
+  const view1 = scrollX + viewSpan
+  const zoneMode = boundaryX == null ? 'radar-only'
+    : boundaryX >= view1 ? 'radar-only'
+    : boundaryX <= view0 ? 'forecast-only'
+    : 'split'
+  const zoneSplitPct = zoneMode === 'split' && viewSpan > 0
+    ? Math.max(4, Math.min(96, ((boundaryX - view0) / viewSpan) * 100))
+    : null
+
   return (
     <div className="border-t border-border shrink-0">
       {/* Header row, styled exactly like the day-strip header below it, so the two
@@ -544,28 +586,37 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           {!showRadarZone && <span className="ml-1 opacity-50">·&nbsp;est</span>}
         </span>
       </div>
-      {/* v2.35 — the zone row, PINNED outside the scroller. It used to be drawn
-          into the canvas band, which scrolls: swipe toward the evening and the
-          words "RADAR · NEXT 2½ H" left the screen, leaving a chart of dashed
-          model bars with nothing naming them. The span is still
-          radarSpanLabel(forecast.radarUntil) — the same value the canvas splits
-          the tint on — so the sentence and the picture keep the single source
-          v2.34.0 gave them. With no usable radar zone it says so outright rather
-          than naming a boundary that is not drawn. */}
+      {/* v2.35 — the zone row, PINNED outside the scroller (so it can never scroll
+          fully out of view — the v2.34.0 bug this fix exists to prevent). v2.36.4
+          — but pinned no longer meant STATIC: the row now tracks scroll, so the
+          split between "RADAR" and "FORECAST" sits at the same proportion of the
+          visible width as the actual boundary line sitting in the canvas right
+          below it, and slides as you scroll the ribbon instead of describing a
+          fixed 50/50 that often wasn't true. Once the boundary scrolls out of
+          the visible slice entirely, the row collapses to naming just the one
+          zone that's on screen — it still never claims a boundary the canvas
+          hasn't drawn (the v2.18.0 lesson). */}
       {hasData && (
-        <div className="flex items-center gap-2 px-4 pb-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-muted">
-          {showRadarZone ? (
-            <>
-              <span className="text-primary shrink-0">{t('zone_radar', { h: spanLabel })}</span>
-              <span className="flex-1 h-px bg-border" aria-hidden="true" />
-              <span className="shrink-0">{t('zone_forecast')}</span>
-            </>
-          ) : (
+        <div className="flex items-center px-4 pb-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-muted">
+          {!showRadarZone ? (
             <span className="normal-case tracking-normal">{t('zone_caption_model')}</span>
+          ) : zoneMode === 'radar-only' ? (
+            <span className="text-primary">{t('zone_radar', { h: spanLabel })}</span>
+          ) : zoneMode === 'forecast-only' ? (
+            <span>{t('zone_forecast')}</span>
+          ) : (
+            <>
+              <span className="text-primary shrink-0 overflow-hidden whitespace-nowrap border-r border-border pr-1.5"
+                    style={{ flexBasis: `${zoneSplitPct}%` }}>
+                {t('zone_radar', { h: spanLabel })}
+              </span>
+              <span className="shrink-0 pl-1.5">{t('zone_forecast')}</span>
+            </>
           )}
         </div>
       )}
-      <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none">
+      <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none"
+           onScroll={e => setScrollX(e.currentTarget.scrollLeft)}>
         <canvas
           ref={canvasRef}
           style={{ display: 'block' }}
