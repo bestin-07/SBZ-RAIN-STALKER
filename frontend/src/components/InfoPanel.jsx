@@ -58,7 +58,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t }) {
           </div>
           <RibbonGuide t={t} />
           <div className="space-y-2 mb-5">
-            {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4','guide_ribbon_5','guide_ribbon_6'].map(k => (
+            {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4','guide_ribbon_5','guide_ribbon_6','guide_ribbon_7'].map(k => (
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
             ))}
           </div>
@@ -213,6 +213,8 @@ function RibbonGuide({ t }) {
   const W = 40, BASE = 66, SPLIT = 6 * W
   // v2.36: two wet colours only — wait (rain) and stuck (storm) — plus the gold dry
   // baseline. Height still carries the fine-grained intensity within each colour.
+  // v2.36.1: dashing is reserved for the ONE bar the two weather models
+  // disagree on. An ordinary model-zone estimate is just dim, no outline.
   const bars = [
     { h: 32, c: 'var(--c-stuck)' },                // storm
     { h: 19, c: 'var(--c-wait)'  },
@@ -220,8 +222,8 @@ function RibbonGuide({ t }) {
     { h: 4,  c: 'var(--c-go)'    },                // the dry window
     { h: 4,  c: 'var(--c-go)'    },
     { h: 19, c: 'var(--c-wait)'  },
-    { h: 32, c: 'var(--c-stuck)', dash: true },    // model zone
-    { h: 19, c: 'var(--c-wait)',  dash: true },
+    { h: 22, c: 'var(--c-wait)',  model: true },   // ordinary model-zone estimate: dim, no outline
+    { h: 32, c: 'var(--c-stuck)', model: true, dash: true }, // the models disagree here
   ]
   return (
     // w-full alone let the 320-wide viewBox stretch to the full panel on desktop —
@@ -238,11 +240,12 @@ function RibbonGuide({ t }) {
       </text>
       {bars.map((b, i) => {
         const x = i * W + 1, y = BASE - b.h
-        return b.dash
-          ? <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c} fillOpacity="0.18"
-                  stroke={b.c} strokeWidth="1.2" strokeDasharray="3 2" />
-          : <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c}
-                  fillOpacity={b.faint ? 0.45 : 1} />
+        if (b.dash) {
+          return <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c} fillOpacity="0.22"
+                       stroke={b.c} strokeWidth="1.2" strokeDasharray="1.5 3" />
+        }
+        return <rect key={i} x={x} y={y} width={W - 3} height={b.h} fill={b.c}
+                     fillOpacity={b.faint ? 0.45 : b.model ? 0.35 : 1} />
       })}
       {/* radar → model divider */}
       <line x1={SPLIT} y1="0" x2={SPLIT} y2={BASE + 14} stroke="var(--c-muted)"

@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.2] - 2026-09-16 - Gemma Raus just got better: a dashed edge now means one thing 🧾
+
+*A small honesty fix on the radar chart.*
+
+**What happened**
+
+On the chart's forecast side, every bar used to get a dashed outline — a tight dash when our two weather models agreed, a looser one when they didn't. On screen those two dashes looked almost the same, so the outline stopped telling anyone anything.
+
+**What's new for you**
+
+- **A dashed bar now means one specific thing: the two models disagree there.** An ordinary forecast bar is just a little dimmer than a radar bar — quieter on the eye, and it still says "less certain than radar" without needing a border to say it twice.
+- **One fewer legend chip.** The "forecast" label is gone from under the chart — the heading above it already says "FORECAST · MODEL", so the chip was repeating itself. The "models disagree" chip now shows an actual dashed swatch instead of just text.
+- Guide updated to match what's actually on screen.
+
+**Nothing about the verdict changed.** Purely how the forecast bars are drawn — what counts as rain, a break, or a warning is untouched.
+
+---
+
 ## [2.36.1] - 2026-09-16 - Gemma Raus just got better: one screen, and a fixed outlook 🧾
 
 *Two things found the same day the tabs shipped.*

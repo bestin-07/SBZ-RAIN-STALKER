@@ -150,21 +150,33 @@ for (const lang of ['de', 'en']) {
       }
     })
 
-    // The confidence chips (trace / model-only / disagreement) are unaffected by
-    // the palette simplification — still conditional, still there when earned.
-    it('keeps the confidence chips (trace, model estimate, disagreement)', () => {
+    // v2.36.1 — the "forecast"/legend_model chip is gone: it explained a dashed
+    // outline that used to mark EVERY model-zone bar, and now that dashing is
+    // reserved for actual disagreement, a plain dim bar needs no chip (the
+    // pinned zone row already names the zone). The trace chip is unaffected;
+    // the disagreement chip now needs a REAL agree:false slot to earn its spot.
+    it('keeps the trace chip, drops the old blanket "forecast" chip', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
-      // radarUntil 5 min out → below MIN_RADAR_ZONE_MIN, so the whole timeline
-      // draws as the model-only zone: one trace slot (0.05) and one real wet
-      // slot (0.3) are enough to earn both chips.
       const html = renderToStaticMarkup(
         <RainRibbon forecast={{
           times, precips: times.map((_, i) => [0.05, 0.3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0][i]),
           isNowcast: true, radarUntil: now + 300,
         }} theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).toContain(esc(t('legend_trace')))
-      expect(html).toContain(esc(t('legend_model')))
+      expect(html).not.toContain(esc(t('legend_uncertain')))
+    })
+
+    it('the disagreement chip appears only when a real agree:false slot exists', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const html = renderToStaticMarkup(
+        <RainRibbon forecast={{
+          times, precips: times.map((_, i) => (i === 1 ? 0.3 : 0)),
+          modelAgree: times.map((_, i) => i !== 1),
+          isNowcast: true, radarUntil: now + 300,
+        }} theme="light" t={t} unstable={false} modelRainMin={null} />)
+      expect(html).toContain(esc(t('legend_uncertain')))
     })
 
     it('DayStrip renders nothing without data', () => {

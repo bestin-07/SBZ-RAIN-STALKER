@@ -273,17 +273,13 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.fillRect(x, 0, SLOT_W - 1, SLOT_H)
 
       if (beyondRadar) {
-        // Model-only bar: faint translucent fill + dashed outline at the model's own
-        // intensity — visible as a real bar at a glance (v2.3.1), but still clearly
-        // "estimate" next to the solid radar bars. Nothing drawn when dry.
+        // Model-only bar: faint translucent fill at the model's own intensity —
+        // visible as a real bar at a glance (v2.3.1), dimmer than a radar bar so
+        // it reads as "estimate" without needing an outline to say so. Nothing
+        // drawn when dry.
         if (slot.p >= DRY_THRESHOLD) {
           const gh = precipToHeight(slot.p)
           const c  = precipToColor(slot.p, pal)
-          // v2.18 confidence: the bar height is still max(ICON-EU, AROME) — a union
-          // can only ADD warnings — but HOW SOLID it looks now reflects whether the
-          // two models actually agree, and how confident the model is that hour.
-          // Disagreement was previously invisible: max() drew one confident line over
-          // a genuine argument between the two.
           const agree = slot.agree !== false
           const pr    = slot.prob
           // Probability scales the fill within a modest range so a low-confidence hour
@@ -294,13 +290,24 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           ctx.globalAlpha = agree ? prAlpha : prAlpha * 0.55
           ctx.fillStyle = c
           ctx.fillRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
-          ctx.globalAlpha = agree ? 1 : 0.45
-          ctx.strokeStyle = c
-          // Models disagreeing get a finer, sparser dash than the standard estimate
-          // dash — visually "this is contested", not merely "this is a forecast".
-          ctx.setLineDash(agree ? [3, 2] : [1, 3])
-          ctx.lineWidth = 1.5
-          ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
+          // v2.36.1 — the dashed outline is now drawn ONLY when the two models
+          // actually disagree. It used to mark every model-zone bar (agree or
+          // not), which meant "dashed" carried two different meanings at once —
+          // "this is an estimate" AND "the estimate is contested" — and at 46px
+          // bar width the two dash densities that were supposed to tell them
+          // apart (dense [3,2] vs sparse [1,3]) read almost the same to the eye
+          // (a live screenshot showed exactly this: users could not tell why
+          // some bars had a visible dotted edge and most didn't). Now "dashed"
+          // means one thing only: the models disagree. An ordinary estimate is
+          // just a dimmer solid bar — the opacity step already says "less sure
+          // than radar" on its own.
+          if (!agree) {
+            ctx.globalAlpha = 0.45
+            ctx.strokeStyle = c
+            ctx.setLineDash([1, 3])
+            ctx.lineWidth = 1.5
+            ctx.strokeRect(x + 1.5, SLOT_H - gh + 0.5, SLOT_W - 4, gh - 1)
+          }
           ctx.restore()
         }
       } else {
@@ -477,19 +484,14 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const showRadarZone = hasRadarZone(forecast?.radarUntil, nowS, forecast?.isNowcast)
   const spanLabel = radarSpanLabel(forecast?.radarUntil, nowS)
   // A sub-threshold stub is only worth naming when one is actually drawn.
+  //
+  // NOTE the optional chaining below: `forecast` is null on the very first render,
+  // before any data has arrived, and every other read in this render body is
+  // written that way for exactly that reason. v2.30.0 shipped a line unguarded
+  // here and it threw a TypeError on first paint, which unmounted the whole app —
+  // a blank page on every device. Pinned by a render test that mounts this
+  // component with forecast={null}.
   const hasTrace = rslots.some(s => s.p > 0 && s.p < DRY_THRESHOLD)
-  // …and the "model (expected)" key only once the ribbon actually reaches past the
-  // radar horizon into the dashed zone.
-  // NOTE the optional chaining: `forecast` is null on the very first render, before
-  // any data has arrived, and every other read in this render body is written that
-  // way for exactly that reason. v2.30.0 shipped this line unguarded and it threw a
-  // TypeError on first paint, which unmounted the whole app — a blank page on every
-  // device. Pinned by a render test that mounts this component with forecast={null}.
-  // v2.35: …and only once a model-zone bar is actually DRAWN dashed. The chip
-  // explains the dashed outline; an all-dry model tail draws no outline, so the
-  // chip would be explaining something that is not on the screen.
-  const hasModelZone = rbars.some(b =>
-    (!showRadarZone || b.t > (forecast?.radarUntil ?? Infinity)) && b.p >= DRY_THRESHOLD)
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
   // The bracket, recomputed here from the same pure function and the same bars the
   // canvas uses, so the two cannot disagree about whether a dry span was drawn.
@@ -568,9 +570,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           for a five-colour ramp; the palette is now two wet colours plus height
           (already continuous since v2.23), so a bar's own colour and height say what
           the key used to spell out in words. What is left here is the thing colour
-          and height genuinely cannot show: CONFIDENCE — a trace echo, a model-only
-          estimate, two models in disagreement. Each chip is still gated on something
-          actually being drawn that it explains (v2.18.0's reasoning, unchanged). */}
+          and height genuinely cannot show: CONFIDENCE — a trace echo, two models in
+          disagreement. Each chip is still gated on something actually being drawn
+          that it explains (v2.18.0's reasoning, unchanged).
+          v2.36.1 — the "forecast" chip is gone too. It explained the dashed outline
+          on every model-zone bar; now that dashing is reserved for disagreement
+          only (see the canvas code above), a plain dimmer bar is what "estimate"
+          looks like, and the pinned zone row above the chart already names that
+          zone in words ("RADAR · NEXT X H  ⋯  FORECAST · MODEL") — a second chip
+          repeating it was the exact redundancy this whole legend pass exists to
+          remove. "Models disagree" gets an actual swatch instead of bare text —
+          it used to be the one chip you couldn't match to anything on the chart. */}
       {hasData && (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.07em] text-muted">
           {hasTrace && (
@@ -580,14 +590,13 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
               {t('legend_trace')}
             </span>
           )}
-          {hasModelZone && (
+          {hasDisagreement && (
             <span className="flex items-center gap-1">
               <span className="inline-block w-3 h-2 rounded-[1px] shrink-0 border border-dashed border-current"
                     aria-hidden="true" />
-              {t('legend_model')}
+              {t('legend_uncertain')}
             </span>
           )}
-          {hasDisagreement && <span>{t('legend_uncertain')}</span>}
         </div>
       )}
     </div>
