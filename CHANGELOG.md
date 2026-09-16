@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.6] - 2026-09-16 - Gemma Raus just got better: three follow-up fixes from the same screenshots 🧾
+
+*A closer look at yesterday's changes turned up a few rough edges.*
+
+**What's new for you**
+
+- **The chart caption no longer drifts.** The line separating "measured" from "estimated" on the chart could sit slightly off from the actual boundary even without scrolling. It now reads from the exact same numbers the chart itself draws with, so the two can't disagree.
+- **Coming days is tidier.** The extra room this tab gained recently was showing up as a few odd, uneven gaps between days instead of just bigger rows. Rows are now sized generously and consistently, with any leftover space left as one clean space at the bottom instead of scattered through the list.
+- **Your location's map popup is better centered.** It used to sit high in the map box, since the popup opens above the pin and the pin was placed dead center. The map now nudges down slightly so pin and popup read as one centered group.
+
+**Looked into, not changed:** the phone status bar icons some of you are still seeing rendered awkwardly. Everything on our end is already configured correctly for both themes — this looks like a case where the phone froze that color at the moment the app was added to the home screen. If you're seeing this, try removing the Gemma Raus icon and adding it again; let us know if it's still off afterward.
+
+**Nothing about the verdict changed.** All three are positioning and layout only.
+
+---
+
 ## [2.36.5] - 2026-09-16 - Gemma Raus just got better: a new headline face 🧾
 
 *A brand-level swap, chosen off a side-by-side comparison.*

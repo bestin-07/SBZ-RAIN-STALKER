@@ -155,15 +155,21 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
         </div>
       )}
 
-      {/* v2.36.3 — the rows themselves grow (flex-1) and share out whatever height
-          the panel above just claimed, each one vertically centering its own
-          content. Bigger glyph/text/bar sizes throughout so the extra room reads
-          as "easier to read at a glance on a phone", not just as wider gaps. */}
-      <div className="flex-1 min-h-0 flex flex-col justify-around">
+      {/* v2.36.3 — bigger glyph/text/bar sizes throughout so the reclaimed height
+          reads as "easier to read at a glance on a phone".
+          v2.36.6 — `justify-around` (dropped here) did technically fill the
+          panel, but by manufacturing large, irregular gaps BETWEEN rows rather
+          than by growing the rows themselves — reported live as "lots of lost
+          gaps", and the stretched row height also made the small icon/bar
+          column gutters read as tall empty vertical bands. Rows now just stack
+          at their natural (generously padded) height; any leftover space
+          collects as ONE gap below the last row instead of several confusing
+          ones threaded through the list. */}
+      <div className="flex-1 min-h-0 flex flex-col">
         {days.filter((_, i) => !(skipToday && i === 0)).map((d, i0) => (
           <div
             key={d.start}
-            className={'flex items-center gap-3 py-2' + (i0 === 0 ? '' : ' border-t border-border')}
+            className={'flex items-center gap-3 py-3 shrink-0' + (i0 === 0 ? '' : ' border-t border-border')}
           >
             <span
               className={'font-mono text-sm w-14 shrink-0 tracking-wide' + (d.isToday ? ' font-bold' : '')}

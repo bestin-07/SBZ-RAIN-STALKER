@@ -19,6 +19,26 @@ const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
 // the only radar overlay and must be visible at the default zoom (11).
 const RV_MAX_ZOOM = 14
 
+// v2.36.6 — the auto-opened "your location" popup sits ABOVE its marker (Leaflet's
+// default), so centering the map on the marker's exact lat/lon left the popup+pin
+// as one visual block sitting in the map box's top half, with the bottom half
+// comparatively empty — reported live off a screenshot. Instead of centering ON
+// the marker, we center on a point shifted north of it by USER_POPUP_OFFSET_PX in
+// SCREEN pixels — the marker then renders that many px BELOW the box's true
+// centre, leaving matching room above it for the popup, so the pin+popup pair
+// reads as centred as a unit. Applied everywhere the map centres on the user (
+// initial mount, a fresh location, and the relocate crosshair) so the behaviour
+// is the same regardless of which one triggered it. Static estimate (~half a
+// typical name+status+sub+hint popup's rendered height), not measured against
+// the actual DOM — the popup's real height varies with content length and this
+// only needs to be close, not exact. Uses the static CRS projection so it works
+// before a map instance exists yet (the very first `L.map(...)` call).
+const USER_POPUP_OFFSET_PX = 80
+function centerAboveMarker(lat, lon, zoom) {
+  const pt = L.CRS.EPSG3857.latLngToPoint(L.latLng(lat, lon), zoom)
+  return L.CRS.EPSG3857.pointToLatLng(pt.subtract([0, USER_POPUP_OFFSET_PX]), zoom)
+}
+
 // CartoDB's free basemaps.cartocdn.com CDN now requires a signed-up API key —
 // unauthenticated tiles still return HTTP 200 but with an "API KEY REQUIRED"
 // watermark baked into the image (confirmed live 2026-09-15), so it silently
@@ -194,8 +214,9 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   useEffect(() => {
     if (mapRef.current) return
 
+    const initCenter = location ? [location.lat, location.lon] : SALZBURG
     const map = L.map(containerRef.current, {
-      center: location ? [location.lat, location.lon] : SALZBURG,
+      center: centerAboveMarker(initCenter[0], initCenter[1], ZOOM),
       zoom: ZOOM,
       minZoom: 9,
       maxZoom: 14,
@@ -365,7 +386,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     })
     if (markerRef.current) markerRef.current.remove()
     markerRef.current = L.marker([location.lat, location.lon], { icon }).addTo(mapRef.current)
-    mapRef.current.setView([location.lat, location.lon], ZOOM)
+    mapRef.current.setView(centerAboveMarker(location.lat, location.lon, ZOOM), ZOOM)
   }, [location])
 
   // Area dots — coloured by computed status when available (falls back to precip).
@@ -458,7 +479,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // Smoothly fly back to the user's location (e.g. after they've panned away).
   const recenter = () => {
     if (mapRef.current && location) {
-      mapRef.current.flyTo([location.lat, location.lon], ZOOM, { duration: 0.8 })
+      mapRef.current.flyTo(centerAboveMarker(location.lat, location.lon, ZOOM), ZOOM, { duration: 0.8 })
     }
   }
 

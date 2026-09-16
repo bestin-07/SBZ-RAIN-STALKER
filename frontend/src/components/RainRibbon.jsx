@@ -185,6 +185,27 @@ function bucket30(slots) {
   return out
 }
 
+// v2.36.6 — mirrors the drawing effect's own slots/splitIdx derivation, used
+// ONLY as the lazy initial value for canvasZone state below, so the pinned
+// caption has something real to show on the very first render, before the
+// effect has run even once (an effect never runs at all under
+// renderToStaticMarkup, and in a real browser there'd otherwise be one blank
+// frame where the caption could only say "RADAR" with no "FORECAST" at all).
+// Every SUBSEQUENT value comes from the effect itself, which is the one
+// source of truth once it exists.
+function computeInitialZone(forecast) {
+  if (!forecast?.times?.length) return { splitIdx: null, cssW: 0 }
+  const now = Math.floor(Date.now() / 1000)
+  const slots = bucket30(forecast.times
+    .map((t, i) => ({ t, p: forecast.precips?.[i] ?? 0 }))
+    .filter(s => s.t >= now - 300)
+    .slice(0, MAX_SLOTS))
+  if (!slots.length) return { splitIdx: null, cssW: 0 }
+  const modelOnly  = !hasRadarZone(forecast.radarUntil, now, forecast.isNowcast)
+  const radarUntil = modelOnly ? -Infinity : (forecast.radarUntil ?? Infinity)
+  return { splitIdx: slots.findIndex(s => s.end > radarUntil), cssW: slots.length * SLOT_W }
+}
+
 export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
   const canvasRef = useRef(null)
   const scrollRef = useRef(null)
@@ -200,6 +221,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // (RadarMap does the same for the same reason: absent on iOS 13.4).
   const [viewW, setViewW] = useState(0)
   const [scrollX, setScrollX] = useState(0)
+  // v2.36.6 — the canvas's OWN splitIdx/cssW, published by the drawing effect
+  // below. The render body used to recompute an approximation of these from a
+  // separately re-filtered `rslots` array using a freshly-read Date.now() on
+  // EVERY render (including scroll/resize renders) — while the canvas's real
+  // splitIdx/cssW are frozen at whatever `now` was when the effect last ran
+  // ([forecast, theme, t] deps). As real time advanced between data refreshes,
+  // the two "now"s drifted apart, so the caption's divider could sit a slot off
+  // from the canvas's own dashed line even at rest, not just while scrolling.
+  // Publishing the canvas's actual numbers instead of re-deriving a parallel
+  // estimate makes the two structurally unable to disagree.
+  const [canvasZone, setCanvasZone] = useState(() => computeInitialZone(forecast))
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -288,6 +320,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // split is taken on the bar's END. Errs toward "estimate", the honest direction.
     const splitIdx   = slots.findIndex(s => s.end > radarUntil)
     const boundaryX  = splitIdx <= 0 ? null : splitIdx * SLOT_W
+    // v2.36.6 — hand the pinned caption below the exact splitIdx/cssW this
+    // drawing pass used, so its divider can never drift from this line.
+    setCanvasZone({ splitIdx, cssW })
 
     // Zone rail (v2.6, silent since v2.35): radar zone tinted in the dry-gold
     // family, forecast zone in neutral grey — matching the "dimmer = estimate"
@@ -552,13 +587,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const plainDryOnly = hasData && !traceOnly && modelRainMin == null && !unstable
   const showDryLabel = (allDry || !hasData) && !(plainDryOnly && hasBracket)
 
-  // v2.36.4 — where the pinned caption splits, recomputed from the same rbars/
-  // rSplit the bracket above already uses, so the caption cannot name a boundary
-  // the canvas didn't draw (the v2.18.0 lesson, applied to a proportion instead
-  // of a single number). boundaryX / contentW are content-space pixels — the
-  // same SLOT_W units the canvas draws in — not yet corrected for scroll.
-  const contentW  = rbars.length * SLOT_W
-  const boundaryX = !showRadarZone ? null : rSplit === -1 ? contentW : rSplit * SLOT_W
+  // v2.36.4/v2.36.6 — where the pinned caption splits: read from canvasZone
+  // (the drawing effect's OWN splitIdx/cssW, set with setCanvasZone above), not
+  // recomputed from rbars/rSplit — those are re-derived every render from a
+  // freshly-read Date.now(), which drifts from the canvas's frozen "now" as time
+  // passes between data refreshes (the v2.36.6 fix). boundaryX / contentW are
+  // content-space pixels — the same SLOT_W units the canvas draws in — not yet
+  // corrected for scroll.
+  const contentW  = canvasZone.cssW
+  const boundaryX = !showRadarZone || canvasZone.splitIdx == null ? null
+    : canvasZone.splitIdx === -1 ? contentW
+    : canvasZone.splitIdx * SLOT_W
   // view0/view1: the slice of CONTENT currently visible, in those same pixels.
   // viewW falls back to contentW before the first measurement so the caption
   // still renders something sane on the very first paint.
