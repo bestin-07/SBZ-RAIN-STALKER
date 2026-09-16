@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.7] - 2026-09-16 - Gemma Raus just got better: the headline never wraps again 🧾
+
+*A real bug from yesterday's font change, fixed properly.*
+
+**What happened**
+
+The new headline font (Archivo) is wider than the old one, and both the small "GEMMA RAUS" logo in the header and the big headline could wrap onto two lines once real content was on screen — something that must never happen, whatever the wording, whatever the language, whatever the screen size.
+
+**What's new for you**
+
+- **The headline and logo now shrink to fit instead of wrapping.** Both watch their own available space and scale down just enough to stay on one line — this works for any status text ("GEMMA RAUS", "BLEIB DRIN", a countdown with any number) at any phone width, not just the strings we tested against.
+
+**Nothing about the verdict changed.** Purely visual sizing — what the headline says is untouched.
+
+---
+
 ## [2.36.6] - 2026-09-16 - Gemma Raus just got better: three follow-up fixes from the same screenshots 🧾
 
 *A closer look at yesterday's changes turned up a few rough edges.*

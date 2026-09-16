@@ -1,4 +1,6 @@
+import { useRef } from 'react'
 import SkyLine from './SkyLine'
+import { useFitText } from '../useFitText'
 
 const ACTIVITY_EMOJI = {
   swim: '🏊', run: '🏃', bike: '🚴', moto: '🏍️', picnic: '🧺',
@@ -55,6 +57,19 @@ function SourceLine({ signals, t }) {
 }
 
 export default function GapBanner({ status, blocked = [], signals = null, weather = null, t }) {
+  // v2.36.7 — must never wrap (see useFitText.js): Archivo's expanded cut is
+  // wider than Space Grotesk, and any headline — "GEMMA RAUS", "BLEIB DRIN", a
+  // countdown with an arbitrary minute count — can be long enough to wrap at
+  // some viewport width. Hook is called before the early return below, since
+  // hooks can't follow a conditional return.
+  const headlineRef = useRef(null)
+  useFitText(headlineRef, () => {
+    const p = headlineRef.current?.parentElement
+    if (!p) return 0
+    const cs = getComputedStyle(p)
+    return p.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
+  }, [status?.headline])
+
   if (!status) return null
 
   // Theme-aware colour via CSS var (light mode darkens these for contrast);
@@ -75,6 +90,7 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
           headline, not a competitor to it. */}
       <SkyLine weather={weather} t={t} compact />
       <div
+        ref={headlineRef}
         className="font-display font-bold text-5xl leading-none tracking-tight"
         style={{ color: `var(--c-${status.type}, ${fallback})` }}
       >

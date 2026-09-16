@@ -1,3 +1,6 @@
+import { useRef } from 'react'
+import { useFitText } from '../useFitText'
+
 export default function Header({
   accuracy, lastUpdated, onRefresh, loading,
   theme, onThemeToggle,
@@ -9,6 +12,20 @@ export default function Header({
   t,
 }) {
   const acc30 = accuracy?.['30min']?.accuracy
+  // v2.36.7 — the brand title must never wrap (see useFitText.js): it's shrunk
+  // to fit whatever the icon row (a variable-width sibling — the notify bell is
+  // conditional) actually leaves it, not assumed to always have room.
+  const rowRef = useRef(null)
+  const titleRef = useRef(null)
+  const iconsRef = useRef(null)
+  useFitText(titleRef, () => {
+    const row = rowRef.current, icons = iconsRef.current
+    if (!row || !icons) return 0
+    const cs = getComputedStyle(row)
+    const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
+    const gap = parseFloat(cs.columnGap || cs.gap) || 0
+    return row.clientWidth - pad - icons.offsetWidth - gap
+  }, [notifyState, lang])
 
   function formatTime(ts) {
     if (!ts) return null
@@ -18,16 +35,21 @@ export default function Header({
 
   return (
     <header className="shrink-0 border-b border-border">
-      <div className="flex items-center justify-between px-4 pt-safe pb-4 gr-col">
+      <div ref={rowRef} className="flex items-center justify-between px-4 pt-safe pb-4 gr-col">
         <button
           onClick={onLogo}
-          className="font-display font-bold text-sm tracking-[0.2em] uppercase text-primary hover:opacity-70 transition-opacity"
+          className="shrink-0 min-w-0 hover:opacity-70 transition-opacity"
           aria-label="Gemma Raus — start"
         >
-          GEMMA RAUS
+          <span
+            ref={titleRef}
+            className="font-display font-bold text-sm tracking-[0.2em] uppercase text-primary"
+          >
+            GEMMA RAUS
+          </span>
         </button>
 
-        <div className="flex items-center gap-1.5">
+        <div ref={iconsRef} className="flex items-center gap-1.5">
           {acc30 !== null && acc30 !== undefined && (
             <span className="hidden sm:inline font-mono text-xs text-muted mr-1">
               {acc30}{t('pct_accurate')}
