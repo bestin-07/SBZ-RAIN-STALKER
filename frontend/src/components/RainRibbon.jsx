@@ -306,6 +306,13 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // The page ground (--c-bg), for knocking the bracket label — and the
     // ghost/disagreement marker rings — out of the line behind them.
     const bgCol    = theme === 'light' ? '#F2F0EB' : '#08090B'
+    // v2.37.2 — same tone as --c-border: the baseline colour for a CONFIRMED
+    // dry or trace reading (see the grad stops below). Deliberately not
+    // "no colour" (a live report showed a truly invisible baseline reads as
+    // a chart that failed to load — the same reason DRY_H isn't literally 0)
+    // but not rain-blue either, which a live report flagged as reading like
+    // "it's calling this dry and still showing rain".
+    const neutralCol = theme === 'light' ? '#C8C6C0' : '#1E2128'
 
     // Model series lookup (bleed markers, within the radar zone): only
     // meaningful when the chart IS radar (isNowcast) — otherwise the points
@@ -343,9 +350,23 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // strokes, and the bleed/disagreement markers is what makes it genuinely
     // one continuous scale end to end, rather than a coloured area with a
     // flat-coloured outline.
-    const grad = ctx.createLinearGradient(0, CHART_H - precipToHeight(GRAD_REF_P), 0, CHART_H)
+    // v2.37.2 — a THIRD stop, added after a live report ("it still calls for
+    // dry but the ribbon already starts blue — is this normal?"). It wasn't
+    // supposed to be: DRY_H/TRACE_H are only 4-6px tall against a ~45px
+    // gradient span, so a confirmed-dry or trace reading should barely
+    // register on the gradient at all — but with only two stops (red at the
+    // top, rain-blue at the very bottom), the baseline itself sampled the
+    // blue end at close to full strength, which read as "showing rain"
+    // exactly where the chart (and the dry-window bracket right below it)
+    // was saying dry. The stop at TRACE_H's height clamps everything from
+    // there down to the baseline to one neutral tone — real rain (>=
+    // MIN_REAL_H) still gets the full blue-to-red scale untouched.
+    const gradTop = CHART_H - precipToHeight(GRAD_REF_P)
+    const offsetAt = h => (precipToHeight(GRAD_REF_P) - h) / precipToHeight(GRAD_REF_P)
+    const grad = ctx.createLinearGradient(0, gradTop, 0, CHART_H)
     grad.addColorStop(0, sky.storm)
-    grad.addColorStop(1, sky.rain)
+    grad.addColorStop(Math.max(0, Math.min(1, offsetAt(MIN_REAL_H))), sky.rain)
+    grad.addColorStop(Math.max(0, Math.min(1, offsetAt(TRACE_H))), neutralCol)
 
     const pts = slots.map((s, i) => ({
       x: i * SLOT_W + SLOT_W / 2,
@@ -602,6 +623,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // The legend chips below describe the PICTURE, so they're computed from
   // the same 30-min points the canvas draws, not the raw 15-min slots.
   const rbars = bucket30(rslots)
+  const sky = skyPalOf(theme) // the gradient swatch's own two colours
   const hasDisagreement = rslots.some(s => s.agree === false && s.p >= DRY_THRESHOLD)
   const hasData = rslots.length > 0
   const showRadarZone = hasRadarZone(forecast?.radarUntil, nowS, forecast?.isNowcast)
@@ -710,13 +732,21 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           </div>
         )}
       </div>
-      {/* v2.37 — two chips, gated on something actually being drawn that they
-          explain (v2.18.0's reasoning, carried through the redesign): a trace echo,
-          a bleed spike, or a real models-disagree marker. Colour+height+shape (solid
-          fill vs. dashed line) already say everything else — nothing left to spell
-          out in a swatch key. */}
+      {/* v2.37.2 — the gradient swatch is back (it was in the design mockup this
+          shipped from, and a live report noticed its absence). The rest stays
+          v2.37's rule: gated on something actually being drawn that it explains
+          (v2.18.0) — a trace echo, a bleed spike, or a real models-disagree
+          marker. Colour+height+shape (solid fill vs. dashed line) already say
+          everything else; the swatch just names what the colour scale itself is,
+          since that's the one thing no amount of shape alone can spell out. */}
       {hasData && (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.07em] text-muted">
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-4 h-2 rounded-[1px] shrink-0"
+                  style={{ background: `linear-gradient(90deg, ${sky.rain}, ${sky.storm})` }}
+                  aria-hidden="true" />
+            {t('legend_gradient')}
+          </span>
           {hasTrace && <span>{t('legend_trace')}</span>}
           {hasBleed && <span>{t('legend_bleed')}</span>}
           {hasDisagreement && <span>{t('legend_uncertain')}</span>}

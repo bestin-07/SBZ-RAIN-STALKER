@@ -51,6 +51,7 @@ export const translations = {
     next_12h:   '12 Std.',
     ribbon_dry:  'Radar sieht keinen Regen in den nächsten 3 Std.',
     ribbon_trace_only: 'nur hauchfeiner Niesel am Radar — nichts Stärkeres in Sicht',
+    legend_gradient: 'leicht → Sturm',
     legend_trace: 'Niesel möglich',
     legend_bleed: 'Modell erwartet mehr',
     // „labile Luft" ist zwar meteorologisch korrekt, aber Fachjargon — im Alltag sagt
@@ -408,6 +409,7 @@ export const translations = {
     next_12h:   '12 h',
     ribbon_dry:  'radar sees no rain in the next 3 h',
     ribbon_trace_only: 'only faint drizzle traces on radar — nothing heavier in sight',
+    legend_gradient: 'light → storm',
     legend_trace: 'drizzle possible',
     legend_bleed: 'model expects more',
     ribbon_dry_unstable: 'radar sees no rain yet — unstable air, can change fast',

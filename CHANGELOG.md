@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.37.2] - 2026-09-16 - Gemma Raus just got better: dry stays dry-coloured, and the key is back 🩹
+
+*Two more real reports, same day.*
+
+**What happened**
+
+The chart's colour key — the little swatch explaining the blue-to-red scale — didn't make it into the shipped chart, even though it was part of the design that was approved. And separately: a genuinely dry stretch was still picking up a faint blue tint from the colour scale, so a spot the chart (and the "dry for X" note underneath it) was calling dry could still look like it was showing a touch of rain.
+
+**What's new for you**
+
+- **The colour key is back**, right where the design had it.
+- **Dry reads as dry now** — a plain neutral tone, not a faint blue. The scale only kicks in once there's real rain to show.
+
+**Nothing about the verdict changed.**
+
+---
+
 ## [2.37.1] - 2026-09-16 - Gemma Raus just got better: fewer circles, and the page holds still sideways 🩹
 
 *Two real reports from v2.37.0, live within the hour.*
