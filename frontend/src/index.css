@@ -83,6 +83,15 @@ html.light {
 }
 
 @layer utilities {
+  /* "Archivo Expanded" isn't a separate family — it's the Archivo variable font's
+     wdth axis at 125% (the only cut index.html actually loads). Tailwind's own
+     `.font-display` utility only sets font-family from tailwind.config.js;
+     without this, every font-display element would silently render the
+     NORMAL-width instance instead, with no visible error. */
+  .font-display {
+    font-stretch: 125%;
+  }
+
   /* v2.35: the app uses the FULL window width again. v2.32 capped it at a 980px
      reading column and v2.34 pushed that column flush left; on a wide screen the
      result was a narrow strip against one edge with a large dead void beside it,
@@ -146,7 +155,7 @@ html.light {
 .gr-status-popup .leaflet-popup-content { margin: 0.7rem 0.9rem; }
 .gr-status-popup a.leaflet-popup-close-button { color: var(--c-muted); }
 .gr-pop-name { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-muted); margin-bottom: 0.3rem; }
-.gr-pop-head { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 1.05rem; line-height: 1.1; }
+.gr-pop-head { font-family: 'Archivo', system-ui, sans-serif; font-weight: 700; font-stretch: 125%; font-size: 1.05rem; line-height: 1.1; }
 .gr-pop-sub  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--c-muted); margin-top: 0.3rem; line-height: 1.35; max-width: 200px; }
 .gr-pop-load { font-family: 'JetBrains Mono', monospace; color: var(--c-muted); }
 .gr-pop-hint { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--c-muted); opacity: 0.8; margin-top: 0.45rem; padding-top: 0.4rem; border-top: 1px solid var(--c-border); }

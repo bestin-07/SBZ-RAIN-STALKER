@@ -26,7 +26,11 @@ export default {
       fontFamily: {
         sans:    ['Inter', 'system-ui', 'sans-serif'],
         mono:    ['"JetBrains Mono"', 'Menlo', 'monospace'],
-        display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        // "Archivo Expanded" isn't its own family — it's the Archivo variable
+        // font's wdth axis at 125%. index.css's `.font-display` rule adds the
+        // matching `font-stretch: 125%`, since setting only font-family here
+        // would silently render the normal-width instance instead.
+        display: ['Archivo', 'system-ui', 'sans-serif'],
       },
     },
   },

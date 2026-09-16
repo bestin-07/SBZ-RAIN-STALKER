@@ -12,6 +12,18 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.36.5] - 2026-09-16 - Gemma Raus just got better: a new headline face 🧾
+
+*A brand-level swap, chosen off a side-by-side comparison.*
+
+**What's new for you**
+
+- **The big headline font changed** — "GEMMA RAUS", status badges and panel titles now use Archivo (a wider, heavier cut) instead of Space Grotesk. Everything else — the mono body text you see everywhere else in the app — is unchanged.
+
+**Nothing about the verdict changed.** Purely a typeface swap.
+
+---
+
 ## [2.36.4] - 2026-09-16 - Gemma Raus just got better: the chart caption keeps up with the chart 🧾
 
 *A follow-up screenshot review turned up two small things.*

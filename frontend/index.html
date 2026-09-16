@@ -71,7 +71,11 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- "Archivo Expanded" is not its own family — it's the Archivo variable font
+         at the wdth axis's expanded end (125%). The wght,wdth axis tuple below
+         pulls exactly that cut; index.css applies the matching `font-stretch:
+         125%` wherever it's used, since font-family alone won't select it. -->
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght,wdth@700,125&family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
 
     <!-- Structured data: app + FAQ (rich results) -->
     <script type="application/ld+json">
