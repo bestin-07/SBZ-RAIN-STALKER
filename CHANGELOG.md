@@ -12,6 +12,25 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.39.0] - 2026-09-17 - Gemma Raus just got better: tap the map to fill the screen, and the ribbon's time-marker finally holds still 🗺️
+
+*A batch of interface fixes and two small features, tested live before shipping — including one fix for a feature that shipped, then genuinely didn't do anything, caught by actually clicking it rather than assuming the code was right.*
+
+**What happened**
+
+The rain ribbon's little time-marker — the line that's supposed to always mark "the moment you're looking at" — turned out to be a passenger on its own scroll container: drag the ribbon and it drifted along with the chart instead of staying put on screen, and on a long drag it could scroll fully out of view. It also sat flush against the very left edge, reading more like "the start of the chart" than a point on a longer timeline. Separately, tapping the town map to make it bigger was wired up and genuinely did nothing — the map already filled all the space it had down to the bottom of the screen, so growing "downward" landed it in the exact same spot. And the little "cloudy, 16°" glance at the top was saying much the same thing as a banner sitting right below it.
+
+**What's new for you**
+
+- **Tap the map to grow it.** It smoothly expands to around half the screen — tap the ✕, tap anywhere still visible above it, or just press your phone's back button, and it shrinks back down.
+- **The ribbon's time-marker finally stays put.** It's now genuinely fixed on screen while you drag the chart underneath it, never drifts and never disappears, and it no longer sits jammed against the left edge.
+- **The ribbon nudges itself forward** on its own if you leave it alone for a few seconds — touch it and it stops immediately, so it never fights you.
+- **One redundant banner retired.** "Cloudy but dry" is gone — the sky glance and the headline already cover it between them. That same sky glance is also hidden while you're on the five-day outlook tab, since it's a right-now reading with nothing to say about Friday.
+
+**Nothing about the verdict changed.** Every bit of this is what the app shows you and how you interact with it — not what it decides.
+
+---
+
 ## [2.38.1] - 2026-09-17 - Gemma Raus just got better: the slider works on desktop now, and it never fibs about "light rain" 🩹
 
 *A handful of real reports on yesterday's ribbon redesign, fixed the same day.*

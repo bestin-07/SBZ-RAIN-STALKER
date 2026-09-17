@@ -521,80 +521,165 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   useEffect(() => () => clearTimeout(spinTimer.current), [])
 
   // Tap-to-expand (v2.38.5, maintainer ask): a tap anywhere on the map grows
-  // it into a fixed overlay reaching to the bottom of the screen; a tap
-  // anywhere still visible above it shrinks it back.
+  // it; a tap anywhere still visible above/outside it, the close button, or
+  // the device back button shrinks it back.
   //
-  // v2.38.6 — the first cut measured THIS box's own top and grew downward
-  // from there, on the assumption there'd be room below to grow into. There
-  // never is: the column this map sits in is already clamped to the full
-  // viewport height (v2.36.1 — "the map IS the shock absorber"), so flex-1
-  // already stretches it to the same bottom edge a `position:fixed;
-  // bottom:0` box would land on. Confirmed by driving a real click through
-  // it: the class correctly flipped to `fixed`, but the box measured
-  // pixel-identical before and after — a no-op with nothing to show for it.
-  // Growing UPWARD instead, over the ribbon/tabs/banners, is the only
-  // direction with any room to grow into. The header is the one element
-  // that's never part of this column (App.jsx renders it as a fixed
-  // top bar outside the scrollable shell), so it's the stable anchor for
-  // both "how far up can this grow" and "the text part above it to tap".
+  // v2.38.6 — first cut grew downward from the map's own top, on the
+  // assumption there'd be room below to grow into. There never is: the
+  // column this map sits in is already clamped to the full viewport height
+  // (v2.36.1 — "the map IS the shock absorber"), so flex-1 already stretches
+  // it to the same bottom edge a `position:fixed; bottom:0` box would land
+  // on — confirmed by driving a real click through it and measuring a
+  // pixel-identical box before and after.
+  //
+  // v2.38.7 — grows upward instead, but only to EXPAND_TOP_VH (roughly half
+  // the screen, per a maintainer mock-up marking where the line should be),
+  // not all the way to the header — a full-height map buries the header AND
+  // whatever alert/verdict banners are stacked that day, and a live report
+  // asked for room to still see something above it. Fixed vh, not "just
+  // below the header": that stays the same size regardless of how tall the
+  // banner stack is, rather than visually jumping around with it.
+  //
+  // The grow/shrink itself is a two-rect animation (FLIP-style, without the
+  // transform trick — this animates real top/left/width/height so Leaflet's
+  // own ResizeObserver, already wired to the container, keeps the tiles
+  // correctly laid out throughout instead of visibly distorting them):
+  // `animRect` holds the CURRENT in-flight pixel rect while a transition is
+  // playing (rendered with position:fixed + a CSS transition on those four
+  // properties) and is null once settled — open at rest uses vh/inset units
+  // so it keeps responding correctly to viewport/orientation changes; closed
+  // is the plain flex-1 box, unchanged. `ghostRef` is a same-sized invisible
+  // stand-in rendered in the map's normal flex slot for as long as the real
+  // box is fixed/out of flow — closing needs to know exactly where "back in
+  // flow" would put it *today* (the banner stack above can change while the
+  // map is open), and there is no other way to ask a flex box that question
+  // without literally having one sitting there.
+  const EXPAND_TOP_VH = 50
+  const ANIM_MS = 300
+  const ANIM_EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+
   const [expanded, setExpanded] = useState(false)
-  const [expandTop, setExpandTop] = useState(0)
+  const [animRect, setAnimRect] = useState(null)   // {top,left,width,height} in px, or null when settled
   const expandedRef = useRef(false)
+  const ghostRef    = useRef(null)
+  // Named distinctly from the pre-existing `animTimerRef` above (the RainViewer
+  // frame-cycling interval) — same file, unrelated timer, would otherwise collide.
+  const expandTimerRef = useRef(null)
   useEffect(() => { expandedRef.current = expanded }, [expanded])
+  useEffect(() => () => clearTimeout(expandTimerRef.current), [])
+
+  const openMap = () => {
+    if (expandedRef.current || !wrapRef.current) return
+    const r0 = wrapRef.current.getBoundingClientRect()
+    setExpanded(true)
+    setAnimRect({ top: r0.top, left: r0.left, width: r0.width, height: r0.height })
+    // Double rAF: the first guarantees the browser has actually painted the
+    // "snapped to r0" frame above (a plain single rAF can still land before
+    // that paint in some browsers) before the second frame retargets to the
+    // grown rect — without that gap there is nothing for the CSS transition
+    // to animate FROM, and it would just jump straight to full size.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const vh = window.innerHeight, vw = window.innerWidth
+      const top = vh * EXPAND_TOP_VH / 100
+      setAnimRect({ top, left: 0, width: vw, height: vh - top })
+      clearTimeout(expandTimerRef.current)
+      expandTimerRef.current = setTimeout(() => setAnimRect(null), ANIM_MS)
+    }))
+  }
+
+  const closeMapAnimated = () => {
+    if (!expandedRef.current || !wrapRef.current) return
+    const r1 = wrapRef.current.getBoundingClientRect()
+    const r0 = ghostRef.current ? ghostRef.current.getBoundingClientRect() : r1
+    setAnimRect({ top: r1.top, left: r1.left, width: r1.width, height: r1.height })
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      setAnimRect({ top: r0.top, left: r0.left, width: r0.width, height: r0.height })
+      clearTimeout(expandTimerRef.current)
+      expandTimerRef.current = setTimeout(() => { setExpanded(false); setAnimRect(null) }, ANIM_MS)
+    }))
+  }
+
+  // Same back-button convention as InfoPanel/PrivacyPanel (App.jsx): opening
+  // pushes a history entry; the close PATH decides whether to pop it
+  // (`history.back()`, which then reaches us via popstate) or, if the user
+  // already popped it themselves (the actual back press), animate closed
+  // directly without pushing/popping again.
+  useEffect(() => {
+    if (!expanded) return
+    window.history.pushState({ mapExpanded: true }, '')
+    const onPop = () => closeMapAnimated()
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [expanded])
+
+  const requestClose = () => {
+    if (window.history.state?.mapExpanded) window.history.back()
+    else closeMapAnimated()
+  }
 
   // Capture phase, not bubble: Leaflet stops propagation on its own marker/
   // control clicks, which would otherwise make this handler blind to a tap
   // on a town dot or the relocate button. Capture runs before that, so every
   // tap on the map is seen regardless of what Leaflet does with it after.
-  const handleMapPointerDownCapture = () => {
-    if (expandedRef.current) return
-    const header = document.querySelector('header')
-    setExpandTop(header ? header.getBoundingClientRect().bottom : 0)
-    setExpanded(true)
-  }
+  const handleMapPointerDownCapture = () => openMap()
 
   useEffect(() => {
     if (!expanded) return
     const onOutside = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setExpanded(false)
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) requestClose()
     }
     document.addEventListener('pointerdown', onOutside)
     return () => document.removeEventListener('pointerdown', onOutside)
   }, [expanded])
 
   // The ResizeObserver already bound to containerRef (map-init effect above)
-  // picks up the size change once it lands, but Leaflet can show a stale-
-  // sized frame for one paint before that fires — nudge it immediately too.
+  // fires continuously as `animRect` changes the box's real size frame by
+  // frame, keeping tiles correctly laid out through the whole animation —
+  // this is just belt-and-braces for the settled endpoints (open and
+  // closed), where Leaflet can otherwise show a stale-sized frame for one
+  // paint before the observer's own callback lands.
   useEffect(() => {
     const id = requestAnimationFrame(() => { try { mapRef.current?.invalidateSize() } catch {} })
     return () => cancelAnimationFrame(id)
-  }, [expanded])
+  }, [expanded, animRect])
+
+  const restClass  = 'relative flex-1 min-h-[160px]'
+  const fixedClass = 'fixed z-40 shadow-2xl'
+  const wrapClassName = !expanded ? restClass
+    : animRect ? fixedClass                    // mid-animation: every edge comes from animRect below
+    : `${fixedClass} inset-x-0 bottom-0`        // settled open: vh/inset units, responds to viewport changes on its own
+  const wrapStyle = !expanded ? undefined
+    : animRect ? {
+        top: animRect.top, left: animRect.left, width: animRect.width, height: animRect.height,
+        transition: `top ${ANIM_MS}ms ${ANIM_EASE}, left ${ANIM_MS}ms ${ANIM_EASE}, `
+                  + `width ${ANIM_MS}ms ${ANIM_EASE}, height ${ANIM_MS}ms ${ANIM_EASE}`,
+      }
+    : { top: `${EXPAND_TOP_VH}vh` }
 
   return (
-    /* v2.36.1 — 320px -> 160px. The column no longer scrolls at all (maintainer
-       decision): this map IS the shock absorber that keeps a tall banner stack
-       from pushing the page past the viewport, so it now has to be willing to
-       shrink further than before. The floor stays — not min-h-0 — because THAT
-       exact combination (no scroll path + no floor) is the one already reverted
-       once for an iOS report of a crushed, "frozen" map. 160px still shows the
-       radar-time pill, the user's dot and enough tile to read; below that the
-       map stops being a map.
-       v2.38.5/6 — expanded mode switches this box to `fixed`, which takes it
-       out of the flex column entirely. Nothing needs to fill the gap it
-       leaves: this is already the last element in its column, so the column
-       just gets shorter — nothing below it has to reflow up. `top` is the
-       header's own bottom edge (see the handler above), not this box's own
-       resting position — growing from where it already sat turned out to be
-       a no-op, since flex-1 already reaches the same bottom edge a `fixed;
-       bottom:0` box would. */
-    <div
-      ref={wrapRef}
-      onPointerDownCapture={handleMapPointerDownCapture}
-      className={expanded
-        ? 'fixed inset-x-0 bottom-0 z-40 shadow-2xl'
-        : 'relative flex-1 min-h-[160px]'}
-      style={expanded ? { top: expandTop } : undefined}
-    >
+    <>
+      {/* The flex-slot stand-in described above — present for exactly as long
+          as the real map is out of flow (fixed), so `closeMapAnimated` always
+          has an up-to-date "where would this land at rest, right now" to
+          animate back down to. */}
+      {expanded && <div ref={ghostRef} className={restClass} aria-hidden="true" />}
+      {/* v2.36.1 — 320px -> 160px. The column no longer scrolls at all (maintainer
+         decision): this map IS the shock absorber that keeps a tall banner stack
+         from pushing the page past the viewport, so it now has to be willing to
+         shrink further than before. The floor stays — not min-h-0 — because THAT
+         exact combination (no scroll path + no floor) is the one already reverted
+         once for an iOS report of a crushed, "frozen" map. 160px still shows the
+         radar-time pill, the user's dot and enough tile to read; below that the
+         map stops being a map.
+         v2.38.5-7 — expanded mode switches this box to `fixed`, animating from
+         its own resting rect up to EXPAND_TOP_VH (see the handlers above for
+         why that's a fixed viewport fraction, not the header's own edge). */}
+      <div
+        ref={wrapRef}
+        onPointerDownCapture={handleMapPointerDownCapture}
+        className={wrapClassName}
+        style={wrapStyle}
+      >
       <div ref={containerRef} className="absolute inset-0" style={{ zIndex: 0 }} />
       {radarFrame && (
         <div className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5
@@ -632,6 +717,24 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
           <path d="M6 1 L8 8.5 L6 7.2 L4 8.5 Z" fill="var(--c-primary)" opacity="0.85" />
         </svg>
       </div>
+      {/* Close (v2.38.7): explicit, not just tap-outside/back — a live ask
+          alongside the animation and the back-button wiring below. Sits
+          under the compass rather than fighting it for the same corner. */}
+      {expanded && (
+        <button
+          onClick={requestClose}
+          aria-label={t ? t('map_close') : 'Shrink map'}
+          className="absolute top-16 right-3 z-30 w-11 h-11 flex items-center justify-center
+                     rounded-full bg-surface/90 backdrop-blur border border-border text-primary
+                     shadow-lg hover:bg-surface active:scale-95 transition"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </svg>
+        </button>
+      )}
       {location && (
         <button
           onClick={handleRelocate}
@@ -659,6 +762,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
           )}
         </button>
       )}
-    </div>
+      </div>
+    </>
   )
 }
