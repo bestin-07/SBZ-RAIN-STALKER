@@ -80,6 +80,23 @@ for (const lang of ['de', 'en']) {
       expect(translations[lang].best_window_none).toBeUndefined()
     })
 
+    // v2.39.5 — live report: the German hour axis above the day rows rendered
+    // overlapping text. Root cause: `Intl.DateTimeFormat('de-AT', {hour:
+    // '2-digit'})` appends a literal " Uhr" ("16 Uhr") that the English
+    // locale doesn't ("16"), and the axis positions its four ticks at tight,
+    // fixed percentage offsets sized for a bare 2-digit number — the extra
+    // word overflowed into the next tick's position. Every tick must be a
+    // short digit-only string in BOTH languages, and "Uhr" must not appear
+    // anywhere in the axis row (the one place this bug could hide again).
+    it('the hour axis above the day rows is digit-only in every language', () => {
+      const html = renderToStaticMarkup(<DayStrip daily={daily()} theme="light" t={t} lang={lang} />)
+      const axisRow = html.match(/aria-hidden="true">(.*?)<\/div>/)?.[1] ?? ''
+      expect(axisRow).not.toContain('Uhr')
+      const ticks = [...axisRow.matchAll(/tabular-nums">(\d+)</g)].map(m => m[1])
+      expect(ticks.length).toBeGreaterThan(0)
+      for (const tick of ticks) expect(tick).toMatch(/^\d{1,2}$/)
+    })
+
     it('skipToday drops the today row — today is the tile above, not a thin row', () => {
       // v2.32: today is drawn as the tall tile from radar + model. Repeating it here
       // would claim the same day twice, from two instruments, at two resolutions.

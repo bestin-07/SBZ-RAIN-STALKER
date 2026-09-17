@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.39.5] - 2026-09-17 - Gemma Raus just got better: the German hour marks stopped overlapping 🕐
+
+*A small locale bug, caught from a screenshot.*
+
+**What happened**
+
+The little "00 · 12 · 18 · 24" hour markers above the Coming days rows overlapped into a garbled mess — but only in German. The cause: German's own way of writing an hour adds the word "Uhr" ("16 Uhr" instead of just "16"), and the markers were laid out assuming a short, bare number in every language.
+
+**What's new for you**
+
+- **The hour markers above the Coming days rows are clean in both languages now** — just the numbers, no overlap.
+
+**Nothing about the verdict changed.** A formatting fix to a row that only orients the eye — what the app decides is untouched.
+
+---
+
 ## [2.39.4] - 2026-09-17 - Gemma Raus just got better: a cleaner Coming days tab 🧹
 
 *A small trim, on request: one line that wasn't earning its place.*

@@ -31,11 +31,19 @@ function fmtDay(ts, lang) {
 }
 
 // Hour-only, for the axis strip above the rows — an orientation tick, not a
-// reading, so minutes would just be noise.
+// reading, so minutes would just be noise. Reads the `hour` part out of
+// `formatToParts` rather than using the formatted string directly: German
+// appends a literal " Uhr" to an hour-only format ("16 Uhr") that English
+// doesn't ("16"), and this axis positions its ticks at tight, fixed percentage
+// offsets sized for a bare 2-digit number — the extra word overflowed into
+// the next tick and rendered as overlapping text in German only (live
+// report). Dropping the locale's own suffix keeps both languages the same
+// short width, rather than special-casing German's wording.
 function fmtHourOnly(ts, lang) {
-  return new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', {
+  const parts = new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', {
     hour: '2-digit', timeZone: TZ, hourCycle: 'h23',
-  }).format(new Date(ts * 1000))
+  }).formatToParts(new Date(ts * 1000))
+  return parts.find(p => p.type === 'hour')?.value ?? ''
 }
 
 // `skipToday` (v2.32): today is drawn above as the tall tile, from radar + model,
