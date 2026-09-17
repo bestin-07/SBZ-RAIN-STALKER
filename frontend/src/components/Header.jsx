@@ -35,7 +35,7 @@ export default function Header({
 
   return (
     <header className="shrink-0 border-b border-border">
-      <div ref={rowRef} className="flex items-center justify-between px-4 pt-safe pb-4 gr-col">
+      <div ref={rowRef} className="flex items-center justify-between pl-safe pr-safe pt-safe pb-4 gr-col">
         <button
           onClick={onLogo}
           className="shrink-0 min-w-0 hover:opacity-70 transition-opacity"
@@ -120,7 +120,7 @@ export default function Header({
       {installable && (
         <button
           onClick={onInstall}
-          className="w-full flex items-center justify-between px-4 py-2 bg-surface border-t border-border font-mono text-xs text-muted hover:text-primary transition-colors"
+          className="w-full flex items-center justify-between pl-safe pr-safe py-2 bg-surface border-t border-border font-mono text-xs text-muted hover:text-primary transition-colors"
         >
           <span>{lang === 'de' ? 'App zum Startbildschirm hinzufügen' : 'Add to home screen'}</span>
           <span className="text-base leading-none">⊕</span>
@@ -129,7 +129,7 @@ export default function Header({
 
       {/* iOS install hint: Safari = manual Share→A2HS; other iOS browsers = open in Safari */}
       {iosHint && (
-        <div className="w-full flex items-center justify-between gap-3 px-4 py-2 bg-surface border-t border-border font-mono text-xs text-muted">
+        <div className="w-full flex items-center justify-between gap-3 pl-safe pr-safe py-2 bg-surface border-t border-border font-mono text-xs text-muted">
           <span className="leading-relaxed">{t(iosHint)}</span>
           <button onClick={onDismissIosHint} aria-label="dismiss" className="shrink-0 text-muted hover:text-primary px-1">✕</button>
         </div>
