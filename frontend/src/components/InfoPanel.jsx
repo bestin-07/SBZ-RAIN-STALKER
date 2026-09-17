@@ -71,7 +71,7 @@ export default function InfoPanel({ open, onClose, onPrivacy, t, theme }) {
           </div>
           <DayGuide t={t} />
           <div className="space-y-2 mb-5">
-            {['guide_days_1','guide_days_2','guide_days_3'].map(k => (
+            {['guide_days_1','guide_days_2'].map(k => (
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
             ))}
           </div>

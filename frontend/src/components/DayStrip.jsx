@@ -1,22 +1,22 @@
 import WeatherGlyph from './WeatherGlyph'
 import { precipToColor, palOf } from './RainRibbon'
-import { dayBuckets, bestWindow, preferWindow, weatherGroup, DRY_THRESHOLD } from '../gaps'
+import { dayBuckets, weatherGroup, DRY_THRESHOLD } from '../gaps'
 
-// The five-day strip (v2.30).
+// The five-day strip (v2.30; the "best window" headline removed in v2.39.4 —
+// maintainer call, "that's not necessary". `gaps.js`'s own `bestWindow`/
+// `preferWindow` are untouched and still fully tested — this only stops
+// DayStrip from calling and displaying them).
 //
 // Gemma Raus answers "when can I go outside" for three hours. The same question
 // about the weekend is the one thing a rain app gets asked that this one could not
 // answer at all — so people left it to check something else, and that something
 // else is what they then trusted for the next three hours too.
 //
-// Two rules keep the block from undermining the verdict it sits under:
-//   1. It never speaks about the next three hours. Those are radar's, and the
-//      headline above already owns them. Today's row is drawn for completeness and
-//      is the one row that can disagree with the ribbon in its first hours —
-//      which is why it carries no window and no claim, only shape.
-//   2. It is a PLAN, never a verdict. "Best window" names a dry stretch to aim at;
-//      it is not permission to go out, and the wording (i18n `best_window`) is
-//      written so it cannot be read as one.
+// One rule keeps the block from undermining the verdict it sits under: it never
+// speaks about the next three hours. Those are radar's, and the headline above
+// already owns them. Today's row is drawn for completeness and is the one row
+// that can disagree with the ribbon in its first hours — which is why it carries
+// no claim, only shape.
 //
 // Day boundaries come from the server as real Europe/Vienna midnights, and every
 // label here is formatted in that same zone — so the row labelled WED is exactly
@@ -27,14 +27,6 @@ const MAX_DAYS = 5
 function fmtDay(ts, lang) {
   return new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', {
     weekday: 'short', timeZone: TZ,
-  }).format(new Date(ts * 1000))
-}
-
-function fmtHour(ts, lang) {
-  return new Intl.DateTimeFormat(lang === 'de' ? 'de-AT' : 'en-GB', {
-    // hourCycle, not hour12:false — the latter renders midnight as "24:00" in
-    // several locales on both Safari and Chrome.
-    hour: '2-digit', minute: '2-digit', timeZone: TZ, hourCycle: 'h23',
   }).format(new Date(ts * 1000))
 }
 
@@ -65,27 +57,11 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
       hi:   typeof daily.tmax?.[i] === 'number' ? Math.round(daily.tmax[i]) : null,
       lo:   typeof daily.tmin?.[i] === 'number' ? Math.round(daily.tmin[i]) : null,
       prob: typeof daily.pprob?.[i] === 'number' ? Math.round(daily.pprob[i]) : null,
-      rain: typeof daily.psum?.[i] === 'number' ? daily.psum[i] : null,
       group: weatherGroup(daily.code?.[i] ?? null),
       isToday: i === 0,
       shape: dayBuckets(hT, hP, start, end),
-      // Sunrise/sunset bound the window search (v2.30.1). Absent on an older
-      // snapshot → null → the whole day is considered, as before.
-      daylight: typeof daily.sunrise?.[i] === 'number' && typeof daily.sunset?.[i] === 'number'
-        ? { from: daily.sunrise[i], to: daily.sunset[i] } : null,
     }
   })
-
-  // The headline window is picked from TOMORROW ONWARDS. Today is already the
-  // verdict's subject, and a "best window 14:00–18:00" sitting under a BLEIB DRIN
-  // about this very afternoon is the contradiction this app exists not to make.
-  let best = null
-  for (let i = 1; i < days.length; i++) {
-    const w = bestWindow(hT, hP, days[i].start, days[i].end, days[i].daylight)
-    // Longer wins; equal length → the drier DAY wins; equal in both → the earlier
-    // day keeps the slot. See gaps.preferWindow for why length alone is not enough.
-    if (w) best = preferWindow(best, { ...w, day: days[i].start, rain: days[i].rain })
-  }
 
   // v2.36 — a shared hour axis above the rows: every day's shape is the same 12
   // buckets, so one scale is enough, and the reader can finally tell WHEN in the
@@ -110,23 +86,13 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
     // stacked above, this panel should shrink before rows overlap, but never past
     // the point of being unreadable.
     <div className="border-b border-border shrink-0 px-4 py-2.5 flex-1 min-h-[200px] flex flex-col">
-      {/* One line, always (v2.35). The title never shrinks and never wraps; the
-          window text takes whatever is left and truncates inside it. Without the
-          shrink-0 / min-w-0 pair a long window label pushed the title onto a second
-          line on narrow phones, and `truncate` on a flex child does nothing unless
-          that child is allowed to shrink below its content width. */}
+      {/* v2.39.4 — the "best window" text (right side of this row, v2.35) is
+          gone: maintainer call, not necessary. The title alone doesn't need
+          the shrink-0/truncate pairing that line required — it's short and
+          fixed, never at risk of wrapping on its own. */}
       <div className="flex items-baseline gap-3 mb-1.5 shrink-0">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted shrink-0 whitespace-nowrap">
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted whitespace-nowrap">
           {t(skipToday ? 'days_title_forecast' : 'days_title')}
-        </span>
-        <span className="font-mono text-[10px] text-muted ml-auto min-w-0 text-right truncate">
-          {best
-            ? t('best_window', {
-                day: fmtDay(best.day, lang),
-                from: fmtHour(best.start, lang),
-                to: fmtHour(best.end, lang),
-              })
-            : t('best_window_none')}
         </span>
       </div>
 

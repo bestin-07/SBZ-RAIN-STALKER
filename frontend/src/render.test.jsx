@@ -69,13 +69,15 @@ for (const lang of ['de', 'en']) {
         <SkyLine weather={{ code: null, temp: null, wind: null }} t={t} />)).toBe('')
     })
 
-    it('DayStrip renders five rows and names a window on a dry day', () => {
+    it('DayStrip renders five rows', () => {
       const html = renderToStaticMarkup(<DayStrip daily={daily()} theme="light" t={t} lang={lang} />)
       expect(html).toContain(t('today_short'))
       expect((html.match(/<svg/g) || []).length).toBe(5)   // one glyph per day
       expect(html).toContain('%')
-      // Wednesday is fully dry → a window must be named, and it must not be today's.
-      expect(html).not.toContain(t('best_window_none'))
+      // v2.39.4 — the "best window" headline is gone (maintainer call); pinning
+      // its absence so it can't quietly resurface.
+      expect(translations[lang].best_window).toBeUndefined()
+      expect(translations[lang].best_window_none).toBeUndefined()
     })
 
     it('skipToday drops the today row — today is the tile above, not a thin row', () => {
@@ -89,8 +91,6 @@ for (const lang of ['de', 'en']) {
       expect(trimmed).not.toContain(t('today_short'))
       // …and the section says plainly that what is left is all forecast.
       expect(trimmed).toContain(esc(t('days_title_forecast')))
-      // the window headline is unaffected — it was always picked from tomorrow on
-      expect(trimmed).not.toContain(t('best_window_none'))
     })
 
     // v2.39.2 — the pinned "RADAR · NEXT X H ⋯ FORECAST · MODEL" caption row
@@ -326,7 +326,7 @@ for (const lang of ['de', 'en']) {
         <InfoPanel open={true} onClose={() => {}} onPrivacy={() => {}} t={t} />)
       for (const k of ['guide_sky_title', 'guide_sky', 'guide_lanes_title', 'guide_lanes_1',
                        'guide_lanes_2', 'guide_lanes_3', 'guide_days_title', 'guide_days_1',
-                       'guide_days_2', 'guide_days_3', 'guide_ribbon_5', 'guide_ribbon_6',
+                       'guide_days_2', 'guide_ribbon_5', 'guide_ribbon_6',
                        'src_daily']) {
         expect(html).toContain(esc(t(k).slice(0, 24)))
       }

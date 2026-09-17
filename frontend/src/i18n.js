@@ -231,11 +231,6 @@ export const translations = {
     tab_today: 'HEUTE',
     tab_days:  'KOMMENDE TAGE',
     today_short: 'HEUTE',
-    // Deliberately "Fenster", not "raus": this is a PLAN for another day, and it
-    // must never read as permission to go out now — that sentence belongs to the
-    // headline and to radar alone.
-    best_window: 'bestes Fenster: {day} {from}–{to}',
-    best_window_none: 'kein längeres trockenes Fenster in Sicht',
     lane_ground: 'Boden {mm} mm',
     lane_ground_none: 'Boden —',
     lane_radar: 'Radar {mm} mm',
@@ -252,7 +247,6 @@ export const translations = {
     guide_days_title: 'Die nächsten fünf Tage',
     guide_days_1: 'Ganz unten bekommt jeder Tag eine Zeile: Symbol, Tagesverlauf, Regenwahrscheinlichkeit und Höchst-/Tiefstwert.',
     guide_days_2: 'Der Verlauf sind zwölf kleine Balken à zwei Stunden, auf der eigenen Regen-Skala der App — Gold für trocken, Blau für Regen, Dunkelblau für Starkregen. Ein nasser Nachmittag fällt sofort auf.',
-    guide_days_3: '„Bestes Fenster“ nennt die längste trockene Strecke der kommenden Tage — nur zwischen Sonnenauf- und -untergang, denn nachts trocken nützt dir nichts. Das ist ein Planungstipp für später, keine Aussage über jetzt.',
     src_daily: 'Fünf Tage',
     guide_days_lbl_window: 'trockenes Fenster',
     loc_unavailable: 'Standort konnte nicht ermittelt werden.',
@@ -589,8 +583,6 @@ export const translations = {
     tab_today: 'TODAY',
     tab_days:  'COMING DAYS',
     today_short: 'TODAY',
-    best_window: 'best window: {day} {from}–{to}',
-    best_window_none: 'no long dry window in sight',
     lane_ground: 'ground {mm} mm',
     lane_ground_none: 'ground —',
     lane_radar: 'radar {mm} mm',
@@ -607,7 +599,6 @@ export const translations = {
     guide_days_title: 'the next five days',
     guide_days_1: 'at the bottom each day gets a row: icon, the shape of the day, chance of rain, and the high and low.',
     guide_days_2: "the shape is twelve little bars of two hours each, on the app's own rain scale — gold for dry, blue for rain, dark blue for a downpour. a wet afternoon stands out at a glance.",
-    guide_days_3: '"best window" names the longest dry stretch in the days ahead — only between sunrise and sunset, because dry at 3am is no use to you. it is a plan for later, not a verdict about now.',
     src_daily: 'Five days',
     guide_days_lbl_window: 'dry window',
     uv_very_high: 'UV very high — limit time in direct sun',

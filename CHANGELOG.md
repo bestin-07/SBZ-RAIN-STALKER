@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.39.4] - 2026-09-17 - Gemma Raus just got better: a cleaner Coming days tab 🧹
+
+*A small trim, on request: one line that wasn't earning its place.*
+
+**What happened**
+
+The Coming days tab had a "best window: Wed 14:00–18:00" line naming the longest dry stretch coming up. It wasn't necessary — the five-day rows below it already show the same thing visually, in colour, and the line was just repeating that in words.
+
+**What's new for you**
+
+- **The "best window" line is gone** from the top of the Coming days tab. The day rows underneath are untouched — the shape, colours, temperatures, and rain chances still tell you everything you need, just without a sentence restating it.
+- The in-app guide's explanation of that line is gone with it, so the help panel doesn't describe something that's no longer on screen.
+
+**Nothing about the verdict changed.** This only touches the five-day outlook's own header text — what the app decides about right now is untouched.
+
+---
+
 ## [2.39.3] - 2026-09-17 - Gemma Raus just got better: the confidence bar is back, and the expanded map finally has room to breathe 🗺️
 
 *A same-day follow-up: one visual call reversed after a closer look, plus a real bug the ring's replacement never caused but happened to be sitting next to.*
