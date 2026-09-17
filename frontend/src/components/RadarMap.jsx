@@ -521,13 +521,22 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   useEffect(() => () => clearTimeout(spinTimer.current), [])
 
   // Tap-to-expand (v2.38.5, maintainer ask): a tap anywhere on the map grows
-  // it into a fixed overlay reaching to the bottom of the screen, so the
-  // small flex-1 tile becomes a real map to read; a tap anywhere OUTSIDE it —
-  // the header, the banners, the ribbon above, all still in their normal
-  // place — shrinks it back. `expandTop` is measured at the moment it opens
-  // (this box's own current top edge), not a hardcoded offset, so it grows
-  // downward from wherever it already sits — never covering the verdict/
-  // banners above it — regardless of how tall that stack is that day.
+  // it into a fixed overlay reaching to the bottom of the screen; a tap
+  // anywhere still visible above it shrinks it back.
+  //
+  // v2.38.6 — the first cut measured THIS box's own top and grew downward
+  // from there, on the assumption there'd be room below to grow into. There
+  // never is: the column this map sits in is already clamped to the full
+  // viewport height (v2.36.1 — "the map IS the shock absorber"), so flex-1
+  // already stretches it to the same bottom edge a `position:fixed;
+  // bottom:0` box would land on. Confirmed by driving a real click through
+  // it: the class correctly flipped to `fixed`, but the box measured
+  // pixel-identical before and after — a no-op with nothing to show for it.
+  // Growing UPWARD instead, over the ribbon/tabs/banners, is the only
+  // direction with any room to grow into. The header is the one element
+  // that's never part of this column (App.jsx renders it as a fixed
+  // top bar outside the scrollable shell), so it's the stable anchor for
+  // both "how far up can this grow" and "the text part above it to tap".
   const [expanded, setExpanded] = useState(false)
   const [expandTop, setExpandTop] = useState(0)
   const expandedRef = useRef(false)
@@ -539,7 +548,8 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // tap on the map is seen regardless of what Leaflet does with it after.
   const handleMapPointerDownCapture = () => {
     if (expandedRef.current) return
-    if (wrapRef.current) setExpandTop(wrapRef.current.getBoundingClientRect().top)
+    const header = document.querySelector('header')
+    setExpandTop(header ? header.getBoundingClientRect().bottom : 0)
     setExpanded(true)
   }
 
@@ -569,10 +579,14 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
        once for an iOS report of a crushed, "frozen" map. 160px still shows the
        radar-time pill, the user's dot and enough tile to read; below that the
        map stops being a map.
-       v2.38.5 — expanded mode switches this box to `fixed`, which takes it out
-       of the flex column entirely. Nothing needs to fill the gap it leaves: this
-       is already the last element in its column, so the column just gets
-       shorter — nothing below it has to reflow up. */
+       v2.38.5/6 — expanded mode switches this box to `fixed`, which takes it
+       out of the flex column entirely. Nothing needs to fill the gap it
+       leaves: this is already the last element in its column, so the column
+       just gets shorter — nothing below it has to reflow up. `top` is the
+       header's own bottom edge (see the handler above), not this box's own
+       resting position — growing from where it already sat turned out to be
+       a no-op, since flex-1 already reaches the same bottom edge a `fixed;
+       bottom:0` box would. */
     <div
       ref={wrapRef}
       onPointerDownCapture={handleMapPointerDownCapture}
