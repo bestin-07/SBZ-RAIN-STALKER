@@ -221,3 +221,35 @@ html.light .leaflet-control-attribution a {
   opacity: 0.85;
   transform: rotate(-45deg);
 }
+
+/* Faint-drizzle mist marker (RainRibbon, v2.38). A soft pulse is the whole
+   point — it is what tells a glance "unconfirmed" apart from the chart's
+   own solid fill/line, without adding any text. */
+.gr-mist {
+  animation: gr-mist-pulse 2.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gr-mist { animation: none; }
+}
+@keyframes gr-mist-pulse {
+  0%, 100% { opacity: 0.32; }
+  50%      { opacity: 0.68; }
+}
+
+/* RainRibbon scrubber discoverability hint (v2.38): a one-time nudge on
+   mount so a first-time viewer learns the ribbon drags, without a word of
+   copy. Applied to the track only (spacer + canvas + mist markers) — the
+   fixed cursor, the readout and the legend below are outside this element
+   and never move. */
+.gr-ribbon-hint {
+  animation: gr-ribbon-hint 1.1s cubic-bezier(0.22, 0.61, 0.36, 1) 0.4s 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gr-ribbon-hint { animation: none; }
+}
+@keyframes gr-ribbon-hint {
+  0%       { transform: translateX(0); }
+  45%      { transform: translateX(-34px); }
+  70%      { transform: translateX(-34px); }
+  100%     { transform: translateX(0); }
+}

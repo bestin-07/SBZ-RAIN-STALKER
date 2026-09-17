@@ -99,7 +99,16 @@ function dryLabel(t, hasData, unstable, modelRainMin) {
 // equal quarter of the range rather than being linear over 0–5mm, which used
 // to squeeze 90% of all real rain into the bottom sixth of the chart.
 const DRY_H      = 4     // dry (p === 0): effectively flat
-const TRACE_H    = 6     // sub-threshold echo: a whisper of a rise, never as tall as real rain
+// v2.38 — sub-threshold echo ("faint drizzle") no longer gets its own bar
+// height at all: it renders at the SAME flat DRY_H as a genuine zero, and is
+// carried instead by a dedicated mist marker (below) drawn above the line.
+// The old TRACE_H bump (6px vs DRY_H's 4px) was real but nearly invisible —
+// a live report called it "redundant" once the mist existed alongside it,
+// and on reflection a 2px bar-height difference was always the wrong
+// channel for "unconfirmed": height on this chart means measured intensity,
+// and trace is precisely the reading that isn't. TRACE_H is kept only as
+// the reference height the mist markers float above.
+const TRACE_H    = 6
 const MIN_REAL_H = 10    // any reporting reading is legibly "this is rain"
 const MAX_BAR_H  = CHART_H - 6
 const HEIGHT_STOPS = [[DRY_THRESHOLD, 0], [0.5, 0.25], [2, 0.5], [5, 0.75], [15, 1]]
@@ -116,7 +125,7 @@ const HEIGHT_STOPS = [[DRY_THRESHOLD, 0], [0.5, 0.25], [2, 0.5], [5, 0.75], [15,
 const GRAD_REF_P = 2.4
 
 function precipToHeight(p) {
-  if (p < DRY_THRESHOLD) return p > 0 ? TRACE_H : DRY_H
+  if (p < DRY_THRESHOLD) return DRY_H
   let f = 1
   for (let i = 1; i < HEIGHT_STOPS.length; i++) {
     const [hi, fHi] = HEIGHT_STOPS[i]
@@ -234,6 +243,66 @@ function computeInitialZone(forecast) {
   return { splitIdx: slots.findIndex(s => s.end > radarUntil), cssW: slots.length * SLOT_W }
 }
 
+// v2.38 — the scrubber. A fixed reference sits this many px into the
+// viewport; the track (padding spacer + canvas) scrolls under it. Because
+// the spacer is exactly this wide, the canvas coordinate under the fixed
+// reference is always just `scrollLeft` itself — no separate offset math
+// needed anywhere else this constant is used (the zone caption's boundary
+// check included). Deliberately NOT aligned to the exact elapsed-minute
+// position within the first 30-min bucket: the chart's own resolution is
+// 30 min (bucket30), so pretending sub-bucket precision for "now" would be
+// the same false-precision this app's countdowns already refuse elsewhere.
+const CURSOR_X = 56
+
+// Confidence pips for the scrub readout (0.1–0.5 rain band aside, this is
+// the only place this chart speaks to source RELIABILITY rather than
+// amount). Radar-zone slots are measured, full stop — 5 of 5. Forecast-zone
+// slots reuse the SAME modelProb/modelAgree App.jsx already computes for the
+// bleed/disagreement markers; this is a new READING of existing data, not a
+// new signal, so it can't drift from what the chart already draws. A slot
+// past the hourly-probability horizon has no reading at all — shown low (2)
+// rather than omitted, the same "unknown reads as caution" doctrine as
+// tracePhantom's own null-handling.
+export function confidencePips(inRadar, prob, agree) {
+  if (inRadar) return 5
+  if (typeof prob !== 'number') return 2
+  let pips = Math.max(1, Math.min(5, Math.round(prob / 20)))
+  if (agree === false) pips = Math.max(1, pips - 1)
+  return pips
+}
+
+// Scrub-readout wording. Deliberately NOT getStatus: that function decides
+// the one verdict for NOW, built from ground + radar + story continuity —
+// asking it about an arbitrary future slot is a question it was never
+// built to answer, and doing so would blur the one-verdict doctrine this
+// app is built around. This instead just names what THIS chart, at THIS
+// point, is claiming — the same job the zone caption and legend chips
+// already do, extended to a single scrubbed slot.
+function slotStatusKey(p, trace) {
+  if (trace) return 'ro_status_trace'
+  if (p < DRY_THRESHOLD) return 'ro_status_dry'
+  if (p < 0.5) return 'ro_status_light'
+  if (p < STORM_THRESHOLD) return 'ro_status_rain'
+  return 'ro_status_storm'
+}
+function slotSourceKey(inRadar, trace, wet, disagree) {
+  if (inRadar) return trace ? 'ro_src_radar_trace' : wet ? 'ro_src_radar_measured' : 'ro_src_radar_clear'
+  if (trace) return 'ro_src_model_low'
+  if (wet) return disagree ? 'ro_src_model_disagree' : 'ro_src_model'
+  return 'ro_src_model_dry'
+}
+function fmtSlotTime(ts) {
+  const d = new Date(ts * 1000)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+function relFromNow(t, ts, nowSec) {
+  if (ts <= nowSec) return t('ro_now')
+  const mins = Math.round((ts - nowSec) / 60)
+  if (mins < 60) return t('ro_in', { label: `${mins} min` })
+  const h = Math.floor(mins / 60), m = mins % 60
+  return t('ro_in', { label: m ? `${h}h ${m}m` : `${h}h` })
+}
+
 export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
   const canvasRef = useRef(null)
   const scrollRef = useRef(null)
@@ -259,6 +328,24 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const ro = new ResizeObserver(() => setViewW(el.clientWidth))
     ro.observe(el)
     return () => ro.disconnect()
+  }, [])
+
+  // v2.38 — desktop click-drag on the scrub track. A plain ref, not state:
+  // the drag itself never needs a re-render, only the `scroll` events it
+  // provokes do (handled by the existing onScroll → setScrollX below).
+  const dragRef = useRef(null)
+
+  // v2.38 — a one-time "this drags" hint: the track nudges a few px and
+  // eases back, ONCE per mount, so a first-time viewer discovers the
+  // scrubber without being told in words. Mount-only effect (empty deps) —
+  // it does not replay on a data refresh, only when this component
+  // actually (re)mounts (e.g. leaving and returning to the Today tab).
+  // `prefers-reduced-motion` is handled by the CSS animation itself
+  // (index.css `.gr-ribbon-hint`), same doctrine as the mist pulse below.
+  const [hinting, setHinting] = useState(true)
+  useEffect(() => {
+    const timer = setTimeout(() => setHinting(false), 1300)
+    return () => clearTimeout(timer)
   }, [])
 
   useEffect(() => {
@@ -302,7 +389,6 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const sky      = skyPalOf(theme)  // the chart's own rain→storm gradient endpoints
     // Brighter/darker than before for a readable label at the larger size.
     const labelCol = theme === 'light' ? '#57544D' : '#9CA3AF'
-    const nowCol   = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
     // The page ground (--c-bg), for knocking the bracket label — and the
     // ghost/disagreement marker rings — out of the line behind them.
     const bgCol    = theme === 'light' ? '#F2F0EB' : '#08090B'
@@ -358,15 +444,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     // top, rain-blue at the very bottom), the baseline itself sampled the
     // blue end at close to full strength, which read as "showing rain"
     // exactly where the chart (and the dry-window bracket right below it)
-    // was saying dry. The stop at TRACE_H's height clamps everything from
-    // there down to the baseline to one neutral tone — real rain (>=
+    // was saying dry. The stop at DRY_H's height (v2.38: the one height ANY
+    // sub-threshold reading now renders at, trace included — see TRACE_H's
+    // own comment) clamps everything from there down to the baseline to one
+    // neutral tone — real rain (>=
     // MIN_REAL_H) still gets the full blue-to-red scale untouched.
     const gradTop = CHART_H - precipToHeight(GRAD_REF_P)
     const offsetAt = h => (precipToHeight(GRAD_REF_P) - h) / precipToHeight(GRAD_REF_P)
     const grad = ctx.createLinearGradient(0, gradTop, 0, CHART_H)
     grad.addColorStop(0, sky.storm)
     grad.addColorStop(Math.max(0, Math.min(1, offsetAt(MIN_REAL_H))), sky.rain)
-    grad.addColorStop(Math.max(0, Math.min(1, offsetAt(TRACE_H))), neutralCol)
+    grad.addColorStop(Math.max(0, Math.min(1, offsetAt(DRY_H))), neutralCol)
 
     const pts = slots.map((s, i) => ({
       x: i * SLOT_W + SLOT_W / 2,
@@ -597,13 +685,12 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       ctx.restore()
     }
 
-    // "now" marker. v2.23: positioned WITHIN the first point rather than
-    // pinned to x=0 — points are aligned to :00/:30, so the first one can
-    // begin up to 30 min in the past.
-    const nowX = Math.max(0, Math.min(SLOT_W - 2,
-      Math.round(((now - slots[0].t) / BUCKET_S) * SLOT_W)))
-    ctx.fillStyle = nowCol
-    ctx.fillRect(nowX, 0, 2, cssH)
+    // v2.38 — no in-canvas "now" line any more. The fixed cursor rendered
+    // in JSX below (positioned at CURSOR_X, outside the scrolling track) IS
+    // "now" at rest, since the track's own left spacer is exactly CURSOR_X
+    // wide — a second, canvas-drawn line at the same spot only doubled up
+    // visually. See CURSOR_X's own comment for why no sub-bucket offset is
+    // computed here any more either.
 
   }, [forecast, theme, t])
 
@@ -616,8 +703,13 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // a dry forecast never reads as "broken". No data at all → "waiting for
   // data".
   const nowS = Math.floor(Date.now() / 1000)
+  // v2.38: `prob` added alongside the existing `agree` — both already exist
+  // on `forecast` (App.jsx's ribbon confidence work), carried through
+  // bucket30 the same way `agree` already was, purely for the new scrub
+  // readout's confidence pips. Nothing here is a new SIGNAL, only a new
+  // READ of one App.jsx already computes for the bleed/disagreement work.
   const rslots = (forecast?.times || [])
-    .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i] }))
+    .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i], prob: forecast.modelProb?.[i] }))
     .filter(s => s.t >= nowS - 300)
     .slice(0, MAX_SLOTS)
   // The legend chips below describe the PICTURE, so they're computed from
@@ -652,8 +744,16 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const rSplit = rbars.findIndex(b => b.end > rUntil)
   const hasBracket = !!dryRunIn(rbars, (rSplit === -1 ? rbars.length : rSplit) - 1)
   const traceOnly = allDry && rslots.some(s => s.p > 0) && forecast.tracePhantom !== true
-  const plainDryOnly = hasData && !traceOnly && modelRainMin == null && !unstable
-  const showDryLabel = (allDry || !hasData) && !(plainDryOnly && hasBracket)
+  // v2.38 — generalised from `plainDryOnly && hasBracket`: the floating
+  // overlay sentence and the dry-window bracket used to both fire for a
+  // trace-only stretch (a live report called the pair "redundant" once the
+  // mist marker existed too — three things saying "dry" at once). The
+  // bracket already carries the DURATION; the overlay only still earns its
+  // place when it has something the bracket can't say — an incoming-rain
+  // countdown or an instability warning. `plainDryOnly` is retired: a bare
+  // "yes, still dry" is exactly the claim the bracket already makes.
+  const redundantWithBracket = hasBracket && modelRainMin == null && !unstable
+  const showDryLabel = (allDry || !hasData) && !redundantWithBracket
 
   // v2.36.4/v2.36.6 — where the pinned caption splits: read from canvasZone
   // (the drawing effect's OWN splitIdx/cssW), not recomputed here from a
@@ -663,30 +763,90 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const boundaryX = !showRadarZone || canvasZone.splitIdx == null ? null
     : canvasZone.splitIdx === -1 ? contentW
     : canvasZone.splitIdx * SLOT_W
-  const viewSpan = viewW || contentW
+  // v2.38 — the track now opens with a CURSOR_X-wide spacer (see that
+  // constant) before the canvas, so a canvas coordinate sits CURSOR_X
+  // further along in SCROLL coordinates than it used to. `boundaryX` above
+  // is still the canvas's own measurement (the drawing effect's clip
+  // rects don't know or care about the spacer); this is the same value
+  // translated into the scroll-content space `scrollX`/`viewW` live in.
+  const boundaryScrollX = boundaryX == null ? null : boundaryX + CURSOR_X
+  // Same reasoning as `boundaryScrollX`: before the ResizeObserver's first
+  // measurement (viewW still 0 — true for a brief instant in the browser,
+  // and always true under renderToStaticMarkup, which has no effects at
+  // all), the fallback approximates "assume the whole track is visible".
+  // That track now includes the CURSOR_X spacer, so the fallback has to
+  // too, or a boundary near the end of a SHORT forecast (little content
+  // past `contentW`) reads as just past the fallback's edge and the zone
+  // caption wrongly collapses to radar-only.
+  const viewSpan = viewW || (contentW + CURSOR_X)
   const view0 = scrollX
   const view1 = scrollX + viewSpan
-  const zoneMode = boundaryX == null ? 'radar-only'
-    : boundaryX >= view1 ? 'radar-only'
-    : boundaryX <= view0 ? 'forecast-only'
+  const zoneMode = boundaryScrollX == null ? 'radar-only'
+    : boundaryScrollX >= view1 ? 'radar-only'
+    : boundaryScrollX <= view0 ? 'forecast-only'
     : 'split'
   const zoneSplitPct = zoneMode === 'split' && viewSpan > 0
-    ? Math.max(4, Math.min(96, ((boundaryX - view0) / viewSpan) * 100))
+    ? Math.max(4, Math.min(96, ((boundaryScrollX - view0) / viewSpan) * 100))
     : null
+
+  // v2.38 — the scrub readout. `scrollX` IS the canvas coordinate under the
+  // fixed cursor (CURSOR_X's own comment explains why the spacer makes that
+  // exact, with no further offset). Reading a slot back out of `rbars` is
+  // the same "describe the picture" job the legend chips already do —
+  // nothing here calls getStatus or touches the verdict.
+  const scrubIdx = rbars.length
+    ? Math.max(0, Math.min(rbars.length - 1, Math.round(scrollX / SLOT_W)))
+    : 0
+  const scrubBar = rbars[scrubIdx]
+  const scrubRadarSplit = rSplit === -1 ? rbars.length : rSplit
+  const scrubInRadar = scrubIdx < scrubRadarSplit
+  const scrubTrace = !!scrubBar && scrubBar.p > 0 && scrubBar.p < DRY_THRESHOLD
+  const scrubWet = !!scrubBar && scrubBar.p >= DRY_THRESHOLD
+  const scrubDisagree = !!scrubBar && scrubBar.agree === false
+  const pips = confidencePips(scrubInRadar, scrubBar?.prob, scrubBar?.agree)
+
+  // Mist markers (v2.38): every trace bucket, radar zone or forecast zone
+  // alike — trace can show up in either. Positions are in TRACK space (the
+  // spacer's CURSOR_X plus the bucket's own canvas x), since these render
+  // inside the scrolling track, not the fixed viewport.
+  const mistBars = rbars
+    .map((b, i) => ({ i, p: b.p }))
+    .filter(m => m.p > 0 && m.p < DRY_THRESHOLD)
+  const cursorCol = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
+  const mistCol   = theme === 'light' ? '#1E86B0' : '#6CD1EB'   // --c-light: the same hue PASST SCHON already uses
+
+  function onScrubPointerDown(e) {
+    if (e.pointerType && e.pointerType !== 'mouse') return
+    dragRef.current = { x: e.clientX, s: e.currentTarget.scrollLeft }
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* no-op */ }
+  }
+  function onScrubPointerMove(e) {
+    if (!dragRef.current) return
+    e.currentTarget.scrollLeft = dragRef.current.s - (e.clientX - dragRef.current.x)
+  }
+  function onScrubPointerUp() { dragRef.current = null }
+  function onScrubKeyDown(e) {
+    const el = e.currentTarget
+    const step = e.shiftKey ? SLOT_W * 4 : SLOT_W
+    if (e.key === 'ArrowRight') { el.scrollLeft += step; e.preventDefault() }
+    else if (e.key === 'ArrowLeft') { el.scrollLeft -= step; e.preventDefault() }
+    else if (e.key === 'Home') { el.scrollLeft = 0; e.preventDefault() }
+    else if (e.key === 'End') { el.scrollLeft = contentW; e.preventDefault() }
+  }
+  function backToNow() {
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    scrollRef.current?.scrollTo({ left: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
+  }
 
   return (
     <div className="border-t border-border shrink-0">
-      {/* Header row, styled exactly like the day-strip header below it, so the two
-          read as one block: today, then the days. */}
-      <div className="flex items-baseline gap-3 px-4 pt-2.5 pb-1.5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
-          {t('today_short')}
-        </span>
-        <span className="font-mono text-[10px] text-muted ml-auto">
-          {t('next_12h')}
-          {!showRadarZone && <span className="ml-1 opacity-50">·&nbsp;est</span>}
-        </span>
-      </div>
+      {/* v2.38 — the "TODAY · NEXT 12H" header row is gone. It sat above the
+          zone row and said, in effect, the same thing that row already
+          says more usefully (which hours, which instrument) — a live
+          design pass flagged it as space spent restating the obvious right
+          before the one row that actually needs the room. `today_short` and
+          `next_12h` stay live i18n keys (DayStrip's own header still uses
+          `today_short`); only this repetition of them is gone. */}
       {/* v2.35/v2.36.4 — the zone row, pinned outside the scroller so it can never
           scroll fully out of view, and tracking scroll position so the split
           between "RADAR" and "FORECAST" sits at the same proportion of the visible
@@ -710,12 +870,57 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           )}
         </div>
       )}
-      <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none"
-           onScroll={e => setScrollX(e.currentTarget.scrollLeft)}>
-        <canvas
-          ref={canvasRef}
-          style={{ display: 'block' }}
-        />
+      {/* v2.38 — the scrubber. A fixed cursor sits CURSOR_X into the viewport;
+          the track (spacer + canvas + mist markers) scrolls under it, on a
+          native touch swipe or the pointer-drag handlers below on desktop.
+          `tabIndex`/`onKeyDown` add arrow-key scrubbing; none of this is new
+          STATE beyond the `scrollX` v2.36.4 already tracks for the zone
+          caption above — the readout below reads the exact same value. */}
+      <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none cursor-grab active:cursor-grabbing"
+           tabIndex={hasData ? 0 : -1}
+           role="group"
+           aria-label={t('ro_aria')}
+           onScroll={e => setScrollX(e.currentTarget.scrollLeft)}
+           onPointerDown={onScrubPointerDown}
+           onPointerMove={onScrubPointerMove}
+           onPointerUp={onScrubPointerUp}
+           onPointerLeave={onScrubPointerUp}
+           onKeyDown={onScrubKeyDown}>
+        <div className={'relative flex' + (hinting ? ' gr-ribbon-hint' : '')}>
+          {/* The spacer is exactly CURSOR_X wide — see that constant's own
+              comment for why this makes the fixed cursor "now" at rest with
+              no further offset math anywhere else. */}
+          <div style={{ width: CURSOR_X }} className="shrink-0" aria-hidden="true" />
+          <canvas
+            ref={canvasRef}
+            style={{ display: 'block' }}
+          />
+          {/* Mist markers (v2.38): a faint, sub-threshold echo gets a soft
+              marker floating above the flat dry line instead of its own bar
+              height — see TRACE_H's and precipToHeight's own comments for
+              why the old height-based bump was retired. `.gr-mist` (index.css)
+              carries the pulse; reduced-motion turns it off there, not here. */}
+          {mistBars.map(m => (
+            <span key={m.i} aria-hidden="true"
+                  className="gr-mist absolute rounded-full pointer-events-none"
+                  style={{
+                    left: CURSOR_X + m.i * SLOT_W + SLOT_W / 2 - 5,
+                    top: CHART_H - TRACE_H - 9,
+                    width: 10, height: 10,
+                    background: mistCol, opacity: 0.55, filter: 'blur(2px)',
+                  }} />
+          ))}
+        </div>
+        {/* Fixed cursor — a direct child of the scroll viewport, so (like the
+            dry-label overlay below) it anchors to the viewport's own box and
+            does not move with the scrolled content. */}
+        {hasData && (
+          <div className="absolute top-0 w-0.5 pointer-events-none"
+               style={{ left: CURSOR_X, bottom: BRACKET_H + LABEL_H, background: cursorCol }}
+               aria-hidden="true">
+            <span className="absolute rounded-full" style={{ top: -4, left: -3, width: 8, height: 8, background: cursorCol }} />
+          </div>
+        )}
         {showDryLabel && (
           // Centred on the chart itself, not the whole canvas — the time
           // strip below is chrome, and letting it pull the label off-centre
@@ -732,6 +937,35 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           </div>
         )}
       </div>
+      {/* v2.38 — the scrub readout. Deliberately plain wording (see
+          slotStatusKey/slotSourceKey's own comments): this describes what
+          THIS point on the chart is claiming, never the app's one verdict. */}
+      {hasData && (
+        <div className="px-4 pt-2.5 pb-1">
+          <div className="flex items-baseline gap-2">
+            <span className="font-display font-bold text-xl">{fmtSlotTime(scrubBar?.t ?? nowS)}</span>
+            <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubBar?.t ?? nowS, nowS)}</span>
+            <button type="button" onClick={backToNow}
+                    className="ml-auto font-mono text-[10px] border border-border rounded-full px-2.5 py-1 text-primary hover:border-primary transition-colors">
+              {t('ro_back_now')}
+            </button>
+          </div>
+          <div className="font-mono text-sm mt-0.5">
+            {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="font-mono text-[11px] text-muted">
+              {t(slotSourceKey(scrubInRadar, scrubTrace, scrubWet, scrubDisagree))}
+            </span>
+            <span className="inline-flex gap-[2px]" aria-label={t('ro_confidence', { n: pips })}>
+              {[0, 1, 2, 3, 4].map(k => (
+                <i key={k} className="block w-[5px] h-[9px] rounded-[1px]"
+                   style={{ background: k < pips ? 'var(--c-primary)' : 'var(--c-border)' }} />
+              ))}
+            </span>
+          </div>
+        </div>
+      )}
       {/* v2.37.2 — the gradient swatch is back (it was in the design mockup this
           shipped from, and a live report noticed its absence). The rest stays
           v2.37's rule: gated on something actually being drawn that it explains

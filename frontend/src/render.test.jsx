@@ -14,7 +14,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import SkyLine from './components/SkyLine'
 import DayStrip from './components/DayStrip'
 import GapBanner from './components/GapBanner'
-import RainRibbon, { dryRunIn, MIN_BRACKET_BARS } from './components/RainRibbon'
+import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePips } from './components/RainRibbon'
 import InfoPanel from './components/InfoPanel'
 import { translations } from './i18n'
 
@@ -100,7 +100,9 @@ for (const lang of ['de', 'en']) {
         <RainRibbon forecast={{ times, precips: times.map(() => 0), isNowcast: true,
                                 radarUntil: now + 2.66 * 3600 }}
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
-      expect(html).toContain(t('today_short'))
+      // v2.38: the ribbon's own "TODAY · NEXT 12H" header row was removed
+      // (space, live design pass) — `today_short` is no longer asserted
+      // here; DayStrip's own header test still covers that key's real use.
       // v2.35: the span moved out of a prose caption and into the pinned zone row,
       // but it is still interpolated from the SAME forecast.radarUntil the canvas
       // splits its tint on — so the words and the picture cannot name different
@@ -177,6 +179,85 @@ for (const lang of ['de', 'en']) {
           isNowcast: true, radarUntil: now + 300,
         }} theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).toContain(esc(t('legend_uncertain')))
+    })
+
+    // v2.38 — the ribbon's own header row ("TODAY · NEXT 12H") is gone for
+    // good, in both languages; the zone row directly below is now the first
+    // thing the ribbon says.
+    it('no longer renders its own TODAY / NEXT 12H header row', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const html = renderToStaticMarkup(
+        <RainRibbon forecast={{ times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 2.66 * 3600 }}
+                    theme="light" t={t} unstable={false} modelRainMin={null} />)
+      expect(html).not.toContain(esc(t('today_short')))
+    })
+
+    // v2.38 — the scrub readout. `confidencePips` is exported and pinned
+    // directly: full in the radar zone (measured, not modelled), reading
+    // the model's own probability in the forecast zone, one notch down
+    // when the two forecast models disagree, and a cautious middle value
+    // when there is no probability reading at all (never omitted — the
+    // same "unknown reads as caution" doctrine used throughout gaps.js).
+    it('confidencePips: radar is always full, forecast reads probability, disagreement costs one pip', () => {
+      expect(confidencePips(true, 40, false)).toBe(5)        // radar-zone: measured, ignores prob/agree
+      expect(confidencePips(false, 100, true)).toBe(5)
+      expect(confidencePips(false, 40, true)).toBe(2)
+      expect(confidencePips(false, 40, false)).toBe(1)       // one pip floor, never zero
+      expect(confidencePips(false, null, true)).toBe(2)      // beyond the probability horizon
+    })
+
+    // The readout renders the confidence pips and, in the radar zone, is
+    // always full — the one thing this test can assert without a DOM
+    // (renderToStaticMarkup can't fire a scroll event, so it only ever
+    // reads slot 0, i.e. "now", which is always radar).
+    it('the scrub readout reads dry/clear at rest, with full confidence', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const html = renderToStaticMarkup(
+        <RainRibbon forecast={{ times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 2.66 * 3600 }}
+                    theme="light" t={t} unstable={false} modelRainMin={null} />)
+      expect(html).toContain(esc(t('ro_status_dry')))
+      expect(html).toContain(esc(t('ro_src_radar_clear')))
+      expect(html).toContain(esc(t('ro_confidence', { n: 5 })))
+      expect(html).toContain(esc(t('ro_back_now')))
+    })
+
+    // v2.38 — faint drizzle gets a mist marker (`.gr-mist`), never a taller
+    // bar: the whole point of the redesign is that trace can't be mistaken
+    // for confirmed rain just because it sits a few px taller.
+    it('renders a mist marker for a trace-only reading, and none for plain dry', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const traceHtml = renderToStaticMarkup(
+        <RainRibbon forecast={{ times, precips: times.map((_, i) => (i === 1 ? 0.05 : 0)), isNowcast: true, radarUntil: now + 2.66 * 3600 }}
+                    theme="dark" t={t} unstable={false} modelRainMin={null} />)
+      expect(traceHtml).toContain('gr-mist')
+      const dryHtml = renderToStaticMarkup(
+        <RainRibbon forecast={{ times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 2.66 * 3600 }}
+                    theme="dark" t={t} unstable={false} modelRainMin={null} />)
+      expect(dryHtml).not.toContain('gr-mist')
+    })
+
+    // v2.38 — the floating dry/trace overlay sentence is now suppressed
+    // whenever the dry-window bracket already covers the same stretch AND
+    // there is nothing forward-looking left to add (no incoming-rain
+    // countdown, no instability flag). A live report called the pair
+    // "redundant" once the mist marker existed alongside both. The overlay
+    // still earns its place when it has something the bracket can't say.
+    it('drops the redundant floating dry sentence once the bracket already covers it', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const dryForecast = { times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 2.66 * 3600 }
+      const suppressed = renderToStaticMarkup(
+        <RainRibbon forecast={dryForecast} theme="light" t={t} unstable={false} modelRainMin={null} />)
+      expect(suppressed).not.toContain(esc(t('ribbon_dry')))
+      // …but a real forward-looking claim (rain expected later) still shows,
+      // bracket or not — the bracket only ever says "dry so far", never
+      // "rain's coming", so that sentence still earns its place.
+      const stillShown = renderToStaticMarkup(
+        <RainRibbon forecast={dryForecast} theme="light" t={t} unstable={false} modelRainMin={45} />)
+      expect(stillShown).toContain(esc(t('ribbon_dry_model', { min: 45 })))
     })
 
     it('DayStrip renders nothing without data', () => {

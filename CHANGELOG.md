@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.38.0] - 2026-09-17 - Gemma Raus just got better: drag the ribbon, and faint drizzle finally looks like faint drizzle 🌫️
+
+*A design pass on today's chart, worked through against a few mocked-up directions before picking one.*
+
+**What's new for you**
+
+- **The rain ribbon is a slider now.** Drag it (or swipe on your phone), and a small readout follows your finger — the time, "dry" or "faint drizzle possible" or whatever's there, and how sure we are about it. Let go near the start and a "back to now" button snaps it home. First time you open it, it gives itself a little nudge so you notice it moves.
+- **Faint drizzle finally looks like faint drizzle.** It used to get a couple of extra pixels of height on the chart — barely visible, and easy to mistake for the start of real rain. Now it gets its own soft, drifting marker instead, so a trace of drizzle can never be confused with confirmed rain just because the bar got slightly taller.
+- **A confidence readout**, right in the new slider panel: full marks over the radar's own next couple of hours (it's measuring, not guessing), and an honest lower reading further out, or when the two forecast models don't agree with each other.
+- **Less repeating itself.** The chart used to sometimes say "dry" three ways at once — a sentence floating over it, a bracket underneath it, and the shape itself. Now the bracket carries the plain "still dry" claim, and the floating sentence only shows up when it has something new to add, like rain expected later.
+- **A little breathing room back** on the big headline, which had grown wide enough to nearly touch both edges of the screen.
+
+**Nothing about the verdict changed.** Same thresholds, same countdowns, same decision — this is what it looks like and what you can do with it, not what it decides.
+
+---
+
 ## [2.37.2] - 2026-09-16 - Gemma Raus just got better: dry stays dry-coloured, and the key is back 🩹
 
 *Two more real reports, same day.*

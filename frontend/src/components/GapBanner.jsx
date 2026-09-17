@@ -89,9 +89,15 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
           of its own directly above. Muted and small: this is context for the
           headline, not a competitor to it. */}
       <SkyLine weather={weather} t={t} compact />
+      {/* v2.38 — capped from text-5xl (48px): a live report showed the
+          headline running almost edge-to-edge on an ordinary phone width,
+          which read as oversized rather than confident. text-4xl (36px)
+          keeps it the clear focal point of the block without dominating
+          the screen; useFitText (above) still shrinks further only if an
+          unusually long headline still doesn't fit at this base size. */}
       <div
         ref={headlineRef}
-        className="font-display font-bold text-5xl leading-none tracking-tight"
+        className="font-display font-bold text-4xl leading-none tracking-tight"
         style={{ color: `var(--c-${status.type}, ${fallback})` }}
       >
         {status.headline}
