@@ -125,6 +125,20 @@ html.light {
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0.5rem));
   }
 
+  /* Landscape-notch / Dynamic Island safe areas (compat audit, 2026-09-17).
+     `viewport-fit=cover` (index.html) lets content draw under the sensor
+     housing on both sides in landscape — pt-safe/pb-safe above only ever
+     covered top/bottom. Same max()-with-fallback pattern, applied to the
+     header row so the brand title and icon row can't render under the
+     cutout on a landscape notched phone. */
+  .pl-safe {
+    padding-left: max(1rem, env(safe-area-inset-left, 1rem));
+  }
+
+  .pr-safe {
+    padding-right: max(1rem, env(safe-area-inset-right, 1rem));
+  }
+
   /* Bottom sheets (guide/privacy): 92vh overshoots on iOS when the toolbar is
      expanded — the sheet's lower edge (and its close padding) sat behind the
      toolbar. dvh follows the *visible* viewport. */
@@ -234,4 +248,19 @@ html.light .leaflet-control-attribution a {
 @keyframes gr-mist-pulse {
   0%, 100% { opacity: 0.32; }
   50%      { opacity: 0.68; }
+}
+
+/* Global prefers-reduced-motion safety net (compat audit, 2026-09-17).
+   gr-mist above already guards itself; this is the app-wide fallback for
+   Tailwind's built-in animate-spin/pulse/bounce/ping utilities (currently
+   only animate-spin, on the map's relocate-button spinner, but any future
+   use gets this for free). Scoped to those looping/sustained animations only
+   — ordinary interactive transitions (hover/active scale, colour fades) stay
+   untouched, since those are momentary feedback, not the kind of motion this
+   preference exists to suppress. The element keeps its final/settled visual
+   state (the spinner icon still shows, it just doesn't rotate). */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin, .animate-pulse, .animate-bounce, .animate-ping {
+    animation: none !important;
+  }
 }

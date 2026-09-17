@@ -590,8 +590,26 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     return r ? r.bottom : window.innerHeight * EXPAND_TOP_VH / 100
   }
 
+  // prefers-reduced-motion (compat audit, 2026-09-17): this animates real
+  // top/left/width/height (see the note above on why, not transform), which
+  // is exactly the sustained, large-area motion this preference exists to
+  // suppress — and unlike RainRibbon's own scroll animations, nothing here
+  // was checking it. Read fresh on each call rather than cached: the OS
+  // setting can change while the tab is open.
+  const prefersReducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
   const openMap = () => {
     if (expandedRef.current || !wrapRef.current) return
+    if (prefersReducedMotion()) {
+      // Jump straight to the settled open state — no intermediate rect, no
+      // CSS transition to skip mid-flight (which still visually moves the
+      // box on some engines even with animation:none, since `transition`
+      // isn't covered by the animate-* reduced-motion rule in index.css).
+      setExpanded(true)
+      setExpandTopPx(measureExpandTop())
+      setAnimRect(null)
+      return
+    }
     const r0 = wrapRef.current.getBoundingClientRect()
     setExpanded(true)
     setAnimRect({ top: r0.top, left: r0.left, width: r0.width, height: r0.height })
@@ -624,6 +642,11 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
 
   const closeMapAnimated = () => {
     if (!expandedRef.current || !wrapRef.current) return
+    if (prefersReducedMotion()) {
+      setExpanded(false)
+      setAnimRect(null)
+      return
+    }
     const r1 = wrapRef.current.getBoundingClientRect()
     const r0 = ghostRef.current ? ghostRef.current.getBoundingClientRect() : r1
     setAnimRect({ top: r1.top, left: r1.left, width: r1.width, height: r1.height })
