@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
+import { dbgLog, dbgReload } from './debug'
 
 // eslint-disable-next-line no-undef
 const BUILD_ID = typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev'
@@ -44,6 +45,7 @@ async function checkForNewBuild() {
     if (tried === build) return
     try { sessionStorage.setItem('gr_reloaded_for', build) } catch {}
     console.log('Gemma Raus: new build', build, '- reloading from', BUILD_ID)
+    dbgReload(`version.json build ${build} != running ${BUILD_ID}`)
     window.location.reload()
   } catch {
     // Offline or the endpoint is missing: not an update, nothing to do.
@@ -62,6 +64,7 @@ function refreshWorker() {
 // fires `pageshow` with persisted=true and may not fire the former at all.
 function onResume() {
   if (document.visibilityState !== 'visible') return
+  dbgLog('onResume: visible -> refreshWorker + checkForNewBuild', 'lifecycle')
   refreshWorker()
   checkForNewBuild()
 }
@@ -80,8 +83,10 @@ if ('serviceWorker' in navigator) {
   let refreshing = false
   const hadController = !!navigator.serviceWorker.controller
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    dbgLog(`controllerchange: refreshing=${refreshing} hadController=${hadController}`, 'sw')
     if (refreshing || !hadController) return
     refreshing = true
+    dbgReload('SW controllerchange (new SW took control)')
     window.location.reload()
   })
   window.addEventListener('load', () => {
