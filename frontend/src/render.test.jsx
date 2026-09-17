@@ -14,7 +14,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import SkyLine from './components/SkyLine'
 import DayStrip from './components/DayStrip'
 import GapBanner from './components/GapBanner'
-import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePips, bucketMixed } from './components/RainRibbon'
+import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePct, bucketMixed } from './components/RainRibbon'
 import InfoPanel from './components/InfoPanel'
 import { translations } from './i18n'
 
@@ -93,31 +93,36 @@ for (const lang of ['de', 'en']) {
       expect(trimmed).not.toContain(t('best_window_none'))
     })
 
-    it('the today tile names its own radar span and says the rest is forecast', () => {
+    // v2.39.2 — the pinned "RADAR · NEXT X H ⋯ FORECAST · MODEL" caption row
+    // is gone (it restated what the scrub readout's own source line already
+    // says as the cursor moves — maintainer call). The readout is now the
+    // ONLY place the chart names its instrument; at rest (slot 0, "now")
+    // that must read "Radar" whenever a real radar zone actually covers now.
+    it('the readout names Radar at rest when a real radar zone covers now', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
       const html = renderToStaticMarkup(
         <RainRibbon forecast={{ times, precips: times.map(() => 0), isNowcast: true,
                                 radarUntil: now + 2.66 * 3600 }}
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
-      // v2.38: the ribbon's own "TODAY · NEXT 12H" header row was removed
-      // (space, live design pass) — `today_short` is no longer asserted
-      // here; DayStrip's own header test still covers that key's real use.
-      // v2.35: the span moved out of a prose caption and into the pinned zone row,
-      // but it is still interpolated from the SAME forecast.radarUntil the canvas
-      // splits its tint on — so the words and the picture cannot name different
-      // boundaries. That invariant is the point of this test, not where it renders.
-      expect(html).toContain(esc(t('zone_radar', { h: '2½' })))
-      expect(html).toContain(esc(t('zone_forecast')))
+      expect(html).toContain(esc(t('ro_src_radar')))
+      expect(html).not.toContain(esc(t('ro_src_model')))
+      // The old pinned caption row is gone outright.
+      expect(html).not.toContain('NEXT')
+      expect(translations[lang].zone_radar).toBeUndefined()
+      expect(translations[lang].zone_forecast).toBeUndefined()
     })
 
-    // v2.34. hoursLabel rounds to the nearest half hour, so a radar zone that had
-    // aged down to minutes — or a model-only fallback, whose radarUntil IS now —
-    // rendered as the literal sentence "the first 0 h are radar". A zone that thin
-    // is not a zone; the caption has to change its claim, not its number.
-    it('never says "the first 0 h are radar" when there is no radar zone', () => {
+    // v2.34/v2.39.2 — a radar zone that has aged down to minutes, or a
+    // model-only fallback, must never claim "Radar" at the cursor's rest
+    // position: the readout has to fall back to naming the forecast model.
+    // (The source line is matched as its own element, not a bare substring
+    // search — the dry-window overlay legitimately says "radar" too, e.g.
+    // "Radar sieht keinen Regen …", and a loose match would collide with it.)
+    it('the readout names the forecast model at rest when there is no real radar zone', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const srcLine = html => html.match(/text-muted shrink-0">([^<]*)<\/span>/)?.[1]
       for (const forecast of [
         { times, precips: times.map(() => 0), isNowcast: false, radarUntil: now },
         { times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 300 },
@@ -125,19 +130,18 @@ for (const lang of ['de', 'en']) {
         const html = renderToStaticMarkup(
           <RainRibbon forecast={forecast} theme="light" t={t}
                       unstable={false} modelRainMin={null} />)
-        expect(html).toContain(esc(t('zone_caption_model').slice(0, 20)))
-        expect(html).not.toContain(esc(t('zone_radar', { h: '0' })))
+        expect(srcLine(html)).toBe(esc(t('ro_src_model')))
       }
     })
 
     // …and with no data at all it makes no attribution claim whatsoever, rather
     // than describing a chart that has not been drawn.
-    it('withholds the source caption entirely when there is no data', () => {
+    it('withholds the source line entirely when there is no data', () => {
       const html = renderToStaticMarkup(
         <RainRibbon forecast={{ times: [], precips: [] }} theme="light" t={t}
                     unstable={false} modelRainMin={null} />)
-      expect(html).not.toContain(esc(t('zone_caption_model').slice(0, 20)))
-      expect(html).not.toContain(esc(t('zone_radar', { h: '3' })))
+      expect(html).not.toContain(esc(t('ro_src_radar')))
+      expect(html).not.toContain(esc(t('ro_src_model')))
     })
 
     // v2.36 — the intensity swatch key (DRY/LIGHT/MOD/HEAVY/STORM) is gone from
@@ -193,24 +197,30 @@ for (const lang of ['de', 'en']) {
       expect(html).not.toContain(esc(t('today_short')))
     })
 
-    // v2.38 — the scrub readout. `confidencePips` is exported and pinned
-    // directly: full in the radar zone (measured, not modelled), reading
-    // the model's own probability in the forecast zone, one notch down
-    // when the two forecast models disagree, and a cautious middle value
-    // when there is no probability reading at all (never omitted — the
-    // same "unknown reads as caution" doctrine used throughout gaps.js).
-    it('confidencePips: radar is always full, forecast reads probability, disagreement costs one pip', () => {
-      expect(confidencePips(true, 40, false)).toBe(5)        // radar-zone: measured, ignores prob/agree
-      expect(confidencePips(false, 100, true)).toBe(5)
-      expect(confidencePips(false, 40, true)).toBe(2)
-      expect(confidencePips(false, 40, false)).toBe(1)       // one pip floor, never zero
-      expect(confidencePips(false, null, true)).toBe(2)      // beyond the probability horizon
+    // v2.39.2 — `confidencePct` replaces the old 5-block `confidencePips`
+    // (a ring reading a continuous percentage instead of five discrete
+    // blocks): full in the radar zone unless the reading is itself a
+    // sub-threshold trace echo, reading the model's own probability in the
+    // forecast zone, a further deduction when the two forecast models
+    // disagree, and a cautious middle value when there is no probability
+    // reading at all (never omitted — the same "unknown reads as caution"
+    // doctrine used throughout gaps.js). Floored at 20 — never an empty ring.
+    it('confidencePct: radar reads full unless trace, forecast reads probability, disagreement costs 20pp', () => {
+      expect(confidencePct(true, false, 40, false)).toBe(100)  // radar-zone, measured: ignores prob/agree
+      expect(confidencePct(true, true, 40, false)).toBe(70)    // radar-zone, but an unconfirmed trace echo
+      expect(confidencePct(false, false, 100, true)).toBe(100)
+      expect(confidencePct(false, false, 40, true)).toBe(40)
+      expect(confidencePct(false, false, 40, false)).toBe(20)  // disagreement, floored at 20
+      expect(confidencePct(false, true, 40, true)).toBe(20)    // forecast-zone trace reads low
+      expect(confidencePct(false, false, null, true)).toBe(40) // beyond the probability horizon
     })
 
-    // The readout renders the confidence pips and, in the radar zone, is
-    // always full — the one thing this test can assert without a DOM
+    // The readout renders the confidence ring and, in the radar zone, reads
+    // full — the one thing this test can assert without a DOM
     // (renderToStaticMarkup can't fire a scroll event, so it only ever
-    // reads slot 0, i.e. "now", which is always radar).
+    // reads slot 0, i.e. "now", which is always radar). The old per-case
+    // source strings ("radar is clear" etc.) are gone — the readout now
+    // just names the instrument ("Radar"), and the ring carries the rest.
     it('the scrub readout reads dry/clear at rest, with full confidence', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
@@ -218,8 +228,8 @@ for (const lang of ['de', 'en']) {
         <RainRibbon forecast={{ times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 2.66 * 3600 }}
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).toContain(esc(t('ro_status_dry')))
-      expect(html).toContain(esc(t('ro_src_radar_clear')))
-      expect(html).toContain(esc(t('ro_confidence', { n: 5 })))
+      expect(html).toContain(esc(t('ro_src_radar')))
+      expect(html).toContain(esc(t('ro_confidence', { pct: 100 })))
       expect(html).toContain(esc(t('ro_back_now')))
     })
 

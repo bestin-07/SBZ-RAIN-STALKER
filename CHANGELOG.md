@@ -12,6 +12,25 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.39.2] - 2026-09-17 - Gemma Raus just got better: a quieter ribbon, with confidence as a dial instead of a paragraph 🎯
+
+*A pass on the scrub readout, off a set of marked-up screenshots: too many words saying the same thing twice.*
+
+**What happened**
+
+The little readout you get when you tap or drag the rain ribbon had drifted into repeating itself. A pinned row above the chart spelled out "RADAR · NEXT 2½ H ⋯ FORECAST · MODEL", while the readout right below it was already telling you the same thing — which instrument, how sure — as you dragged across the chart. And "forecast model, dry" was naming the exact same thing the line right underneath it already said in one word: "Dry".
+
+**What's new for you**
+
+- **The pinned "RADAR · NEXT X H / FORECAST · MODEL" row is gone.** The readout's own source line already tells you which instrument you're looking at as you drag, and the chart itself still visually separates measured (solid fill) from estimated (dashed outline) — nothing was lost, just said once instead of twice.
+- **A small confidence dial replaces the row of blocks.** It fills and empties smoothly as you scrub across the ribbon — full for radar, a touch lower for an unconfirmed trace echo, lower still for a forecast estimate, and lower again if the two forecast models disagree.
+- **The source line is down to two words** — "Radar" or "Forecast model" — instead of a sentence explaining how sure it is. That nuance now lives in the dial.
+- **Fixed "forecast model, dry"** repeating the "Dry" status right below it.
+
+**Nothing about the verdict changed.** This only touches how the ribbon's scrub readout presents itself — what counts as rain, a break, or a warning is untouched.
+
+---
+
 ## [2.39.1] - 2026-09-17 - Gemma Raus just got better: the next 2½ hours are in sharper focus 🔍
 
 *A follow-up pass on yesterday's chart, plus a subtle bug caught by testing every possible "now" rather than trusting one.*

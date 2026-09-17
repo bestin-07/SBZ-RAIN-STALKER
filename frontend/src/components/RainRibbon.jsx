@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { showGhost, radarSpanLabel, hasRadarZone, hoursLabel, LIGHT_MIN, LIGHT_MAX } from '../gaps'
+import { showGhost, hasRadarZone, hoursLabel, LIGHT_MIN, LIGHT_MAX } from '../gaps'
 
 const SLOT_W = 46
 // v2.37 — bars became a filled skyline (area + line), maintainer-directed
@@ -324,21 +324,26 @@ function computeInitialZone(forecast) {
 // where the reference point sits within its width moves.
 const CURSOR_X = 96
 
-// Confidence pips for the scrub readout (0.1–0.5 rain band aside, this is
-// the only place this chart speaks to source RELIABILITY rather than
-// amount). Radar-zone slots are measured, full stop — 5 of 5. Forecast-zone
+// Confidence percentage for the scrub readout's ring (0.1–0.5 rain band
+// aside, this is the only place this chart speaks to source RELIABILITY
+// rather than amount). Radar-zone slots are measured — full, unless the
+// reading is itself a sub-threshold TRACE echo (v2.39.2: this used to be a
+// sentence, "radar trace — not confirmed", now retired in favour of the
+// ring reading lower instead of the text explaining why). Forecast-zone
 // slots reuse the SAME modelProb/modelAgree App.jsx already computes for the
-// bleed/disagreement markers; this is a new READING of existing data, not a
-// new signal, so it can't drift from what the chart already draws. A slot
-// past the hourly-probability horizon has no reading at all — shown low (2)
-// rather than omitted, the same "unknown reads as caution" doctrine as
-// tracePhantom's own null-handling.
-export function confidencePips(inRadar, prob, agree) {
-  if (inRadar) return 5
-  if (typeof prob !== 'number') return 2
-  let pips = Math.max(1, Math.min(5, Math.round(prob / 20)))
-  if (agree === false) pips = Math.max(1, pips - 1)
-  return pips
+// bleed/disagreement markers — a new READING of existing data, not a new
+// signal, so it can't drift from what the chart already draws. A slot past
+// the hourly-probability horizon has no reading at all — a cautious middle
+// value rather than omitted, the same "unknown reads as caution" doctrine
+// as tracePhantom's own null-handling. Floored at 20 — never an empty ring,
+// same "never zero" doctrine the old pip floor of 1-of-5 encoded.
+export function confidencePct(inRadar, trace, prob, agree) {
+  if (inRadar) return trace ? 70 : 100
+  if (trace) return 20
+  if (typeof prob !== 'number') return 40
+  let pct = Math.max(20, Math.min(100, prob))
+  if (agree === false) pct = Math.max(20, pct - 20)
+  return pct
 }
 
 // Scrub-readout wording. Deliberately NOT getStatus: that function decides
@@ -366,11 +371,33 @@ function slotStatusKey(p, trace) {
   if (p < STORM_THRESHOLD) return 'ro_status_rain'
   return 'ro_status_storm'
 }
-function slotSourceKey(inRadar, trace, wet, disagree) {
-  if (inRadar) return trace ? 'ro_src_radar_trace' : wet ? 'ro_src_radar_measured' : 'ro_src_radar_clear'
-  if (trace) return 'ro_src_model_low'
-  if (wet) return disagree ? 'ro_src_model_disagree' : 'ro_src_model'
-  return 'ro_src_model_dry'
+// v2.39.2 — collapsed to the two instrument names. Everything the longer
+// per-case strings used to spell out ("not confirmed", "low confidence",
+// "models disagree", the redundant ", dry" that just repeats the status
+// line below it) now lives in the confidence ring instead of in words —
+// see confidencePct's own comment. Radar vs forecast is still the one thing
+// named in text, per the maintainer's own call: the distinction belongs
+// here, not on a second row describing the ribbon itself.
+function slotSourceKey(inRadar) {
+  return inRadar ? 'ro_src_radar' : 'ro_src_model'
+}
+// v2.39.2 — replaces the old 5-block pip bar. Arc only, no number in the
+// dial (maintainer call: quieter than a printed "70%"); the percentage
+// still reaches screen readers via the caller's aria-label. `pct` drives
+// stroke-dashoffset directly, and the CSS transition is what makes it read
+// as "moving with the ribbon" rather than a static per-slot swap.
+const RING_R = 7
+const RING_C = 2 * Math.PI * RING_R
+function ConfidenceRing({ pct, 'aria-label': ariaLabel }) {
+  const offset = RING_C * (1 - Math.max(0, Math.min(100, pct)) / 100)
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" role="img" aria-label={ariaLabel} className="shrink-0">
+      <circle cx="9" cy="9" r={RING_R} fill="none" stroke="var(--c-border)" strokeWidth="2.5" />
+      <circle cx="9" cy="9" r={RING_R} fill="none" stroke="var(--c-primary)" strokeWidth="2.5"
+              strokeLinecap="round" strokeDasharray={RING_C} strokeDashoffset={offset}
+              transform="rotate(-90 9 9)" style={{ transition: 'stroke-dashoffset 200ms ease' }} />
+    </svg>
+  )
 }
 function fmtSlotTime(ts) {
   const d = new Date(ts * 1000)
@@ -387,29 +414,14 @@ function relFromNow(t, ts, nowSec) {
 export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
   const canvasRef = useRef(null)
   const scrollRef = useRef(null)
-  // v2.36.4 — the pinned zone caption (below) used to be a static label pair
-  // with no relationship to where the radar/forecast split actually falls in
-  // the canvas underneath it. viewW/scrollX track the scroll container so
-  // the header can be recomputed as a proportional split of the CURRENTLY
-  // VISIBLE width — it moves with the chart instead of describing a fixed
-  // 50/50 that was never true. ResizeObserver guarded per this file's own
-  // browser-support doctrine (RadarMap does the same for the same reason:
-  // absent on iOS 13.4).
-  const [viewW, setViewW] = useState(0)
+  // scrollX tracks the scroll container's own position — it's the coordinate
+  // the fixed cursor sits over, and the scrub readout below reads a slot
+  // back out of it.
   const [scrollX, setScrollX] = useState(0)
   // v2.36.6 — the canvas's OWN splitIdx/cssW, published by the drawing effect
-  // below, so the pinned caption's divider can never drift from the canvas's
-  // own boundary the way two independent re-derivations of "now" once did.
+  // below, so `contentW` (used for the End key) reads the canvas's real
+  // content width rather than a separately re-derived guess.
   const [canvasZone, setCanvasZone] = useState(() => computeInitialZone(forecast))
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    setViewW(el.clientWidth)
-    if (typeof ResizeObserver !== 'function') return
-    const ro = new ResizeObserver(() => setViewW(el.clientWidth))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
 
   // v2.38 — desktop click-drag on the scrub track. A plain ref, not state:
   // the drag itself never needs a re-render, only the `scroll` events it
@@ -844,7 +856,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // v2.38: `prob` added alongside the existing `agree` — both already exist
   // on `forecast` (App.jsx's ribbon confidence work), carried through
   // bucket30 the same way `agree` already was, purely for the new scrub
-  // readout's confidence pips. Nothing here is a new SIGNAL, only a new
+  // readout's confidence ring. Nothing here is a new SIGNAL, only a new
   // READ of one App.jsx already computes for the bleed/disagreement work.
   const rslots = (forecast?.times || [])
     .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i], prob: forecast.modelProb?.[i] }))
@@ -854,7 +866,6 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const hasDisagreement = rslots.some(s => s.agree === false && s.p >= DRY_THRESHOLD)
   const hasData = rslots.length > 0
   const showRadarZone = hasRadarZone(forecast?.radarUntil, nowS, forecast?.isNowcast)
-  const spanLabel = radarSpanLabel(forecast?.radarUntil, nowS)
   // v2.39 — one radarUntil, reused for the bucketing itself AND every zone
   // check below (bleed, the split index, the bracket) — used to be computed
   // twice, separately, which was harmless while it only gated checks, but
@@ -897,39 +908,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const redundantWithBracket = hasBracket && modelRainMin == null && !unstable
   const showDryLabel = (allDry || !hasData) && !redundantWithBracket
 
-  // v2.36.4/v2.36.6 — where the pinned caption splits: read from canvasZone
-  // (the drawing effect's OWN splitIdx/cssW), not recomputed here from a
-  // freshly-read Date.now(), which would drift from the canvas's frozen
-  // "now" as time passes between data refreshes.
-  const contentW  = canvasZone.cssW
-  const boundaryX = !showRadarZone || canvasZone.splitIdx == null ? null
-    : canvasZone.splitIdx === -1 ? contentW
-    : canvasZone.splitIdx * SLOT_W
-  // v2.38 — the track now opens with a CURSOR_X-wide spacer (see that
-  // constant) before the canvas, so a canvas coordinate sits CURSOR_X
-  // further along in SCROLL coordinates than it used to. `boundaryX` above
-  // is still the canvas's own measurement (the drawing effect's clip
-  // rects don't know or care about the spacer); this is the same value
-  // translated into the scroll-content space `scrollX`/`viewW` live in.
-  const boundaryScrollX = boundaryX == null ? null : boundaryX + CURSOR_X
-  // Same reasoning as `boundaryScrollX`: before the ResizeObserver's first
-  // measurement (viewW still 0 — true for a brief instant in the browser,
-  // and always true under renderToStaticMarkup, which has no effects at
-  // all), the fallback approximates "assume the whole track is visible".
-  // That track now includes the CURSOR_X spacer, so the fallback has to
-  // too, or a boundary near the end of a SHORT forecast (little content
-  // past `contentW`) reads as just past the fallback's edge and the zone
-  // caption wrongly collapses to radar-only.
-  const viewSpan = viewW || (contentW + CURSOR_X)
-  const view0 = scrollX
-  const view1 = scrollX + viewSpan
-  const zoneMode = boundaryScrollX == null ? 'radar-only'
-    : boundaryScrollX >= view1 ? 'radar-only'
-    : boundaryScrollX <= view0 ? 'forecast-only'
-    : 'split'
-  const zoneSplitPct = zoneMode === 'split' && viewSpan > 0
-    ? Math.max(4, Math.min(96, ((boundaryScrollX - view0) / viewSpan) * 100))
-    : null
+  // v2.39.2 — `contentW` is all that survives of the old pinned-caption
+  // plumbing (boundaryX/zoneMode/zoneSplitPct removed with that row): the
+  // canvas's own content width, still needed as the End-key scroll target.
+  const contentW = canvasZone.cssW
 
   // v2.38 — the scrub readout. `scrollX` IS the canvas coordinate under the
   // fixed cursor (CURSOR_X's own comment explains why the spacer makes that
@@ -950,9 +932,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const scrubRadarSplit = rSplit === -1 ? rbars.length : rSplit
   const scrubInRadar = scrubIdx < scrubRadarSplit
   const scrubTrace = !!scrubBar && scrubBar.p > 0 && scrubBar.p < DRY_THRESHOLD
-  const scrubWet = !!scrubBar && scrubBar.p >= DRY_THRESHOLD
-  const scrubDisagree = !!scrubBar && scrubBar.agree === false
-  const pips = confidencePips(scrubInRadar, scrubBar?.prob, scrubBar?.agree)
+  const confPct = confidencePct(scrubInRadar, scrubTrace, scrubBar?.prob, scrubBar?.agree)
   // v2.38.4 — bucket 0 is a 30-min BUCKET starting at or before `nowS` (a
   // live report: "it's 10:26, the readout says 10:00"). At rest that's the
   // bucket's rounded-down START, not the actual time — everywhere else in
@@ -1015,68 +995,51 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         <div className="px-4 pt-2.5 pb-1">
           {/* v2.39 — two rows instead of three (maintainer ask, off a marked-up
               screenshot): the time/status lines never used the right half of
-              their own row, while the source text and confidence pips sat
+              their own row, while the source text and confidence indicator sat
               stacked in a third row below with room to spare beside them.
-              Source now rides the time row, pips ride the status row — same
-              four facts, same reading order, less vertical space. */}
+              Source now rides the time row, the ring rides the status row —
+              same four facts, same reading order, less vertical space. */}
           <div className="flex items-baseline justify-between gap-2">
             <div className="flex items-baseline gap-2 min-w-0">
               <span className="font-display font-bold text-xl">{fmtSlotTime(scrubT)}</span>
               <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
             </div>
             <span className="font-mono text-[11px] text-muted shrink-0">
-              {t(slotSourceKey(scrubInRadar, scrubTrace, scrubWet, scrubDisagree))}
+              {t(slotSourceKey(scrubInRadar))}
             </span>
           </div>
           <div className="flex items-center justify-between gap-2 mt-0.5">
             <span className="font-mono text-sm">
               {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
             </span>
-            <span className="inline-flex gap-[2px] shrink-0" aria-label={t('ro_confidence', { n: pips })}>
-              {[0, 1, 2, 3, 4].map(k => (
-                <i key={k} className="block w-[5px] h-[9px] rounded-[1px]"
-                   style={{ background: k < pips ? 'var(--c-primary)' : 'var(--c-border)' }} />
-              ))}
-            </span>
+            <ConfidenceRing pct={confPct} aria-label={t('ro_confidence', { pct: Math.round(confPct) })} />
           </div>
         </div>
       )}
       {/* v2.38 — the "TODAY · NEXT 12H" header row is gone. It sat above the
-          zone row and said, in effect, the same thing that row already
-          says more usefully (which hours, which instrument) — a live
-          design pass flagged it as space spent restating the obvious right
-          before the one row that actually needs the room. `today_short` and
-          `next_12h` stay live i18n keys (DayStrip's own header still uses
-          `today_short`); only this repetition of them is gone. */}
-      {/* v2.35/v2.36.4 — the zone row, pinned outside the scroller so it can never
-          scroll fully out of view, and tracking scroll position so the split
-          between "RADAR" and "FORECAST" sits at the same proportion of the visible
-          width as the actual boundary drawn in the canvas right below it. */}
-      {hasData && (
-        <div className="flex items-center px-4 pb-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-muted">
-          {!showRadarZone ? (
-            <span className="normal-case tracking-normal">{t('zone_caption_model')}</span>
-          ) : zoneMode === 'radar-only' ? (
-            <span className="text-primary">{t('zone_radar', { h: spanLabel })}</span>
-          ) : zoneMode === 'forecast-only' ? (
-            <span>{t('zone_forecast')}</span>
-          ) : (
-            <>
-              <span className="text-primary shrink-0 overflow-hidden whitespace-nowrap border-r border-border pr-1.5"
-                    style={{ flexBasis: `${zoneSplitPct}%` }}>
-                {t('zone_radar', { h: spanLabel })}
-              </span>
-              <span className="shrink-0 pl-1.5">{t('zone_forecast')}</span>
-            </>
-          )}
-        </div>
-      )}
+          scrub readout and said, in effect, the same thing that readout's
+          source line already says more usefully (which instrument, radar
+          or forecast) — a live design pass flagged it as space spent
+          restating the obvious. `today_short`/`next_12h` stay live i18n
+          keys (DayStrip's own header still uses `today_short`); only this
+          repetition of them is gone.
+          v2.39.2 — the row that replaced it (a pinned "RADAR · NEXT X H ⋯
+          FORECAST · MODEL" caption, tracking scroll position to stay
+          proportional to the canvas boundary below it) is ALSO gone now:
+          the readout's own source line above already names radar vs
+          forecast per slot as the cursor moves, which made this a second,
+          coarser statement of the same fact — maintainer call, off a
+          marked-up screenshot, "there will be a clear distinction for the
+          radar and the forecast on the top right instead of [on] the
+          ribbon". The canvas's own solid-fill-vs-dashed-line rendering and
+          divider line are untouched — that's the chart-level distinction;
+          this only removed the prose restating it. */}
       {/* v2.38 — the scrubber. A fixed cursor sits CURSOR_X into the viewport;
           the track (spacer + canvas + mist markers) scrolls under it, on a
           native touch swipe or the pointer-drag handlers below on desktop.
           `tabIndex`/`onKeyDown` add arrow-key scrubbing; none of this is new
-          STATE beyond the `scrollX` v2.36.4 already tracks for the zone
-          caption above — the readout below reads the exact same value. */}
+          STATE beyond the `scrollX` v2.36.4 already tracks — the readout
+          above reads the exact same value. */}
       {/* v2.38.3 — `max-w-[420px]`: a live report found the ribbon simply
           didn't scroll on a wide desktop window. Root cause wasn't the drag
           handlers — it's that the app's own column runs full window width
