@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.39.6] - 2026-09-17 - Gemma Raus just got better: a hint that the chart keeps going 👉
+
+*A small, standing cue that the rain chart scrolls, not just a one-time nudge.*
+
+**What happened**
+
+The rain chart already gives a quick wiggle the first time you open the app, teaching you it can be dragged sideways — but that only plays once. After that, its right edge looked flush and complete, with nothing suggesting there was more to see.
+
+**What's new for you**
+
+- **The chart's right edge now shows a soft fade**, with the next bar peeking through half-cut-off — a quiet, standing hint that there's more ahead if you scroll. It fades away on its own once you've actually reached the end, so it never promises more than is really there.
+
+**Nothing about the verdict changed.** Purely how the chart presents itself — what the app decides is untouched.
+
+---
+
 ## [2.39.5] - 2026-09-17 - Gemma Raus just got better: the German hour marks stopped overlapping 🕐
 
 *A small locale bug, caught from a screenshot.*

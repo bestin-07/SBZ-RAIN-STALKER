@@ -425,6 +425,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // the fixed cursor sits over, and the scrub readout below reads a slot
   // back out of it.
   const [scrollX, setScrollX] = useState(0)
+  // v2.39.6 — true once the track is scrolled all the way to its real end
+  // (no more content past the visible edge). Drives the right-edge fade
+  // below: showing a "cut off" peek of content past the edge only makes
+  // sense while there genuinely IS more past it — a fade that stays on
+  // after the user has actually reached the end would be advertising
+  // scroll room that no longer exists, the kind of dishonest affordance
+  // this codebase's own doctrine (never claim what isn't real) rules out
+  // elsewhere. Read directly off the DOM element in the scroll handler
+  // rather than reintroducing the `viewW` measurement state v2.39.2 removed
+  // — this needs only a yes/no at the moment of each scroll, not a live width.
+  const [atEnd, setAtEnd] = useState(false)
   // v2.36.6 — the canvas's OWN splitIdx/cssW, published by the drawing effect
   // below, so `contentW` (used for the End key) reads the canvas's real
   // content width rather than a separately re-derived guess.
@@ -495,6 +506,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const rest = restScrollX(forecast, Math.floor(Date.now() / 1000))
     scrollRef.current?.scrollTo({ left: rest, behavior: reduceMotion ? 'auto' : 'smooth' })
     setScrollX(rest)
+    // Re-homing always lands near "now", with the whole tail still ahead of
+    // it (the max-w-[420px] cap below guarantees the track is wider than
+    // its own viewport) — so the end-of-track fade is always warranted again.
+    setAtEnd(false)
     armIdle()
   }, [forecast, armIdle])
 
@@ -1077,12 +1092,31 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           one). This wrapper never scrolls, so a child positioned against IT
           is genuinely fixed on screen, matching the CURSOR_X spacer's own
           promise that the reference sits still while the track moves. */}
+      {/* v2.39.6 — a right-edge fade, masking the last ~36px of the track so
+          the next bar visibly peeks through half-cut-off instead of ending
+          in a clean vertical edge. A one-time nudge animation already exists
+          (`.gr-ribbon-hint`, mount only) — this is the standing, always-on
+          cue: a chart that visually LOOKS complete reads as complete, so a
+          flat right edge was quietly undoing what the nudge already taught.
+          `mask-image` (not a solid overlay div) so it reveals whatever is
+          actually behind the ribbon in either theme, rather than a hardcoded
+          colour that could drift from the real background. Prefixed for
+          Safari, which still requires `-webkit-mask-image` on a non-SVG
+          element — same browser-support doctrine as the rest of this file. */}
       <div className="relative max-w-[420px]">
         <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none cursor-grab active:cursor-grabbing"
              tabIndex={hasData ? 0 : -1}
              role="group"
              aria-label={t('ro_aria')}
-             onScroll={e => setScrollX(e.currentTarget.scrollLeft)}
+             style={hasData && !atEnd ? {
+               WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 36px), transparent 100%)',
+               maskImage: 'linear-gradient(to right, black calc(100% - 36px), transparent 100%)',
+             } : undefined}
+             onScroll={e => {
+               const el = e.currentTarget
+               setScrollX(el.scrollLeft)
+               setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 1)
+             }}
              onPointerDown={onScrubPointerDown}
              onPointerMove={onScrubPointerMove}
              onPointerUp={onScrubPointerUp}
