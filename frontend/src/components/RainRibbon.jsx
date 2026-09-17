@@ -840,6 +840,14 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const scrubWet = !!scrubBar && scrubBar.p >= DRY_THRESHOLD
   const scrubDisagree = !!scrubBar && scrubBar.agree === false
   const pips = confidencePips(scrubInRadar, scrubBar?.prob, scrubBar?.agree)
+  // v2.38.4 — bucket 0 is a 30-min BUCKET starting at or before `nowS` (a
+  // live report: "it's 10:26, the readout says 10:00"). At rest that's the
+  // bucket's rounded-down START, not the actual time — everywhere else in
+  // the ribbon that rounding is deliberate (the chart's own resolution is
+  // 30 min), but "now" is the one instant this chart can state exactly, so
+  // the readout shows the real clock time there instead of the bucket edge.
+  // Any other scrubbed bucket still shows its own start, unchanged.
+  const scrubT = scrubIdx === 0 ? nowS : (scrubBar?.t ?? nowS)
 
   // Mist markers (v2.38): every trace bucket, radar zone or forecast zone
   // alike — trace can show up in either. Positions are in TRACK space (the
@@ -887,8 +895,8 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
       {hasData && (
         <div className="px-4 pt-2.5 pb-1">
           <div className="flex items-baseline gap-2">
-            <span className="font-display font-bold text-xl">{fmtSlotTime(scrubBar?.t ?? nowS)}</span>
-            <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubBar?.t ?? nowS, nowS)}</span>
+            <span className="font-display font-bold text-xl">{fmtSlotTime(scrubT)}</span>
+            <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
           </div>
           <div className="font-mono text-sm mt-0.5">
             {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
@@ -953,64 +961,78 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           its own `max-w-[460px]`) guarantees the track is always wider than
           its own viewport, so the scrubber — drag, swipe, or arrow keys —
           keeps working identically regardless of window width. */}
-      <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none cursor-grab active:cursor-grabbing max-w-[420px]"
-           tabIndex={hasData ? 0 : -1}
-           role="group"
-           aria-label={t('ro_aria')}
-           onScroll={e => setScrollX(e.currentTarget.scrollLeft)}
-           onPointerDown={onScrubPointerDown}
-           onPointerMove={onScrubPointerMove}
-           onPointerUp={onScrubPointerUp}
-           onPointerLeave={onScrubPointerUp}
-           onKeyDown={onScrubKeyDown}>
-        <div className={'relative flex' + (hinting ? ' gr-ribbon-hint' : '')}>
-          {/* The spacer is exactly CURSOR_X wide — see that constant's own
-              comment for why this makes the fixed cursor "now" at rest with
-              no further offset math anywhere else. */}
-          <div style={{ width: CURSOR_X }} className="shrink-0" aria-hidden="true" />
-          <canvas
-            ref={canvasRef}
-            style={{ display: 'block' }}
-          />
-          {/* Mist markers (v2.38): a faint, sub-threshold echo gets a soft
-              marker floating above the flat dry line instead of its own bar
-              height — see TRACE_H's and precipToHeight's own comments for
-              why the old height-based bump was retired. `.gr-mist` (index.css)
-              carries the pulse; reduced-motion turns it off there, not here. */}
-          {mistBars.map(m => (
-            <span key={m.i} aria-hidden="true"
-                  className="gr-mist absolute rounded-full pointer-events-none"
-                  style={{
-                    left: CURSOR_X + m.i * SLOT_W + SLOT_W / 2 - 5,
-                    top: CHART_H - TRACE_H - 9,
-                    width: 10, height: 10,
-                    background: mistCol, opacity: 0.55, filter: 'blur(2px)',
-                  }} />
-          ))}
+      {/* v2.38.4 — outer, non-scrolling wrapper. The fixed cursor used to be a
+          child of the overflow-x-auto box itself; even absolutely positioned,
+          that box's OWN scroll still panned it (its `left` resolves against
+          the scrollport's padding edge, but that resolved position is part of
+          the same scrollable content the box translates on drag) — so it
+          drifted from "now" during a scrub and could scroll fully out of view
+          on a long drag (two live reports: a stranded line and a vanished
+          one). This wrapper never scrolls, so a child positioned against IT
+          is genuinely fixed on screen, matching the CURSOR_X spacer's own
+          promise that the reference sits still while the track moves. */}
+      <div className="relative max-w-[420px]">
+        <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none cursor-grab active:cursor-grabbing"
+             tabIndex={hasData ? 0 : -1}
+             role="group"
+             aria-label={t('ro_aria')}
+             onScroll={e => setScrollX(e.currentTarget.scrollLeft)}
+             onPointerDown={onScrubPointerDown}
+             onPointerMove={onScrubPointerMove}
+             onPointerUp={onScrubPointerUp}
+             onPointerLeave={onScrubPointerUp}
+             onKeyDown={onScrubKeyDown}>
+          <div className={'relative flex' + (hinting ? ' gr-ribbon-hint' : '')}>
+            {/* The spacer is exactly CURSOR_X wide — see that constant's own
+                comment for why this makes the fixed cursor "now" at rest with
+                no further offset math anywhere else. */}
+            <div style={{ width: CURSOR_X }} className="shrink-0" aria-hidden="true" />
+            <canvas
+              ref={canvasRef}
+              style={{ display: 'block' }}
+            />
+            {/* Mist markers (v2.38): a faint, sub-threshold echo gets a soft
+                marker floating above the flat dry line instead of its own bar
+                height — see TRACE_H's and precipToHeight's own comments for
+                why the old height-based bump was retired. `.gr-mist` (index.css)
+                carries the pulse; reduced-motion turns it off there, not here. */}
+            {mistBars.map(m => (
+              <span key={m.i} aria-hidden="true"
+                    className="gr-mist absolute rounded-full pointer-events-none"
+                    style={{
+                      left: CURSOR_X + m.i * SLOT_W + SLOT_W / 2 - 5,
+                      top: CHART_H - TRACE_H - 9,
+                      width: 10, height: 10,
+                      background: mistCol, opacity: 0.55, filter: 'blur(2px)',
+                    }} />
+            ))}
+          </div>
+          {showDryLabel && (
+            // Centred on the chart itself, not the whole canvas — the time
+            // strip below is chrome, and letting it pull the label off-centre
+            // drifts it toward the chart it's meant to sit clear of.
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                 style={{ paddingBottom: BRACKET_H + LABEL_H }}>
+              <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
+                {/* Honest attribution, in priority order: the MODEL disagreeing with a
+                    radar all-clear beats everything (frontal rain the radar can't see
+                    yet); then CAPE instability; then the plain radar-attributed dry
+                    line. Never an unqualified promise. */}
+                {traceOnly ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin)}
+              </span>
+            </div>
+          )}
         </div>
-        {/* Fixed cursor — a direct child of the scroll viewport, so (like the
-            dry-label overlay below) it anchors to the viewport's own box and
-            does not move with the scrolled content. */}
+        {/* Fixed cursor — now a sibling of the scroll box, not a descendant of
+            it, positioned against this outer wrapper's own (unmoving) box. It
+            never disappears (`hasData` is the only gate) and never drifts:
+            dragging the track underneath changes what time is under it, never
+            where it sits on screen. */}
         {hasData && (
           <div className="absolute top-0 w-0.5 pointer-events-none"
                style={{ left: CURSOR_X, bottom: BRACKET_H + LABEL_H, background: cursorCol }}
                aria-hidden="true">
             <span className="absolute rounded-full" style={{ top: -4, left: -3, width: 8, height: 8, background: cursorCol }} />
-          </div>
-        )}
-        {showDryLabel && (
-          // Centred on the chart itself, not the whole canvas — the time
-          // strip below is chrome, and letting it pull the label off-centre
-          // drifts it toward the chart it's meant to sit clear of.
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
-               style={{ paddingBottom: BRACKET_H + LABEL_H }}>
-            <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
-              {/* Honest attribution, in priority order: the MODEL disagreeing with a
-                  radar all-clear beats everything (frontal rain the radar can't see
-                  yet); then CAPE instability; then the plain radar-attributed dry
-                  line. Never an unqualified promise. */}
-              {traceOnly ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin)}
-            </span>
           </div>
         )}
       </div>
