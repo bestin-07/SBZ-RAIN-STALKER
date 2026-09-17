@@ -121,7 +121,7 @@ function areaIcon(name, precip, code, status, dryLabel = 'dry') {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, relocating, computeStatusAt }) {
+export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, relocating, computeStatusAt, expandAboveRef }) {
   const containerRef   = useRef(null)
   const wrapRef        = useRef(null)
   const mapRef         = useRef(null)
@@ -554,12 +554,26 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // flow" would put it *today* (the banner stack above can change while the
   // map is open), and there is no other way to ask a flex box that question
   // without literally having one sitting there.
+  // v2.39.3 — the expanded map used to always stop at a flat 50vh from the
+  // viewport top (v2.39.0's own reasoning: not the header's edge, since a
+  // variable-height banner stack up there would get buried unpredictably).
+  // A live report showed the actual cost of that flatness: a marker popup
+  // near the bottom-left of the short expanded box had nowhere for Leaflet's
+  // own autoPan to move it INSIDE the map's own bounds, and it rendered
+  // clipped off the edge of the screen instead. `expandAboveRef` (App.jsx)
+  // points at the TODAY/COMING DAYS tab row — a stable anchor that sits
+  // right below the variable banner stack rather than trying to measure
+  // the stack itself — so the map can grow to fill everything below it,
+  // giving Leaflet the extra room a clipped popup needed. `EXPAND_TOP_VH`
+  // survives only as the fallback for the (currently theoretical) case of
+  // no ref being passed at all.
   const EXPAND_TOP_VH = 50
   const ANIM_MS = 300
   const ANIM_EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)'
 
   const [expanded, setExpanded] = useState(false)
   const [animRect, setAnimRect] = useState(null)   // {top,left,width,height} in px, or null when settled
+  const [expandTopPx, setExpandTopPx] = useState(null) // settled-state top, px from viewport top
   const expandedRef = useRef(false)
   const ghostRef    = useRef(null)
   // Named distinctly from the pre-existing `animTimerRef` above (the RainViewer
@@ -567,6 +581,14 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const expandTimerRef = useRef(null)
   useEffect(() => { expandedRef.current = expanded }, [expanded])
   useEffect(() => () => clearTimeout(expandTimerRef.current), [])
+
+  // Measured fresh on every call rather than cached — the banner stack above
+  // the tabs can grow or shrink (a new warning, a dismissal) between opens,
+  // and re-measuring is the only way the boundary stays accurate to that.
+  const measureExpandTop = () => {
+    const r = expandAboveRef?.current?.getBoundingClientRect()
+    return r ? r.bottom : window.innerHeight * EXPAND_TOP_VH / 100
+  }
 
   const openMap = () => {
     if (expandedRef.current || !wrapRef.current) return
@@ -579,13 +601,26 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     // grown rect — without that gap there is nothing for the CSS transition
     // to animate FROM, and it would just jump straight to full size.
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      const vh = window.innerHeight, vw = window.innerWidth
-      const top = vh * EXPAND_TOP_VH / 100
-      setAnimRect({ top, left: 0, width: vw, height: vh - top })
+      const vw = window.innerWidth
+      const top = measureExpandTop()
+      setAnimRect({ top, left: 0, width: vw, height: window.innerHeight - top })
+      setExpandTopPx(top)
       clearTimeout(expandTimerRef.current)
       expandTimerRef.current = setTimeout(() => setAnimRect(null), ANIM_MS)
     }))
   }
+
+  // Keeps the settled boundary accurate through an orientation change or a
+  // mobile browser's chrome showing/hiding mid-session (both change
+  // window.innerHeight without the tabs themselves moving in DOCUMENT
+  // terms) — otherwise the map would keep the OPEN-time measurement even
+  // after the viewport it was measured against had changed shape.
+  useEffect(() => {
+    if (!expanded) return
+    const onResize = () => setExpandTopPx(measureExpandTop())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [expanded])
 
   const closeMapAnimated = () => {
     if (!expandedRef.current || !wrapRef.current) return
@@ -647,14 +682,14 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const fixedClass = 'fixed z-40 shadow-2xl'
   const wrapClassName = !expanded ? restClass
     : animRect ? fixedClass                    // mid-animation: every edge comes from animRect below
-    : `${fixedClass} inset-x-0 bottom-0`        // settled open: vh/inset units, responds to viewport changes on its own
+    : `${fixedClass} inset-x-0 bottom-0`        // settled open: top is a measured px (below), bottom:0 via this class
   const wrapStyle = !expanded ? undefined
     : animRect ? {
         top: animRect.top, left: animRect.left, width: animRect.width, height: animRect.height,
         transition: `top ${ANIM_MS}ms ${ANIM_EASE}, left ${ANIM_MS}ms ${ANIM_EASE}, `
                   + `width ${ANIM_MS}ms ${ANIM_EASE}, height ${ANIM_MS}ms ${ANIM_EASE}`,
       }
-    : { top: `${EXPAND_TOP_VH}vh` }
+    : { top: expandTopPx ?? window.innerHeight * EXPAND_TOP_VH / 100 }
 
   return (
     <>

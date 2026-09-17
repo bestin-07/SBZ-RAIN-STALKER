@@ -122,7 +122,7 @@ for (const lang of ['de', 'en']) {
     it('the readout names the forecast model at rest when there is no real radar zone', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
-      const srcLine = html => html.match(/text-muted shrink-0">([^<]*)<\/span>/)?.[1]
+      const srcLine = html => html.match(/text-primary shrink-0">([^<]*)<\/span>/)?.[1]
       for (const forecast of [
         { times, precips: times.map(() => 0), isNowcast: false, radarUntil: now },
         { times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 300 },
@@ -198,13 +198,15 @@ for (const lang of ['de', 'en']) {
     })
 
     // v2.39.2 — `confidencePct` replaces the old 5-block `confidencePips`
-    // (a ring reading a continuous percentage instead of five discrete
-    // blocks): full in the radar zone unless the reading is itself a
-    // sub-threshold trace echo, reading the model's own probability in the
-    // forecast zone, a further deduction when the two forecast models
+    // as the underlying READING (a continuous percentage instead of five
+    // discrete steps): full in the radar zone unless the reading is itself
+    // a sub-threshold trace echo, reading the model's own probability in
+    // the forecast zone, a further deduction when the two forecast models
     // disagree, and a cautious middle value when there is no probability
     // reading at all (never omitted — the same "unknown reads as caution"
-    // doctrine used throughout gaps.js). Floored at 20 — never an empty ring.
+    // doctrine used throughout gaps.js). Floored at 20 — never an empty bar.
+    // v2.39.3 reverted the DRAWN shape back to five blocks (`pctToPips`,
+    // below) but kept this percentage as the source of truth.
     it('confidencePct: radar reads full unless trace, forecast reads probability, disagreement costs 20pp', () => {
       expect(confidencePct(true, false, 40, false)).toBe(100)  // radar-zone, measured: ignores prob/agree
       expect(confidencePct(true, true, 40, false)).toBe(70)    // radar-zone, but an unconfirmed trace echo
@@ -215,12 +217,13 @@ for (const lang of ['de', 'en']) {
       expect(confidencePct(false, false, null, true)).toBe(40) // beyond the probability horizon
     })
 
-    // The readout renders the confidence ring and, in the radar zone, reads
-    // full — the one thing this test can assert without a DOM
-    // (renderToStaticMarkup can't fire a scroll event, so it only ever
-    // reads slot 0, i.e. "now", which is always radar). The old per-case
-    // source strings ("radar is clear" etc.) are gone — the readout now
-    // just names the instrument ("Radar"), and the ring carries the rest.
+    // The readout renders the confidence pip bar (plus its small "confidence"
+    // caption, v2.39.3) and, in the radar zone, reads full — the one thing
+    // this test can assert without a DOM (renderToStaticMarkup can't fire a
+    // scroll event, so it only ever reads slot 0, i.e. "now", which is
+    // always radar). The old per-case source strings ("radar is clear" etc.)
+    // are gone — the readout now just names the instrument ("Radar"), and
+    // the pip bar carries the rest.
     it('the scrub readout reads dry/clear at rest, with full confidence', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
@@ -229,7 +232,8 @@ for (const lang of ['de', 'en']) {
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).toContain(esc(t('ro_status_dry')))
       expect(html).toContain(esc(t('ro_src_radar')))
-      expect(html).toContain(esc(t('ro_confidence', { pct: 100 })))
+      expect(html).toContain(esc(t('ro_confidence_label')))
+      expect(html).toContain(esc(t('ro_confidence', { n: 5 })))
       expect(html).toContain(esc(t('ro_back_now')))
     })
 

@@ -324,19 +324,21 @@ function computeInitialZone(forecast) {
 // where the reference point sits within its width moves.
 const CURSOR_X = 96
 
-// Confidence percentage for the scrub readout's ring (0.1–0.5 rain band
-// aside, this is the only place this chart speaks to source RELIABILITY
-// rather than amount). Radar-zone slots are measured — full, unless the
-// reading is itself a sub-threshold TRACE echo (v2.39.2: this used to be a
-// sentence, "radar trace — not confirmed", now retired in favour of the
-// ring reading lower instead of the text explaining why). Forecast-zone
-// slots reuse the SAME modelProb/modelAgree App.jsx already computes for the
-// bleed/disagreement markers — a new READING of existing data, not a new
-// signal, so it can't drift from what the chart already draws. A slot past
-// the hourly-probability horizon has no reading at all — a cautious middle
-// value rather than omitted, the same "unknown reads as caution" doctrine
-// as tracePhantom's own null-handling. Floored at 20 — never an empty ring,
-// same "never zero" doctrine the old pip floor of 1-of-5 encoded.
+// Confidence percentage for the scrub readout's confidence bar (0.1–0.5 rain
+// band aside, this is the only place this chart speaks to source
+// RELIABILITY rather than amount). Radar-zone slots are measured — full,
+// unless the reading is itself a sub-threshold TRACE echo (v2.39.2: this
+// used to be a sentence, "radar trace — not confirmed", now retired in
+// favour of the bar reading lower instead of the text explaining why).
+// Forecast-zone slots reuse the SAME modelProb/modelAgree App.jsx already
+// computes for the bleed/disagreement markers — a new READING of existing
+// data, not a new signal, so it can't drift from what the chart already
+// draws. A slot past the hourly-probability horizon has no reading at all —
+// a cautious middle value rather than omitted, the same "unknown reads as
+// caution" doctrine as tracePhantom's own null-handling. Floored at 20 —
+// never an empty bar, same "never zero" doctrine the original pip floor of
+// 1-of-5 encoded (v2.39.3 restored the pip SHAPE; this percentage, and its
+// radar-trace-awareness, is what v2.39.2 actually changed and is kept).
 export function confidencePct(inRadar, trace, prob, agree) {
   if (inRadar) return trace ? 70 : 100
   if (trace) return 20
@@ -374,29 +376,34 @@ function slotStatusKey(p, trace) {
 // v2.39.2 — collapsed to the two instrument names. Everything the longer
 // per-case strings used to spell out ("not confirmed", "low confidence",
 // "models disagree", the redundant ", dry" that just repeats the status
-// line below it) now lives in the confidence ring instead of in words —
+// line below it) now lives in the confidence bar instead of in words —
 // see confidencePct's own comment. Radar vs forecast is still the one thing
 // named in text, per the maintainer's own call: the distinction belongs
 // here, not on a second row describing the ribbon itself.
 function slotSourceKey(inRadar) {
   return inRadar ? 'ro_src_radar' : 'ro_src_model'
 }
-// v2.39.2 — replaces the old 5-block pip bar. Arc only, no number in the
-// dial (maintainer call: quieter than a printed "70%"); the percentage
-// still reaches screen readers via the caller's aria-label. `pct` drives
-// stroke-dashoffset directly, and the CSS transition is what makes it read
-// as "moving with the ribbon" rather than a static per-slot swap.
-const RING_R = 7
-const RING_C = 2 * Math.PI * RING_R
-function ConfidenceRing({ pct, 'aria-label': ariaLabel }) {
-  const offset = RING_C * (1 - Math.max(0, Math.min(100, pct)) / 100)
+// v2.39.3 — back to the 5-block pip bar (maintainer call, after trying the
+// v2.39.2 ring): a bare arc with no printed number and no caller-visible
+// label didn't read as "confidence" on its own — it needed the SAME kind
+// of label the discrete blocks it replaced never had either, so blocks +
+// a small visible caption ended up being the simpler fix than labelling
+// the ring. `confidencePct`'s underlying percentage is kept — the v2.39.2
+// radar-trace-awareness (an unconfirmed echo reads lower than confirmed
+// radar) survives — only the SHAPE reverts, derived from the same
+// percentage via Math.round(pct / 20), same floor as the original pips.
+function pctToPips(pct) {
+  return Math.max(1, Math.min(5, Math.round(pct / 20)))
+}
+function ConfidencePips({ pct }) {
+  const n = pctToPips(pct)
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" role="img" aria-label={ariaLabel} className="shrink-0">
-      <circle cx="9" cy="9" r={RING_R} fill="none" stroke="var(--c-border)" strokeWidth="2.5" />
-      <circle cx="9" cy="9" r={RING_R} fill="none" stroke="var(--c-primary)" strokeWidth="2.5"
-              strokeLinecap="round" strokeDasharray={RING_C} strokeDashoffset={offset}
-              transform="rotate(-90 9 9)" style={{ transition: 'stroke-dashoffset 200ms ease' }} />
-    </svg>
+    <span className="inline-flex gap-[2px] shrink-0" aria-hidden="true">
+      {[0, 1, 2, 3, 4].map(k => (
+        <i key={k} className="block w-[5px] h-[9px] rounded-[1px]"
+           style={{ background: k < n ? 'var(--c-primary)' : 'var(--c-border)' }} />
+      ))}
+    </span>
   )
 }
 function fmtSlotTime(ts) {
@@ -856,7 +863,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // v2.38: `prob` added alongside the existing `agree` — both already exist
   // on `forecast` (App.jsx's ribbon confidence work), carried through
   // bucket30 the same way `agree` already was, purely for the new scrub
-  // readout's confidence ring. Nothing here is a new SIGNAL, only a new
+  // readout's confidence bar. Nothing here is a new SIGNAL, only a new
   // READ of one App.jsx already computes for the bleed/disagreement work.
   const rslots = (forecast?.times || [])
     .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i], prob: forecast.modelProb?.[i] }))
@@ -997,14 +1004,20 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
               screenshot): the time/status lines never used the right half of
               their own row, while the source text and confidence indicator sat
               stacked in a third row below with room to spare beside them.
-              Source now rides the time row, the ring rides the status row —
-              same four facts, same reading order, less vertical space. */}
+              Source now rides the time row, the confidence bar rides the
+              status row — same four facts, same reading order, less
+              vertical space. v2.39.3: the source word ("Radar" / "Forecast
+              model") reads darker and a size up from the rest of this row
+              (`text-primary`/`text-xs` instead of `text-muted`/`text-[11px]`)
+              — it's the one word on this row naming WHICH instrument you're
+              reading, and it was getting lost at muted-grey/11px next to
+              everything else competing for attention. */}
           <div className="flex items-baseline justify-between gap-2">
             <div className="flex items-baseline gap-2 min-w-0">
               <span className="font-display font-bold text-xl">{fmtSlotTime(scrubT)}</span>
               <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
             </div>
-            <span className="font-mono text-[11px] text-muted shrink-0">
+            <span className="font-mono text-xs text-primary shrink-0">
               {t(slotSourceKey(scrubInRadar))}
             </span>
           </div>
@@ -1012,7 +1025,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
             <span className="font-mono text-sm">
               {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
             </span>
-            <ConfidenceRing pct={confPct} aria-label={t('ro_confidence', { pct: Math.round(confPct) })} />
+            <span className="flex items-center gap-1.5 shrink-0" aria-label={t('ro_confidence', { n: pctToPips(confPct) })}>
+              <span className="font-mono text-[9px] text-muted uppercase tracking-wide">{t('ro_confidence_label')}</span>
+              <ConfidencePips pct={confPct} />
+            </span>
           </div>
         </div>
       )}

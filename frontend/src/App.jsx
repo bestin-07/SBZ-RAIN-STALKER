@@ -156,6 +156,11 @@ export default function App() {
   const [pullActive, setPullActive] = useState(false)
   const [pullRefreshing, setPullRefreshing] = useState(false)
   const scrollRef = useRef(null)
+  // v2.39.3 — the TODAY/COMING DAYS tab row, passed to RadarMap so its
+  // expanded state can grow to fill everything below the tab row rather
+  // than stopping at a flat viewport percentage that ignored how tall the
+  // banner stack above it was that day (see RadarMap's own comment).
+  const tabsRef = useRef(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const privacyOpenRef = useRef(false)
   useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
@@ -1445,7 +1450,7 @@ export default function App() {
               decides which of the two already-computed blocks is on screen. The map
               stays with "today" because it's a NOW instrument (live radar overlay,
               live town readings) — it has nothing to say about Friday. */}
-          <div className="flex px-4 pt-2.5 pb-1.5 gap-1.5 shrink-0" role="tablist" aria-label={t('tab_today') + ' / ' + t('tab_days')}>
+          <div ref={tabsRef} className="flex px-4 pt-2.5 pb-1.5 gap-1.5 shrink-0" role="tablist" aria-label={t('tab_today') + ' / ' + t('tab_days')}>
             {['now', 'days'].map(id => (
               <button
                 key={id}
@@ -1464,7 +1469,7 @@ export default function App() {
           {dayTab === 'now' ? (
             <>
               <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
-              <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} />
+              <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} expandAboveRef={tabsRef} />
             </>
           ) : (
             <DayStrip daily={daily} theme={theme} t={t} lang={lang} skipToday />

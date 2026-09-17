@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.39.3] - 2026-09-17 - Gemma Raus just got better: the confidence bar is back, and the expanded map finally has room to breathe 🗺️
+
+*A same-day follow-up: one visual call reversed after a closer look, plus a real bug the ring's replacement never caused but happened to be sitting next to.*
+
+**What happened**
+
+The confidence dial from earlier today didn't stick — back to the row of blocks, now with a small "confidence" word next to it so it's clear what it's showing. Separately, a screenshot caught the expanded map cutting off a location popup at the edge of the screen: the map only ever grew to the middle of the screen, and a popup near the bottom of that shorter box had nowhere to move to stay on screen.
+
+**What's new for you**
+
+- **Confidence is a row of blocks again**, with a small "confidence" label so it reads clearly even without the dial's motion.
+- **The "Radar" / "Forecast model" word in the scrub readout is darker and a size larger** — it was getting lost next to everything else on that row.
+- **The expanded map now grows all the way up to just under the tabs**, instead of stopping halfway down the screen. Popups near the map's edges now have the room they need to stay fully on screen.
+
+**Nothing about the verdict changed.** Every bit of this is presentation — what the app decides is untouched.
+
+---
+
 ## [2.39.2] - 2026-09-17 - Gemma Raus just got better: a quieter ribbon, with confidence as a dial instead of a paragraph 🎯
 
 *A pass on the scrub readout, off a set of marked-up screenshots: too many words saying the same thing twice.*
