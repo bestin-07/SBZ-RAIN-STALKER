@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { showGhost, radarSpanLabel, hasRadarZone, hoursLabel } from '../gaps'
+import { showGhost, radarSpanLabel, hasRadarZone, hoursLabel, LIGHT_MIN, LIGHT_MAX } from '../gaps'
 
 const SLOT_W = 46
 // v2.37 — bars became a filled skyline (area + line), maintainer-directed
@@ -30,6 +30,15 @@ const BRACKET_H = 12
 // model tail is visible, not just implied by a text label). Mobile can't see
 // all 49 slots at once — the strip stays horizontally scrollable.
 const MAX_SLOTS = 49
+// v2.38.2 — a live report: the ribbon could run a little past the 12h mark
+// it advertises. MAX_SLOTS alone assumed every source was uniformly 15-min
+// spaced end to end, which is usually true but isn't a guarantee this file
+// can enforce on its own (App.jsx composes the nowcast + two model
+// timelines) — a boundary a few minutes past 12h from one of them was
+// enough to draw an extra, half-real bucket. This is the actual promise:
+// nothing at or past exactly `now + HORIZON_S` is ever included, belt and
+// braces alongside MAX_SLOTS rather than instead of it.
+const HORIZON_S = 12 * 3600
 const DRY_THRESHOLD = 0.1
 
 // Theme-aware two-colour palette, used by precipToColor/tierOf below — kept
@@ -235,7 +244,7 @@ function computeInitialZone(forecast) {
   const now = Math.floor(Date.now() / 1000)
   const slots = bucket30(forecast.times
     .map((t, i) => ({ t, p: forecast.precips?.[i] ?? 0 }))
-    .filter(s => s.t >= now - 300)
+    .filter(s => s.t >= now - 300 && s.t < now + HORIZON_S)
     .slice(0, MAX_SLOTS))
   if (!slots.length) return { splitIdx: null, cssW: 0 }
   const modelOnly  = !hasRadarZone(forecast.radarUntil, now, forecast.isNowcast)
@@ -281,7 +290,18 @@ export function confidencePips(inRadar, prob, agree) {
 function slotStatusKey(p, trace) {
   if (trace) return 'ro_status_trace'
   if (p < DRY_THRESHOLD) return 'ro_status_dry'
-  if (p < 0.5) return 'ro_status_light'
+  // v2.38.3 — a live report caught this band reading "Light rain" here while
+  // the real headline still said GEMMA RAUS, and asked "isn't that supposed
+  // to be go-anyway?" It wasn't a verdict bug: gaps.js deliberately keeps
+  // [DRY_THRESHOLD, LIGHT_MIN) — 0.1 to 0.2mm — in the GO band on purpose
+  // (v2.20.0, "a 0.1mm tip must not flip GO↔GO-ANYWAY"), with its own softer
+  // wording (`s_barely_drizzle`). This readout had never heard of that
+  // threshold and called anything under 0.5 "Light rain", which is a
+  // stricter claim than the app itself makes at 0.15mm. Reusing gaps.js's
+  // own exported LIGHT_MIN/LIGHT_MAX (not a re-guessed number) means this
+  // band can never drift from the one the real verdict uses again.
+  if (p < LIGHT_MIN) return 'ro_status_barely'
+  if (p < LIGHT_MAX) return 'ro_status_light'
   if (p < STORM_THRESHOLD) return 'ro_status_rain'
   return 'ro_status_storm'
 }
@@ -348,6 +368,22 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     return () => clearTimeout(timer)
   }, [])
 
+  // v2.38.1 — the fixed cursor IS "now" only until the user drags it
+  // somewhere else; without this, a scrub position from ten minutes ago
+  // silently goes stale the moment the next 5-min refresh lands (a new
+  // `forecast` object, "now" quietly moved on), and the cursor keeps
+  // pointing at whatever old pixel offset it was left at — a live report:
+  // the black line "not always in the beginning" after a while. Every real
+  // data refresh re-homes the ribbon to "now", the same way "back to now"
+  // does by hand. Keyed on `forecast` itself (a NEW object every refresh
+  // cycle, App.jsx's `setForecast`) rather than on a timer of our own, so
+  // this can never drift from the actual refresh cadence.
+  useEffect(() => {
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    scrollRef.current?.scrollTo({ left: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
+    setScrollX(0)
+  }, [forecast])
+
   useEffect(() => {
     if (!forecast || !canvasRef.current) return
     const { times, precips } = forecast
@@ -362,7 +398,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         agree: forecast.modelAgree?.[i],
         prob:  forecast.modelProb?.[i],
       }))
-      .filter(s => s.t >= now - 300)
+      .filter(s => s.t >= now - 300 && s.t < now + HORIZON_S)
       .slice(0, MAX_SLOTS))
 
     if (!slots.length) return
@@ -710,7 +746,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // READ of one App.jsx already computes for the bleed/disagreement work.
   const rslots = (forecast?.times || [])
     .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i], prob: forecast.modelProb?.[i] }))
-    .filter(s => s.t >= nowS - 300)
+    .filter(s => s.t >= nowS - 300 && s.t < nowS + HORIZON_S)
     .slice(0, MAX_SLOTS)
   // The legend chips below describe the PICTURE, so they're computed from
   // the same 30-min points the canvas draws, not the raw 15-min slots.
@@ -840,6 +876,36 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
 
   return (
     <div className="border-t border-border shrink-0">
+      {/* v2.38.2 — the scrub readout moved ABOVE the chart (a live UX note:
+          read the fact first, then look at the ribbon that produced it,
+          rather than the other way round). Deliberately plain wording (see
+          slotStatusKey/slotSourceKey's own comments): this describes what
+          THIS point on the chart is claiming, never the app's one verdict.
+          "back to now" moved OUT of this block and down onto the legend
+          row, right next to the ribbon it actually acts on — see that
+          row's own comment. */}
+      {hasData && (
+        <div className="px-4 pt-2.5 pb-1">
+          <div className="flex items-baseline gap-2">
+            <span className="font-display font-bold text-xl">{fmtSlotTime(scrubBar?.t ?? nowS)}</span>
+            <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubBar?.t ?? nowS, nowS)}</span>
+          </div>
+          <div className="font-mono text-sm mt-0.5">
+            {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="font-mono text-[11px] text-muted">
+              {t(slotSourceKey(scrubInRadar, scrubTrace, scrubWet, scrubDisagree))}
+            </span>
+            <span className="inline-flex gap-[2px]" aria-label={t('ro_confidence', { n: pips })}>
+              {[0, 1, 2, 3, 4].map(k => (
+                <i key={k} className="block w-[5px] h-[9px] rounded-[1px]"
+                   style={{ background: k < pips ? 'var(--c-primary)' : 'var(--c-border)' }} />
+              ))}
+            </span>
+          </div>
+        </div>
+      )}
       {/* v2.38 — the "TODAY · NEXT 12H" header row is gone. It sat above the
           zone row and said, in effect, the same thing that row already
           says more usefully (which hours, which instrument) — a live
@@ -876,7 +942,18 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           `tabIndex`/`onKeyDown` add arrow-key scrubbing; none of this is new
           STATE beyond the `scrollX` v2.36.4 already tracks for the zone
           caption above — the readout below reads the exact same value. */}
-      <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none cursor-grab active:cursor-grabbing"
+      {/* v2.38.3 — `max-w-[420px]`: a live report found the ribbon simply
+          didn't scroll on a wide desktop window. Root cause wasn't the drag
+          handlers — it's that the app's own column runs full window width
+          (v2.35's own decision, "the pieces that need a line-length limit
+          set their own"), and the ribbon's ~1150-1250px of real content can
+          be NARROWER than a wide browser window, so there is nothing to
+          overflow and `overflow-x-auto` has nothing to do. Capping this one
+          element (the same precedent DayStrip's day-shape already set with
+          its own `max-w-[460px]`) guarantees the track is always wider than
+          its own viewport, so the scrubber — drag, swipe, or arrow keys —
+          keeps working identically regardless of window width. */}
+      <div ref={scrollRef} className="relative overflow-x-auto scrollbar-none cursor-grab active:cursor-grabbing max-w-[420px]"
            tabIndex={hasData ? 0 : -1}
            role="group"
            aria-label={t('ro_aria')}
@@ -937,42 +1014,16 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           </div>
         )}
       </div>
-      {/* v2.38 — the scrub readout. Deliberately plain wording (see
-          slotStatusKey/slotSourceKey's own comments): this describes what
-          THIS point on the chart is claiming, never the app's one verdict. */}
-      {hasData && (
-        <div className="px-4 pt-2.5 pb-1">
-          <div className="flex items-baseline gap-2">
-            <span className="font-display font-bold text-xl">{fmtSlotTime(scrubBar?.t ?? nowS)}</span>
-            <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubBar?.t ?? nowS, nowS)}</span>
-            <button type="button" onClick={backToNow}
-                    className="ml-auto font-mono text-[10px] border border-border rounded-full px-2.5 py-1 text-primary hover:border-primary transition-colors">
-              {t('ro_back_now')}
-            </button>
-          </div>
-          <div className="font-mono text-sm mt-0.5">
-            {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="font-mono text-[11px] text-muted">
-              {t(slotSourceKey(scrubInRadar, scrubTrace, scrubWet, scrubDisagree))}
-            </span>
-            <span className="inline-flex gap-[2px]" aria-label={t('ro_confidence', { n: pips })}>
-              {[0, 1, 2, 3, 4].map(k => (
-                <i key={k} className="block w-[5px] h-[9px] rounded-[1px]"
-                   style={{ background: k < pips ? 'var(--c-primary)' : 'var(--c-border)' }} />
-              ))}
-            </span>
-          </div>
-        </div>
-      )}
       {/* v2.37.2 — the gradient swatch is back (it was in the design mockup this
           shipped from, and a live report noticed its absence). The rest stays
           v2.37's rule: gated on something actually being drawn that it explains
           (v2.18.0) — a trace echo, a bleed spike, or a real models-disagree
           marker. Colour+height+shape (solid fill vs. dashed line) already say
           everything else; the swatch just names what the colour scale itself is,
-          since that's the one thing no amount of shape alone can spell out. */}
+          since that's the one thing no amount of shape alone can spell out.
+          v2.38.2 — "back to now" lives here too, right-aligned: it acts on
+          the ribbon directly above it, not on the readout text that moved up
+          top, so it sits next to the thing it actually resets. */}
       {hasData && (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.07em] text-muted">
           <span className="flex items-center gap-1">
@@ -981,9 +1032,20 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
                   aria-hidden="true" />
             {t('legend_gradient')}
           </span>
-          {hasTrace && <span>{t('legend_trace')}</span>}
+          {hasTrace && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full shrink-0"
+                    style={{ background: mistCol }}
+                    aria-hidden="true" />
+              {t('legend_trace')}
+            </span>
+          )}
           {hasBleed && <span>{t('legend_bleed')}</span>}
           {hasDisagreement && <span>{t('legend_uncertain')}</span>}
+          <button type="button" onClick={backToNow}
+                  className="ml-auto font-mono text-[10px] tracking-normal border border-border rounded-full px-2.5 py-1 text-primary hover:border-primary transition-colors">
+            {t('ro_back_now')}
+          </button>
         </div>
       )}
     </div>

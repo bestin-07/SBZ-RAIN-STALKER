@@ -12,6 +12,25 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.38.1] - 2026-09-17 - Gemma Raus just got better: the slider works on desktop now, and it never fibs about "light rain" 🩹
+
+*A handful of real reports on yesterday's ribbon redesign, fixed the same day.*
+
+**What happened**
+
+A few rough edges showed up fast once real people were dragging the new ribbon around. On a wide desktop browser window it just... didn't scroll — turned out there was nothing to scroll, since the ribbon's own content could be narrower than a really wide window. The little time-cursor could drift out of sync with "now" after a background refresh landed while you weren't looking. And sharpest of all: the slider's own reading called a 0.15mm drop "Light rain" while the big headline above it still said GEMMA RAUS — which, fair question, looked like a contradiction. It wasn't a wrong verdict: the app has always treated anything under 0.2mm as still fine to go, on purpose, but the ribbon's new reading hadn't been told that.
+
+**What's new for you**
+
+- **The ribbon drags properly on desktop now**, no matter how wide your window is.
+- **The time-cursor stays honest** — it re-homes to "now" every time fresh data comes in, not just when you tap the button.
+- **The slider's own reading agrees with the headline.** A faint 0.1–0.2mm reading now says "barely a drizzle" instead of overselling it as light rain — the same line the app was already drawing, just not repeated correctly in the new spot.
+- Readout moved above the chart, "back to now" moved down next to the ribbon it actually resets, the drizzle legend dot finally has its colour, and the ribbon now stops precisely at the 12-hour mark it claims to cover.
+
+**Nothing about the verdict changed.** Every fix here is the display catching up to what the app already decided — not a new decision.
+
+---
+
 ## [2.38.0] - 2026-09-17 - Gemma Raus just got better: drag the ribbon, and faint drizzle finally looks like faint drizzle 🌫️
 
 *A design pass on today's chart, worked through against a few mocked-up directions before picking one.*

@@ -117,6 +117,7 @@ export const translations = {
     // verdict voice (s_*/n_*), which stays getStatus's alone.
     ro_status_dry:    'Trocken',
     ro_status_trace:  'Leichter Niesel möglich',
+    ro_status_barely: 'Kaum Niesel',
     ro_status_light:  'Leichter Regen',
     ro_status_rain:   'Regen',
     ro_status_storm:  'Sturm',
@@ -487,6 +488,7 @@ export const translations = {
     bracket_dry_h:   'DRY · {h} H',
     ro_status_dry:    'Dry',
     ro_status_trace:  'Faint drizzle possible',
+    ro_status_barely: 'Barely a drizzle',
     ro_status_light:  'Light rain',
     ro_status_rain:   'Rain',
     ro_status_storm:  'Storm',
