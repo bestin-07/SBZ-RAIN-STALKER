@@ -12,6 +12,25 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.39.1] - 2026-09-17 - Gemma Raus just got better: the next 2½ hours are in sharper focus 🔍
+
+*A follow-up pass on yesterday's chart, plus a subtle bug caught by testing every possible "now" rather than trusting one.*
+
+**What happened**
+
+The chart's radar section — the part backed by real, measured readings — was drawing at the same 30-minute resolution as the forecast section, which just estimates. That threw away real detail exactly where the app has the most to show. Separately, the "now" marker was resting on the start of its own 15-minute window rather than the actual moment, which could read as a few minutes behind. And while testing the fix, a genuine edge case turned up: at one particular moment, a slice of data right at the boundary between "measured" and "estimated" could silently vanish from the chart entirely.
+
+**What's new for you**
+
+- **The next ~2½ hours now show in 15-minute steps** instead of 30 — the measured part of the chart is more detailed, because it can be. The forecast portion beyond that stays at 30 minutes, since a model's hourly estimate doesn't get more true by drawing it more often.
+- **The "now" marker sits on the actual moment**, not just the start of the nearest quarter-hour.
+- **Fixed a rare case** where a moment right at the edge of the measured section could disappear from the chart instead of being drawn.
+- The scrub readout (tap or drag the chart to see any point) is now two tidy rows instead of three.
+
+**Nothing about the verdict changed.** All of this is how the chart reads — what counts as rain, a break, or a warning is untouched.
+
+---
+
 ## [2.39.0] - 2026-09-17 - Gemma Raus just got better: tap the map to fill the screen, and the ribbon's time-marker finally holds still 🗺️
 
 *A batch of interface fixes and two small features, tested live before shipping — including one fix for a feature that shipped, then genuinely didn't do anything, caught by actually clicking it rather than assuming the code was right.*

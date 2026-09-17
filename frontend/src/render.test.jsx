@@ -14,7 +14,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import SkyLine from './components/SkyLine'
 import DayStrip from './components/DayStrip'
 import GapBanner from './components/GapBanner'
-import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePips } from './components/RainRibbon'
+import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePips, bucketMixed } from './components/RainRibbon'
 import InfoPanel from './components/InfoPanel'
 import { translations } from './i18n'
 
@@ -390,5 +390,69 @@ describe('dryRunIn (the dry-window bracket)', () => {
     expect(dryRunIn([], 5)).toBeNull()
     expect(dryRunIn(bars([0, 0, 0]), -1)).toBeNull()
     expect(dryRunIn(undefined, 3)).toBeNull()
+  })
+})
+
+// v2.39 — 15-min buckets inside the radar zone, 30-min beyond it. Caught live
+// (a flaky render test, not assumed from the code): a model-zone slot's
+// floor(t/1800)*1800 can land on the EXACT SAME number as an unrelated PRIOR
+// radar-zone slot's floor(t/900)*900 — pure coincidence of the two divisors —
+// and the first cut's merge check (`cur.t !== start` alone) treated that as
+// "still the same bucket", silently swallowing a model-zone slot into a radar
+// bucket without ever extending its `end`. This is the regression pin: the
+// exact real timestamps a scan across every possible "now" first caught it at.
+describe('bucketMixed (mixed 15/30-min bucketing)', () => {
+  // Aligned to a 1800s boundary so `t0` itself is a valid bucket start under
+  // EITHER bucket size — an arbitrary timestamp (e.g. a raw Date.now()) is
+  // not, and asserting against one would just be testing this test's own
+  // misalignment, not the function.
+  const t0 = Math.floor(1700000000 / 1800) * 1800
+  const raw = (n, offset = 0) => Array.from({ length: n }, (_, i) => ({ t: t0 + offset + i * 900, p: 0 }))
+
+  it('keeps every raw slot as its own bucket inside the radar zone', () => {
+    const slots = bucketMixed(raw(10), t0 + 999999)  // radarUntil far past every slot
+    expect(slots).toHaveLength(10)
+    expect(slots[0]).toMatchObject({ t: t0, end: t0 + 900 })
+  })
+
+  it('merges pairs of raw slots into 30-min buckets beyond the radar zone', () => {
+    const slots = bucketMixed(raw(4), t0 - 1)  // radarUntil before every slot → all model-zone
+    expect(slots).toHaveLength(2)
+    expect(slots[0].end - slots[0].t).toBe(1800)
+  })
+
+  it('never silently swallows a model-zone slot whose floored start collides with a prior radar bucket', () => {
+    // The exact case found live: slot 11 sits just past radarUntil, and its
+    // 30-min floor happens to equal slot 10's 15-min floor. A correct
+    // implementation still produces 12 distinct buckets, the last one 30 min
+    // wide; the bug produced 11, with the 12th slot's time silently dropped.
+    const radarUntil = t0 + 2.66 * 3600
+    const slots = bucketMixed(raw(12), radarUntil)
+    expect(slots).toHaveLength(12)
+    const last = slots[slots.length - 1]
+    expect(last.end - last.t).toBe(1800)
+    expect(last.end).toBeGreaterThan(radarUntil)  // the model-zone slot is actually represented
+  })
+
+  it('never loses the last raw slot, across every "now" phase (regression for the collision above)', () => {
+    // The collision above wasn't tied to one specific "now" — real API data
+    // (Open-Meteo/GeoSphere) always lands on quarter-hour marks, so `raw()`
+    // stays 900s-aligned here (unlike the earlier drafts of this test, which
+    // is why the offset varies `radarUntil` only, not the slot times
+    // themselves). What actually varies from one real "now" to the next is
+    // where THAT falls relative to the fixed quarter-hour grid — which is
+    // exactly what shifts here. Symptom of the bug: the last raw slot's time
+    // silently vanishing (folded into an earlier bucket without extending
+    // it). The bucket count alone isn't a safe invariant (a legitimately
+    // shorter/longer model tail can shift it by one) — full coverage is: the
+    // final bucket must reach at least as far as the final raw slot's own
+    // natural end.
+    const slots0 = raw(12)
+    const lastRawEnd = slots0[slots0.length - 1].t + 900
+    for (let offset = 0; offset < 3600; offset += 137) {
+      const radarUntil = t0 + offset + 2.66 * 3600
+      const slots = bucketMixed(slots0, radarUntil)
+      expect(slots[slots.length - 1].end).toBeGreaterThanOrEqual(lastRawEnd)
+    }
   })
 })

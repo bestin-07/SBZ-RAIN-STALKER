@@ -16,11 +16,18 @@ const CHART_H = 81
 // drawn inside the bar area, so every bar taller than ~10px covered its own
 // timestamp — and with the rescaled bars, essentially every wet bar did.
 const LABEL_H = 15
-// One point per 30 minutes (was 15). The app never promises a break shorter
-// than 30 min (MIN_GAP_SLOTS = 2), so 15-min resolution drew detail the
-// verdict cannot act on — and 49 of them across 12 h read as noise, not a
-// shape.
-const BUCKET_S = 30 * 60
+// v2.23: one point per 30 minutes (was 15) end to end — the app never
+// promises a break shorter than 30 min (MIN_GAP_SLOTS = 2), so 15-min
+// resolution drew detail the verdict cannot act on, and 49 of them across
+// 12 h read as noise, not a shape.
+// v2.39 — split back to 15 min, but ONLY inside the radar zone (maintainer
+// ask): that's real, measured, ~2.5h of data, and the coarser 30-min step
+// was throwing detail away exactly where the app has the most to show. The
+// forecast/model zone keeps the original 30-min reasoning above — it's an
+// hourly-probability ESTIMATE, and 15-min ticks on top of that would be
+// false precision, not more information.
+const RADAR_BUCKET_S = 15 * 60
+const MODEL_BUCKET_S = 30 * 60
 // v2.35: strip between the chart and the time labels, for the dry-window
 // bracket. Always reserved rather than added only when a bracket exists — a
 // canvas that changes height between refreshes shifts everything below it,
@@ -210,25 +217,69 @@ export function dryRunIn(bars, lastIdx) {
   return best && best.b - best.a + 1 >= MIN_BRACKET_BARS ? best : null
 }
 
-// Fold the 15-min series into 30-min points. A point takes the MAX of its two
-// slots, never the sum: the height/threshold classes are calibrated per
-// 15-min slot, and a max can only ever over-state the intensity — the
-// forgiven direction (v2.7's rationale for the model union). agree/prob
-// travel WITH the slot that won, so the confidence shown always belongs to
-// the reading being drawn rather than to its neighbour.
-function bucket30(slots) {
+// Fold the raw 15-min series into points — 15 min apiece inside the radar
+// zone (i.e. a no-op grouping, one point per raw slot), 30 min beyond it. A
+// merged (model-zone) point takes the MAX of its two slots, never the sum:
+// the height/threshold classes are calibrated per 15-min slot, and a max can
+// only ever over-state the intensity — the forgiven direction (v2.7's
+// rationale for the model union). agree/prob travel WITH the slot that won,
+// so the confidence shown always belongs to the reading being drawn rather
+// than to its neighbour.
+//
+// The merge check compares SIZE as well as `start`, not `start` alone — a
+// scan across every possible "now" (a real bug this file shipped with
+// briefly, caught by a flaky render test rather than assumed fixed): a
+// model-zone slot's `floor(t / 1800) * 1800` can land on the EXACT SAME
+// number as an unrelated PRIOR radar-zone slot's `floor(t / 900) * 900`,
+// pure coincidence of the two divisors, and comparing `start` alone treated
+// that as "still the same bucket" — silently folding a model-zone slot into
+// a radar bucket without ever extending its `end`, corrupting the split
+// right at the radar/forecast boundary. Requiring the running bucket's own
+// size to match too closes it: two different-sized buckets can never be
+// mistaken for one one just because their starts happen to collide.
+export function bucketMixed(slots, radarUntil) {
   const out = []
   let cur = null
   for (const s of slots) {
-    const start = Math.floor(s.t / BUCKET_S) * BUCKET_S
-    if (!cur || cur.t !== start) {
-      cur = { t: start, end: start + BUCKET_S, p: s.p, agree: s.agree, prob: s.prob }
+    const size = s.t < radarUntil ? RADAR_BUCKET_S : MODEL_BUCKET_S
+    const start = Math.floor(s.t / size) * size
+    if (!cur || cur.t !== start || (cur.end - cur.t) !== size) {
+      cur = { t: start, end: start + size, p: s.p, agree: s.agree, prob: s.prob }
       out.push(cur)
     } else if (s.p > cur.p) {
       cur.p = s.p; cur.agree = s.agree; cur.prob = s.prob
     }
   }
   return out
+}
+
+// The modelOnly/radarUntil pair each `bucketMixed` call needs, computed
+// identically everywhere it's needed (the canvas effect, the lazy zone
+// initializer, the render-body legend/readout) so none of them can drift
+// from what `hasRadarZone` actually decided.
+function radarCutoff(forecast, nowSec) {
+  const modelOnly = !hasRadarZone(forecast?.radarUntil, nowSec, forecast?.isNowcast)
+  return modelOnly ? -Infinity : (forecast?.radarUntil ?? Infinity)
+}
+
+// v2.39 — maintainer ask: at rest, the cursor used to sit exactly on bucket
+// 0's own start (e.g. 11:30), even when "now" was well into that bucket
+// (11:39) — correct in the sense that the chart's own resolution IS the
+// bucket, but it read as "the start of the ribbon" rather than "now" being a
+// point partway through a span. This computes how far across bucket 0's own
+// width "now" actually falls, so the track can rest scrolled in by that much
+// instead of always 0 — the cursor then sits over the real elapsed moment,
+// while everything about what bucket 0 MEANS (its `p`, its threshold class)
+// is completely unchanged; only where the reference point rests within it
+// moves. Same bucket-size rule as `bucketMixed` itself, so this can never
+// disagree with which zone bucket 0 is actually drawn in.
+function restScrollX(forecast, nowSec) {
+  if (!forecast?.times?.length) return 0
+  const radarUntil = radarCutoff(forecast, nowSec)
+  const size = nowSec < radarUntil ? RADAR_BUCKET_S : MODEL_BUCKET_S
+  const start = Math.floor(nowSec / size) * size
+  const frac = Math.max(0, Math.min(1, (nowSec - start) / size))
+  return frac * SLOT_W
 }
 
 // v2.36.6 — mirrors the drawing effect's own slots/splitIdx derivation, used
@@ -242,13 +293,12 @@ function bucket30(slots) {
 function computeInitialZone(forecast) {
   if (!forecast?.times?.length) return { splitIdx: null, cssW: 0 }
   const now = Math.floor(Date.now() / 1000)
-  const slots = bucket30(forecast.times
+  const radarUntil = radarCutoff(forecast, now)
+  const slots = bucketMixed(forecast.times
     .map((t, i) => ({ t, p: forecast.precips?.[i] ?? 0 }))
     .filter(s => s.t >= now - 300 && s.t < now + HORIZON_S)
-    .slice(0, MAX_SLOTS))
+    .slice(0, MAX_SLOTS), radarUntil)
   if (!slots.length) return { splitIdx: null, cssW: 0 }
-  const modelOnly  = !hasRadarZone(forecast.radarUntil, now, forecast.isNowcast)
-  const radarUntil = modelOnly ? -Infinity : (forecast.radarUntil ?? Infinity)
   return { splitIdx: slots.findIndex(s => s.end > radarUntil), cssW: slots.length * SLOT_W }
 }
 
@@ -257,15 +307,21 @@ function computeInitialZone(forecast) {
 // the spacer is exactly this wide, the canvas coordinate under the fixed
 // reference is always just `scrollLeft` itself — no separate offset math
 // needed anywhere else this constant is used (the zone caption's boundary
-// check included). Deliberately NOT aligned to the exact elapsed-minute
-// position within the first 30-min bucket: the chart's own resolution is
-// 30 min (bucket30), so pretending sub-bucket precision for "now" would be
-// the same false-precision this app's countdowns already refuse elsewhere.
+// check included).
 // v2.38.5 — 56 → 96: a live report that "now" sat flush against the left
 // edge with nothing behind it, reading as the start of the chart rather
 // than a scrubbable position on a longer timeline. There's no PAST data to
 // draw back there — this just widens the empty spacer ahead of the cursor
 // so the reference visibly sits partway across the track, not at its edge.
+// v2.39 — reversed the ORIGINAL v2.38 call to never align sub-bucket
+// (maintainer ask): "now" at rest used to sit on bucket 0's own rounded-down
+// start (11:30, say, when it's actually 11:39), which is one honest reading
+// of "the chart's own resolution is the bucket" but read as the cursor
+// marking the start of the ribbon rather than an actual moving point on it.
+// `restScrollX` now scrolls in by exactly how far "now" sits across bucket
+// 0's own width, so the cursor rests over the real elapsed moment — bucket
+// 0's DATA (its `p`, its threshold class) is completely unchanged, only
+// where the reference point sits within its width moves.
 const CURSOR_X = 96
 
 // Confidence pips for the scrub readout (0.1–0.5 rain band aside, this is
@@ -417,8 +473,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // this can never drift from the actual refresh cadence.
   useEffect(() => {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    scrollRef.current?.scrollTo({ left: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
-    setScrollX(0)
+    const rest = restScrollX(forecast, Math.floor(Date.now() / 1000))
+    scrollRef.current?.scrollTo({ left: rest, behavior: reduceMotion ? 'auto' : 'smooth' })
+    setScrollX(rest)
     armIdle()
   }, [forecast, armIdle])
 
@@ -427,17 +484,29 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const { times, precips } = forecast
     const now = Math.floor(Date.now() / 1000)
 
+    // v2.2: radar only covers ~3h; beyond radarUntil the points ARE the
+    // model (no radar to compare against), so they're drawn as a dashed line
+    // with no fill to stay honest about being an estimate rather than a
+    // radar-precise reading. Fallback timelines (isNowcast === false) are
+    // model end-to-end — nothing is ever filled in that case. v2.34: also
+    // model-only when the radar zone has shrunk to nothing — hasRadarZone
+    // decides it for both the fill boundary and the pinned caption, so the
+    // picture and the sentence can never disagree. Computed BEFORE bucketing
+    // (v2.39) since bucketMixed itself now needs it to decide 15 vs 30 min.
+    const modelOnly  = !hasRadarZone(forecast.radarUntil, now, forecast.isNowcast)
+    const radarUntil = modelOnly ? -Infinity : (forecast.radarUntil ?? Infinity)
+
     // agree/prob are carried on the slot itself — `i` here is the index into
     // the forecast arrays, which no longer matches the slot index after
     // filter+slice.
-    const slots = bucket30(times
+    const slots = bucketMixed(times
       .map((t, i) => ({
         t, p: precips[i] ?? 0,
         agree: forecast.modelAgree?.[i],
         prob:  forecast.modelProb?.[i],
       }))
       .filter(s => s.t >= now - 300 && s.t < now + HORIZON_S)
-      .slice(0, MAX_SLOTS))
+      .slice(0, MAX_SLOTS), radarUntil)
 
     if (!slots.length) return
 
@@ -480,17 +549,8 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const mTimes = forecast.isNowcast !== false ? (forecast.modelTimes ?? []) : []
     const mPrecips = forecast.modelPrecips ?? []
 
-    // v2.2: radar only covers ~3h; beyond radarUntil the points ARE the
-    // model (no radar to compare against), so they're drawn as a dashed line
-    // with no fill to stay honest about being an estimate rather than a
-    // radar-precise reading. Fallback timelines (isNowcast === false) are
-    // model end-to-end — nothing is ever filled in that case. v2.34: also
-    // model-only when the radar zone has shrunk to nothing — hasRadarZone
-    // decides it for both the fill boundary and the pinned caption, so the
-    // picture and the sentence can never disagree.
-    const modelOnly  = !hasRadarZone(forecast.radarUntil, now, forecast.isNowcast)
-    const radarUntil = modelOnly ? -Infinity : (forecast.radarUntil ?? Infinity)
-    // A 30-min point that only PARTLY overlaps the radar horizon is not a
+    // modelOnly/radarUntil: computed above, before bucketing — see that
+    // comment for why. A 30-min point that only PARTLY overlaps the radar horizon is not a
     // radar point — the split is taken on the bucket's END, erring toward
     // "estimate", the honest direction.
     const splitIdx  = slots.findIndex(s => s.end > radarUntil)
@@ -722,7 +782,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         ctx.lineTo(x1 - 5, y + 4)
         ctx.stroke()
       }
-      const mins = (dryRun.b - dryRun.a + 1) * (BUCKET_S / 60)
+      // v2.39: duration from the run's OWN start/end timestamps, not a bar
+      // count times a fixed bucket size — since the radar zone now mixes 15-
+      // and (past its far edge, rare) 30-min buckets, a count-based figure
+      // would overstate a run made of the finer buckets by up to 2×.
+      const mins = (slots[dryRun.b].end - slots[dryRun.a].t) / 60
       const txt = t
         ? (mins < 60 ? t('bracket_dry_min', { min: mins })
                      : t('bracket_dry_h', { h: hoursLabel(mins) }))
@@ -786,23 +850,28 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i], prob: forecast.modelProb?.[i] }))
     .filter(s => s.t >= nowS - 300 && s.t < nowS + HORIZON_S)
     .slice(0, MAX_SLOTS)
-  // The legend chips below describe the PICTURE, so they're computed from
-  // the same 30-min points the canvas draws, not the raw 15-min slots.
-  const rbars = bucket30(rslots)
   const sky = skyPalOf(theme) // the gradient swatch's own two colours
   const hasDisagreement = rslots.some(s => s.agree === false && s.p >= DRY_THRESHOLD)
   const hasData = rslots.length > 0
   const showRadarZone = hasRadarZone(forecast?.radarUntil, nowS, forecast?.isNowcast)
   const spanLabel = radarSpanLabel(forecast?.radarUntil, nowS)
+  // v2.39 — one radarUntil, reused for the bucketing itself AND every zone
+  // check below (bleed, the split index, the bracket) — used to be computed
+  // twice, separately, which was harmless while it only gated checks, but
+  // bucketMixed now needs the SAME value bucket-for-bucket or the legend's
+  // idea of the radar/forecast split could disagree with the canvas's.
+  const rUntil = showRadarZone ? (forecast?.radarUntil ?? Infinity) : -Infinity
+  // The legend chips below describe the PICTURE, so they're computed from
+  // the same mixed-resolution points the canvas draws, not the raw 15-min slots.
+  const rbars = bucketMixed(rslots, rUntil)
   // "Does a bleed marker actually get drawn" — same modelPeakAt/showGhost
   // pair the effect uses, so the chip can never claim a marker that isn't
   // really on the chart (the v2.18.0 lesson, applied to a legend chip this
   // time instead of a caption).
   const mTimesR   = forecast?.isNowcast !== false ? (forecast?.modelTimes ?? []) : []
   const mPrecipsR = forecast?.modelPrecips ?? []
-  const rUntilForBleed = showRadarZone ? (forecast?.radarUntil ?? Infinity) : -Infinity
   const hasBleed = showRadarZone && rbars.some(b => {
-    if (b.end > rUntilForBleed) return false
+    if (b.end > rUntil) return false
     const mp = modelPeakAt(mTimesR, mPrecipsR, b.t, b.end)
     return mp != null && showGhost(b.p, mp)
   })
@@ -814,7 +883,6 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // pinned by a render test that mounts this component with forecast={null}).
   const hasTrace = rslots.some(s => s.p > 0 && s.p < DRY_THRESHOLD)
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
-  const rUntil = showRadarZone ? (forecast?.radarUntil ?? Infinity) : -Infinity
   const rSplit = rbars.findIndex(b => b.end > rUntil)
   const hasBracket = !!dryRunIn(rbars, (rSplit === -1 ? rbars.length : rSplit) - 1)
   const traceOnly = allDry && rslots.some(s => s.p > 0) && forecast.tracePhantom !== true
@@ -868,8 +936,15 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // exact, with no further offset). Reading a slot back out of `rbars` is
   // the same "describe the picture" job the legend chips already do —
   // nothing here calls getStatus or touches the verdict.
+  // v2.39: floor, not round. At rest `scrollX` is now `restScrollX` — some
+  // fraction INTO bucket 0's own width, never a full SLOT_W — so the cursor
+  // is genuinely standing partway across bar 0. Rounding would flip to bar 1
+  // the moment more than half of bar 0 had elapsed, which is exactly the
+  // "now" reading this exists to keep correct. Floor also reads more
+  // naturally for a manual drag: the ribbon stays "over" a bar for the whole
+  // width it's actually drawn at, not just its near half.
   const scrubIdx = rbars.length
-    ? Math.max(0, Math.min(rbars.length - 1, Math.round(scrollX / SLOT_W)))
+    ? Math.max(0, Math.min(rbars.length - 1, Math.floor(scrollX / SLOT_W)))
     : 0
   const scrubBar = rbars[scrubIdx]
   const scrubRadarSplit = rSplit === -1 ? rbars.length : rSplit
@@ -917,12 +992,12 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const step = e.shiftKey ? SLOT_W * 4 : SLOT_W
     if (e.key === 'ArrowRight') { armIdle(); el.scrollLeft += step; e.preventDefault() }
     else if (e.key === 'ArrowLeft') { armIdle(); el.scrollLeft -= step; e.preventDefault() }
-    else if (e.key === 'Home') { armIdle(); el.scrollLeft = 0; e.preventDefault() }
+    else if (e.key === 'Home') { armIdle(); el.scrollLeft = restScrollX(forecast, nowS); e.preventDefault() }
     else if (e.key === 'End') { armIdle(); el.scrollLeft = contentW; e.preventDefault() }
   }
   function backToNow() {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    scrollRef.current?.scrollTo({ left: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
+    scrollRef.current?.scrollTo({ left: restScrollX(forecast, nowS), behavior: reduceMotion ? 'auto' : 'smooth' })
     armIdle()
   }
 
@@ -938,18 +1013,26 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           row's own comment. */}
       {hasData && (
         <div className="px-4 pt-2.5 pb-1">
-          <div className="flex items-baseline gap-2">
-            <span className="font-display font-bold text-xl">{fmtSlotTime(scrubT)}</span>
-            <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
-          </div>
-          <div className="font-mono text-sm mt-0.5">
-            {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="font-mono text-[11px] text-muted">
+          {/* v2.39 — two rows instead of three (maintainer ask, off a marked-up
+              screenshot): the time/status lines never used the right half of
+              their own row, while the source text and confidence pips sat
+              stacked in a third row below with room to spare beside them.
+              Source now rides the time row, pips ride the status row — same
+              four facts, same reading order, less vertical space. */}
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span className="font-display font-bold text-xl">{fmtSlotTime(scrubT)}</span>
+              <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
+            </div>
+            <span className="font-mono text-[11px] text-muted shrink-0">
               {t(slotSourceKey(scrubInRadar, scrubTrace, scrubWet, scrubDisagree))}
             </span>
-            <span className="inline-flex gap-[2px]" aria-label={t('ro_confidence', { n: pips })}>
+          </div>
+          <div className="flex items-center justify-between gap-2 mt-0.5">
+            <span className="font-mono text-sm">
+              {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
+            </span>
+            <span className="inline-flex gap-[2px] shrink-0" aria-label={t('ro_confidence', { n: pips })}>
               {[0, 1, 2, 3, 4].map(k => (
                 <i key={k} className="block w-[5px] h-[9px] rounded-[1px]"
                    style={{ background: k < pips ? 'var(--c-primary)' : 'var(--c-border)' }} />
