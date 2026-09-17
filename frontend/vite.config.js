@@ -20,4 +20,13 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4173,
   },
+  test: {
+    // vitest's default include glob (**/*.{test,spec}.*) also matches the
+    // Playwright specs under tests/e2e/ — those use @playwright/test's own
+    // test()/expect() and only run via `npm run test:e2e` (playwright.config.js),
+    // never under vitest. Without this exclude, `npm test` fails every one of
+    // them with "Playwright Test did not expect test.describe() to be called
+    // here" before it gets to the real unit suite.
+    exclude: ['node_modules/**', 'tests/e2e/**'],
+  },
 })

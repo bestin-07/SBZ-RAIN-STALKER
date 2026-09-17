@@ -12,6 +12,26 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.40.0] - 2026-09-17 - Gemma Raus just got better: quieter for accessibility, and steadier at the edges 🩹
+
+*A cross-device compatibility pass — mostly things you'll never notice, which is the point.*
+
+**What happened**
+
+A full audit of how the app behaves across phones and browsers turned up a few small rough edges: the map's grow/shrink animation and the relocate spinner kept moving even for people who've told their phone to reduce motion, and on a notched phone held sideways, the header could sit right up against — or under — the camera cutout. Neither was ever reported by name; they were the kind of thing that just makes an app feel slightly less considered on the device it happens to catch out.
+
+**What's new for you**
+
+- **If you've turned on "Reduce Motion"** (iOS Accessibility, or the equivalent Android setting), the map's tap-to-expand and the relocate button's spinner now respect it — they settle instantly instead of animating.
+- **On a notched phone held sideways**, the header no longer risks sitting under the camera cutout — it now leaves proper room on both sides.
+- **A new hidden diagnostic mode** (`?debug=1` on the end of the URL) adds a small on-screen log for anyone helping track down a "the app keeps reloading itself" report — it's invisible unless you ask for it.
+
+**Also, behind the scenes:** a Playwright test suite now checks the manifest, theme/status-bar sync, reduced-motion handling and a few other cross-browser details automatically on every future change.
+
+**Nothing about the verdict changed.** Every fix here is animation, layout or diagnostics — what the app decides about the rain is byte-identical.
+
+---
+
 ## [2.39.6] - 2026-09-17 - Gemma Raus just got better: a hint that the chart keeps going 👉
 
 *A small, standing cue that the rain chart scrolls, not just a one-time nudge.*
