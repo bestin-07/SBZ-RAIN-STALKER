@@ -216,7 +216,6 @@ export const translations = {
     wind_strong:  'Sehr starker Wind — draußen ist Vorsicht geboten',
     thunder_regional:  'Gewitter in der Region — die Lage kann sich schnell ändern',
     showers_regional:  'Schauer in der Region — Regen nähert sich',
-    cloudy_note: ['Bewölkt, aber trocken — gut genug, um rauszugehen', 'Grau, aber kein Regen — passt', 'Viele Wolken, aber trocken ist trocken'],
 
     // ---- Sky line + five-day strip + source line (v2.30) ----
     // Plain single strings, NOT variant pools: these are facts, not voice. The
@@ -583,7 +582,6 @@ export const translations = {
     wind_strong:  'Very strong wind — take care outside',
     thunder_regional:  'Thunderstorm in the region — conditions can change fast',
     showers_regional:  'Showers in the region — rain on the way',
-    cloudy_note: ['Cloudy but dry — still worth heading out', 'Grey skies, but no rain — you\'re good', 'Lots of clouds, but dry is dry'],
 
     // ---- Sky line + five-day strip + source line (v2.30) ----
     // Plain single strings, NOT variant pools — see the German block above.

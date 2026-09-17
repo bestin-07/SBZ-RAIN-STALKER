@@ -56,7 +56,7 @@ function SourceLine({ signals, t }) {
   )
 }
 
-export default function GapBanner({ status, blocked = [], signals = null, weather = null, t }) {
+export default function GapBanner({ status, blocked = [], signals = null, weather = null, t, showSky = true }) {
   // v2.36.7 — must never wrap (see useFitText.js): Archivo's expanded cut is
   // wider than Space Grotesk, and any headline — "GEMMA RAUS", "BLEIB DRIN", a
   // countdown with an arbitrary minute count — can be long enough to wrap at
@@ -87,8 +87,13 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
     <div className="px-4 pt-4 pb-3 shrink-0">
       {/* v2.35 — the sky facts, folded in from what used to be a bordered section
           of its own directly above. Muted and small: this is context for the
-          headline, not a competitor to it. */}
-      <SkyLine weather={weather} t={t} compact />
+          headline, not a competitor to it.
+          v2.38.5 — hidden on the Coming Days tab (App.jsx passes showSky=false
+          there): "Cloudy 16°" describes right now, which reads as noise next
+          to a block that's entirely about later days. The verdict itself
+          (headline/sub/source line below) still stays — that's not tied to
+          a particular hour the way the sky glance is. */}
+      {showSky && <SkyLine weather={weather} t={t} compact />}
       {/* v2.38 — capped from text-5xl (48px): a live report showed the
           headline running almost edge-to-edge on an ordinary phone width,
           which read as oversized rather than confident. text-4xl (36px)

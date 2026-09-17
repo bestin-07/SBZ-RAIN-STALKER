@@ -123,6 +123,7 @@ function areaIcon(name, precip, code, status, dryLabel = 'dry') {
 
 export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, relocating, computeStatusAt }) {
   const containerRef   = useRef(null)
+  const wrapRef        = useRef(null)
   const mapRef         = useRef(null)
   const markerRef      = useRef(null)
   const baseTileRef    = useRef(null)
@@ -519,6 +520,46 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   useEffect(() => { if (!relocating && realRef.current) stopSpin() }, [relocating])
   useEffect(() => () => clearTimeout(spinTimer.current), [])
 
+  // Tap-to-expand (v2.38.5, maintainer ask): a tap anywhere on the map grows
+  // it into a fixed overlay reaching to the bottom of the screen, so the
+  // small flex-1 tile becomes a real map to read; a tap anywhere OUTSIDE it —
+  // the header, the banners, the ribbon above, all still in their normal
+  // place — shrinks it back. `expandTop` is measured at the moment it opens
+  // (this box's own current top edge), not a hardcoded offset, so it grows
+  // downward from wherever it already sits — never covering the verdict/
+  // banners above it — regardless of how tall that stack is that day.
+  const [expanded, setExpanded] = useState(false)
+  const [expandTop, setExpandTop] = useState(0)
+  const expandedRef = useRef(false)
+  useEffect(() => { expandedRef.current = expanded }, [expanded])
+
+  // Capture phase, not bubble: Leaflet stops propagation on its own marker/
+  // control clicks, which would otherwise make this handler blind to a tap
+  // on a town dot or the relocate button. Capture runs before that, so every
+  // tap on the map is seen regardless of what Leaflet does with it after.
+  const handleMapPointerDownCapture = () => {
+    if (expandedRef.current) return
+    if (wrapRef.current) setExpandTop(wrapRef.current.getBoundingClientRect().top)
+    setExpanded(true)
+  }
+
+  useEffect(() => {
+    if (!expanded) return
+    const onOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setExpanded(false)
+    }
+    document.addEventListener('pointerdown', onOutside)
+    return () => document.removeEventListener('pointerdown', onOutside)
+  }, [expanded])
+
+  // The ResizeObserver already bound to containerRef (map-init effect above)
+  // picks up the size change once it lands, but Leaflet can show a stale-
+  // sized frame for one paint before that fires — nudge it immediately too.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => { try { mapRef.current?.invalidateSize() } catch {} })
+    return () => cancelAnimationFrame(id)
+  }, [expanded])
+
   return (
     /* v2.36.1 — 320px -> 160px. The column no longer scrolls at all (maintainer
        decision): this map IS the shock absorber that keeps a tall banner stack
@@ -527,8 +568,19 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
        exact combination (no scroll path + no floor) is the one already reverted
        once for an iOS report of a crushed, "frozen" map. 160px still shows the
        radar-time pill, the user's dot and enough tile to read; below that the
-       map stops being a map. */
-    <div className="relative flex-1 min-h-[160px]">
+       map stops being a map.
+       v2.38.5 — expanded mode switches this box to `fixed`, which takes it out
+       of the flex column entirely. Nothing needs to fill the gap it leaves: this
+       is already the last element in its column, so the column just gets
+       shorter — nothing below it has to reflow up. */
+    <div
+      ref={wrapRef}
+      onPointerDownCapture={handleMapPointerDownCapture}
+      className={expanded
+        ? 'fixed inset-x-0 bottom-0 z-40 shadow-2xl'
+        : 'relative flex-1 min-h-[160px]'}
+      style={expanded ? { top: expandTop } : undefined}
+    >
       <div ref={containerRef} className="absolute inset-0" style={{ zIndex: 0 }} />
       {radarFrame && (
         <div className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5

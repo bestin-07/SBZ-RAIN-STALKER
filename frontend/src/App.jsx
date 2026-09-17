@@ -192,13 +192,7 @@ export default function App() {
   const windWarning     = currentWeather?.wind != null && currentWeather.wind >= 50
 
   const windStrong      = currentWeather?.wind != null && currentWeather.wind >= 70
-  // "cloudy but dry — worth heading out" only when there's actually a dry window:
-  // suppress if rain is imminent (would contradict a countdown) and only in daylight
-  // (6:00–20:00) — "worth heading out" reads odd at 22:47, and it's not about the sun.
-  const rainImminent    = trend.nextRainAt != null && (trend.nextRainAt - tickNow) <= 90 * 60
   const hourNow         = new Date(tickNow * 1000).getHours()
-  const showCloudyNote  = currentWeather?.code === 3 && status?.type === 'go' && !rainImminent &&
-                          hourNow >= 6 && hourNow < 20
   // Radar-confirmed initiation stays visible for 30 min after the backend stamps it
   // (tickNow-driven, so it expires live without a refresh).
   const formingActive   = formingTs != null && (tickNow - formingTs) < 30 * 60 && (tickNow - formingTs) >= 0
@@ -1445,14 +1439,7 @@ export default function App() {
             headline: t('STUCK'),
             sub: t('storm_danger_sub'),
             weather: null, weatherEmoji: null, moto: false,
-          } : status} blocked={blocked} signals={signals} weather={currentWeather} t={t} />
-          {showCloudyNote && (
-            <div className="px-4 py-2 bg-surface border-b border-border shrink-0">
-              <span className="font-mono text-xs leading-relaxed text-muted">
-                ☁️ {t('cloudy_note')}
-              </span>
-            </div>
-          )}
+          } : status} blocked={blocked} signals={signals} weather={currentWeather} t={t} showSky={dayTab === 'now'} />
           {/* v2.36 — today (radar ribbon + map) split from the forecast (coming days)
               behind two tabs. Neither panel's data or logic changed: this only
               decides which of the two already-computed blocks is on screen. The map

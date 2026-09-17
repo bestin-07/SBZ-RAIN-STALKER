@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { showGhost, radarSpanLabel, hasRadarZone, hoursLabel, LIGHT_MIN, LIGHT_MAX } from '../gaps'
 
 const SLOT_W = 46
@@ -261,7 +261,12 @@ function computeInitialZone(forecast) {
 // position within the first 30-min bucket: the chart's own resolution is
 // 30 min (bucket30), so pretending sub-bucket precision for "now" would be
 // the same false-precision this app's countdowns already refuse elsewhere.
-const CURSOR_X = 56
+// v2.38.5 — 56 → 96: a live report that "now" sat flush against the left
+// edge with nothing behind it, reading as the start of the chart rather
+// than a scrubbable position on a longer timeline. There's no PAST data to
+// draw back there — this just widens the empty spacer ahead of the cursor
+// so the reference visibly sits partway across the track, not at its edge.
+const CURSOR_X = 96
 
 // Confidence pips for the scrub readout (0.1–0.5 rain band aside, this is
 // the only place this chart speaks to source RELIABILITY rather than
@@ -355,18 +360,50 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   // provokes do (handled by the existing onScroll → setScrollX below).
   const dragRef = useRef(null)
 
-  // v2.38 — a one-time "this drags" hint: the track nudges a few px and
-  // eases back, ONCE per mount, so a first-time viewer discovers the
-  // scrubber without being told in words. Mount-only effect (empty deps) —
-  // it does not replay on a data refresh, only when this component
-  // actually (re)mounts (e.g. leaving and returning to the Today tab).
-  // `prefers-reduced-motion` is handled by the CSS animation itself
-  // (index.css `.gr-ribbon-hint`), same doctrine as the mist pulse below.
-  const [hinting, setHinting] = useState(true)
-  useEffect(() => {
-    const timer = setTimeout(() => setHinting(false), 1300)
-    return () => clearTimeout(timer)
+  // v2.38.5 — replaces the one-time "this drags" wiggle: a maintainer call
+  // that the hint taught the gesture once and then was gone, while the
+  // track sat with "now" flush at the front and nothing ahead in view. This
+  // instead drifts the track forward on its own, slowly, once the user has
+  // left it alone for AUTOSCROLL_IDLE_MS — and stops the instant they touch
+  // it. `armIdle` is the single entry point: call it on any real user
+  // interaction (never on a scroll WE produced, or the drift would cancel
+  // itself every frame) and it both stops whatever's currently drifting and
+  // restarts the idle clock, so the cadence is always "3s of nobody
+  // touching it," not "3s since the last frame."
+  const AUTOSCROLL_IDLE_MS = 3000
+  const AUTOSCROLL_PX_S = 16   // slow — one 30-min bucket (46px) takes ~3s to cross
+  const idleTimerRef = useRef(null)
+  const driftRafRef = useRef(null)
+
+  const stopDrift = useCallback(() => {
+    if (driftRafRef.current) { cancelAnimationFrame(driftRafRef.current); driftRafRef.current = null }
   }, [])
+
+  const armIdle = useCallback(() => {
+    clearTimeout(idleTimerRef.current)
+    stopDrift()
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    idleTimerRef.current = setTimeout(() => {
+      let last = null
+      const step = (ts) => {
+        const el = scrollRef.current
+        if (!el) { driftRafRef.current = null; return }
+        if (last == null) last = ts
+        el.scrollLeft += AUTOSCROLL_PX_S * (ts - last) / 1000
+        last = ts
+        // Reached the end — stop rather than snapping/looping; the user can
+        // always drag or hit "back to now" themselves.
+        if (el.scrollLeft >= el.scrollWidth - el.clientWidth - 1) { driftRafRef.current = null; return }
+        driftRafRef.current = requestAnimationFrame(step)
+      }
+      driftRafRef.current = requestAnimationFrame(step)
+    }, AUTOSCROLL_IDLE_MS)
+  }, [stopDrift])
+
+  useEffect(() => {
+    armIdle()
+    return () => { clearTimeout(idleTimerRef.current); stopDrift() }
+  }, [armIdle, stopDrift])
 
   // v2.38.1 — the fixed cursor IS "now" only until the user drags it
   // somewhere else; without this, a scrub position from ten minutes ago
@@ -382,7 +419,8 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     scrollRef.current?.scrollTo({ left: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
     setScrollX(0)
-  }, [forecast])
+    armIdle()
+  }, [forecast, armIdle])
 
   useEffect(() => {
     if (!forecast || !canvasRef.current) return
@@ -860,6 +898,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const mistCol   = theme === 'light' ? '#1E86B0' : '#6CD1EB'   // --c-light: the same hue PASST SCHON already uses
 
   function onScrubPointerDown(e) {
+    // armIdle first, unconditionally — this fires for touch too (the early
+    // return below only skips the desktop drag simulation; a touch swipe
+    // still starts with a real pointerdown), and it's the one moment a
+    // native touch-scroll gesture is visible to this component at all.
+    armIdle()
     if (e.pointerType && e.pointerType !== 'mouse') return
     dragRef.current = { x: e.clientX, s: e.currentTarget.scrollLeft }
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* no-op */ }
@@ -872,14 +915,15 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   function onScrubKeyDown(e) {
     const el = e.currentTarget
     const step = e.shiftKey ? SLOT_W * 4 : SLOT_W
-    if (e.key === 'ArrowRight') { el.scrollLeft += step; e.preventDefault() }
-    else if (e.key === 'ArrowLeft') { el.scrollLeft -= step; e.preventDefault() }
-    else if (e.key === 'Home') { el.scrollLeft = 0; e.preventDefault() }
-    else if (e.key === 'End') { el.scrollLeft = contentW; e.preventDefault() }
+    if (e.key === 'ArrowRight') { armIdle(); el.scrollLeft += step; e.preventDefault() }
+    else if (e.key === 'ArrowLeft') { armIdle(); el.scrollLeft -= step; e.preventDefault() }
+    else if (e.key === 'Home') { armIdle(); el.scrollLeft = 0; e.preventDefault() }
+    else if (e.key === 'End') { armIdle(); el.scrollLeft = contentW; e.preventDefault() }
   }
   function backToNow() {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     scrollRef.current?.scrollTo({ left: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
+    armIdle()
   }
 
   return (
@@ -981,8 +1025,9 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
              onPointerMove={onScrubPointerMove}
              onPointerUp={onScrubPointerUp}
              onPointerLeave={onScrubPointerUp}
-             onKeyDown={onScrubKeyDown}>
-          <div className={'relative flex' + (hinting ? ' gr-ribbon-hint' : '')}>
+             onKeyDown={onScrubKeyDown}
+             onWheel={armIdle}>
+          <div className="relative flex">
             {/* The spacer is exactly CURSOR_X wide — see that constant's own
                 comment for why this makes the fixed cursor "now" at rest with
                 no further offset math anywhere else. */}
