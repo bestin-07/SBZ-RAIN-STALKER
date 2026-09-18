@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.41.5] - 2026-09-18 - Gemma Raus just got better: the chart now shows you which instrument is talking 📡
+
+*A small addition, asked for directly: make it obvious at a glance whether you're looking at radar or a forecast model.*
+
+**What happened**
+
+The scrub readout already told you in words whether a moment was "Radar" or a "Forecast model" — but a word takes a beat longer to read than a shape, and the two instruments genuinely work differently: radar sweeps outward from a dish, a model computes rain over a grid. Nothing wrong, just an easy thing to make faster to read.
+
+**What's new for you**
+
+- **A small icon now sits next to the source label**, switching automatically as you scrub the chart: radiating arcs for radar, a small grid for the forecast model.
+- Purely a glance-speed aid — the text label is still there and still says the same thing.
+
+**Nothing about the verdict changed.** One decorative icon next to a label; every threshold, countdown and state is untouched.
+
+---
+
 ## [2.41.4] - 2026-09-18 - Gemma Raus just got better: you can finally scroll all the way to the end 🏁
 
 *A real bug: the last stretch of the chart existed, but nothing could scroll it into view.*

@@ -103,6 +103,38 @@ function TileIcon({ tier, size = 20 }) {
   )
 }
 
+// v3.2 — a small glyph beside the scrub readout's source label ("Radar" /
+// "Prognosemodell"), so the instrument reads at a glance instead of only in
+// the word itself — maintainer ask, off a reference pairing "sweep arcs" for
+// radar against "grid and isobar" for a model. Reuses TileIcon's own stroke
+// convention (fill:none, stroke:currentColor) so it visually belongs next to
+// the tiles below it, and is purely decorative (the label text already says
+// which instrument this is) — aria-hidden, same as TileIcon.
+function SourceIcon({ inRadar, size = 13 }) {
+  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className="shrink-0" aria-hidden="true">
+      {inRadar ? (
+        // Radial sweep — a radar/sonar blip fanning outward in arcs, echoing
+        // "measured, radial" from the reference.
+        <g {...p}>
+          <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
+          <path d="M8.2 15.2a5.4 5.4 0 0 1 7.6 0" />
+          <path d="M4.8 11.8a10.2 10.2 0 0 1 14.4 0" />
+        </g>
+      ) : (
+        // Grid — a computed field on a lattice, echoing "computed, gridded".
+        <g {...p}>
+          <rect x="3.5" y="3.5" width="7" height="7" rx="1" />
+          <rect x="13.5" y="3.5" width="7" height="7" rx="1" />
+          <rect x="3.5" y="13.5" width="7" height="7" rx="1" />
+          <rect x="13.5" y="13.5" width="7" height="7" rx="1" />
+        </g>
+      )}
+    </svg>
+  )
+}
+
 // v3.0 — one tile, one visual per zone. Solid, filled, white icon = radar
 // measured it. Dashed outline, no fill, tier-coloured icon = the model
 // predicted it. A small ring badge in the corner, on EITHER style, means the
@@ -430,8 +462,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
               <span className="font-display font-bold text-xl">{fmtSlotTime(scrubT)}</span>
               <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
             </div>
-            <span className="font-mono text-xs text-primary shrink-0">
-              {t(slotSourceKey(scrubInRadar))}
+            <span className="flex items-center gap-1 shrink-0">
+              <SourceIcon inRadar={scrubInRadar} />
+              <span className="font-mono text-xs text-primary">
+                {t(slotSourceKey(scrubInRadar))}
+              </span>
             </span>
           </div>
           <div className="flex items-center justify-between gap-2 mt-0.5">

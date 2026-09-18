@@ -139,7 +139,10 @@ for (const lang of ['de', 'en']) {
     it('the readout names the forecast model at rest when there is no real radar zone', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
-      const srcLine = html => html.match(/text-primary shrink-0">([^<]*)<\/span>/)?.[1]
+      // v3.2 — the source label now sits beside a decorative SourceIcon svg,
+      // so its own span carries only "font-mono text-xs text-primary" (the
+      // "shrink-0" moved to the wrapping span that holds icon + label).
+      const srcLine = html => html.match(/font-mono text-xs text-primary">([^<]*)<\/span>/)?.[1]
       for (const forecast of [
         { times, precips: times.map(() => 0), isNowcast: false, radarUntil: now },
         { times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 300 },
