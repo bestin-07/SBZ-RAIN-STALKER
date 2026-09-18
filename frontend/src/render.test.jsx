@@ -227,11 +227,24 @@ for (const lang of ['de', 'en']) {
     it('confidencePct: radar reads full unless trace, forecast reads probability, disagreement costs 20pp', () => {
       expect(confidencePct(true, false, 40, false)).toBe(100)  // radar-zone, measured: ignores prob/agree
       expect(confidencePct(true, true, 40, false)).toBe(70)    // radar-zone, but an unconfirmed trace echo
-      expect(confidencePct(false, false, 100, true)).toBe(100)
+      expect(confidencePct(false, false, 100, true)).toBe(100) // isDry omitted → defaults false, unchanged
       expect(confidencePct(false, false, 40, true)).toBe(40)
       expect(confidencePct(false, false, 40, false)).toBe(20)  // disagreement, floored at 20
       expect(confidencePct(false, true, 40, true)).toBe(20)    // forecast-zone trace reads low
       expect(confidencePct(false, false, null, true)).toBe(40) // beyond the probability horizon
+    })
+
+    // Live bug (2026-09-18): /api/ambient showed pprob 0-3% at every one of the
+    // 11 points on a bone-dry day, and confidencePct used to read that number
+    // DIRECTLY as confidence — so the most confident-dry forecast possible
+    // showed the LOWEST bar on the chart. isDry flips which side of `prob` is
+    // "confidence in the claim": a low rain-chance is high confidence in a DRY
+    // tile, and only low confidence in a WET one.
+    it('confidencePct: a dry tile reads confidence from (100 - prob), not prob', () => {
+      expect(confidencePct(false, false, 3, true, true)).toBe(97)   // 3% rain chance, dry tile → very confident
+      expect(confidencePct(false, false, 0, true, true)).toBe(100)
+      expect(confidencePct(false, false, 90, true, true)).toBe(20)  // 90% rain chance but tile says dry → floored, unsure
+      expect(confidencePct(false, false, 70, true, false)).toBe(70) // wet tile: unchanged, still reads prob directly
     })
 
     // The readout renders the confidence pip bar (plus its small "confidence"
@@ -343,7 +356,7 @@ for (const lang of ['de', 'en']) {
         <InfoPanel open={true} onClose={() => {}} onPrivacy={() => {}} t={t} />)
       for (const k of ['guide_sky_title', 'guide_sky', 'guide_lanes_title', 'guide_lanes_1',
                        'guide_lanes_2', 'guide_lanes_3', 'guide_days_title', 'guide_days_1',
-                       'guide_days_2', 'guide_ribbon_5', 'guide_ribbon_6',
+                       'guide_days_2', 'guide_ribbon_1', 'guide_ribbon_4',
                        'src_daily']) {
         expect(html).toContain(esc(t(k).slice(0, 24)))
       }

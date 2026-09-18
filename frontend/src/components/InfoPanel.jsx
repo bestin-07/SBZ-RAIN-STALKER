@@ -1,4 +1,4 @@
-import { skyPalOf } from './RainRibbon'
+import { TileIcon } from './RainRibbon'
 
 // Donation link. Paste your PayPal.me / Stripe Payment Link / Ko-fi URL here,
 // or set VITE_DONATE_URL in Railway to override without editing code.
@@ -58,9 +58,9 @@ export default function InfoPanel({ open, onClose, onPrivacy, t, theme }) {
           <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
             {t('guide_ribbon_title')}
           </div>
-          <RibbonGuide t={t} theme={theme} />
+          <RibbonGuide t={t} />
           <div className="space-y-2 mb-5">
-            {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4','guide_ribbon_5','guide_ribbon_6','guide_ribbon_7'].map(k => (
+            {['guide_ribbon_1','guide_ribbon_2','guide_ribbon_3','guide_ribbon_4'].map(k => (
               <p key={k} className="font-mono text-xs text-muted leading-relaxed">{t(k)}</p>
             ))}
           </div>
@@ -206,73 +206,40 @@ export default function InfoPanel({ open, onClose, onPrivacy, t, theme }) {
   )
 }
 
-// A miniature of the real chart, drawn as SVG rather than shipped as a picture:
-// it reads the same colour tokens the chart itself uses, so it stays correct in
-// both themes and cannot drift out of date the way a screenshot would.
-// v2.37 — redrawn as a filled skyline (area + line) instead of bars, matching the
-// real ribbon's own bars→skyline redesign. A bar-shaped guide describing a chart
-// the app no longer draws is exactly the v2.18.0 lesson (the guide must never
-// drift from the picture it explains) — this keeps the two in lockstep the same
-// way DayGuide below stays honest about DayStrip's own, separate colour scale.
-// Deliberately shows one story: dry, a bleed the model already sees, the storm
-// itself, easing — then, past the radar horizon, a forecast line the two models
-// disagree about — because that is the shape people need to learn to read.
-function RibbonGuide({ t, theme }) {
-  const W = 40, BASE = 66, N = 8, SPLIT = 6 * W
-  const sky = skyPalOf(theme)
-  const vals = [0, 0, 0.3, 1.6, 2.3, 0.4, 0.5, 1.9]
-  const h = v => (v < 0.1 ? 2 : 6 + Math.min(1, v / 2.4) * 56)
-  const pts = vals.map((v, i) => ({ x: i * W + W / 2, y: BASE - h(v) }))
-  const full = [{ x: 0, y: pts[0].y }, ...pts, { x: N * W, y: pts[N - 1].y }]
-  const path = full.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
-  const areaPath = `M0,${BASE} ${full.map(p => `L${p.x},${p.y}`).join(' ')} L${SPLIT},${BASE} Z`
-  // The bleed: still inside the radar zone (index 1, still measured dry), the
-  // model already expects the rise that only actually arrives at index 3.
-  const bleedX = 1 * W + W / 2, bleedY = BASE - h(1.6)
-  // The argument: past the radar horizon, the two models disagree about index 7.
-  const argX = pts[7].x, argY = pts[7].y
+// v3.0 — the guide is three example TILES, using the exact same TileIcon the
+// real ribbon draws (imported, not redrawn) so this cannot drift from the
+// real chart the way the old hand-drawn skyline illustration could. Three
+// examples are the whole lesson: solid = radar, dashed = model, a ring badge
+// = the two disagree. Nothing else about the tile grammar needs a diagram —
+// the icon shapes themselves (dry/drizzle/rain/storm) are read the way any
+// weather-app icon is, no legend required.
+function RibbonGuide({ t }) {
+  const Example = ({ tier, solid, mismatch, labelKey }) => (
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="relative">
+        <div className="w-11 h-14 rounded-[10px] flex items-center justify-center"
+             style={solid
+               ? { background: 'var(--c-wait)' }
+               : { background: 'transparent', border: '1.5px dashed var(--c-wait)' }}>
+          <span style={{ color: solid ? '#fff' : 'var(--c-wait)' }}><TileIcon tier={tier} size={22} /></span>
+        </div>
+        {mismatch && (
+          <span aria-hidden="true" className="absolute -top-1 -right-1 w-3 h-3 rounded-full"
+                style={{ background: 'var(--c-bg)', border: '1.5px dashed var(--c-wait)' }} />
+        )}
+      </div>
+      <span className="font-mono text-[9px] tracking-wide uppercase text-muted text-center leading-tight max-w-[64px]">
+        {t(labelKey)}
+      </span>
+    </div>
+  )
   return (
-    // w-full alone let the 320-wide viewBox stretch to the full panel on desktop —
-    // ~6x scale, so the 7px zone captions rendered larger than the headings. Capped at
-    // roughly its natural size: fills the width on a phone, stays a diagram on a laptop.
-    <svg viewBox="0 0 320 82" className="w-full max-w-[360px] h-auto text-primary mb-4"
+    <div className="flex items-start justify-around gap-2 mb-4 py-1"
          role="img" aria-label={t('guide_ribbon_title')}>
-      <defs>
-        <linearGradient id="skyGuideGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={sky.storm} />
-          <stop offset="100%" stopColor={sky.rain} />
-        </linearGradient>
-        <clipPath id="skyGuideRadar"><rect x="0" y="0" width={SPLIT} height={BASE + 2} /></clipPath>
-        <clipPath id="skyGuideFcst"><rect x={SPLIT} y="0" width={320 - SPLIT} height={BASE + 2} /></clipPath>
-      </defs>
-      <text x="6" y="9" fontSize="7" fontFamily="monospace" fill="var(--c-muted)">RADAR</text>
-      <text x={SPLIT + 6} y="9" fontSize="7" fontFamily="monospace" fill="var(--c-muted)">
-        {t('guide_ribbon_lbl_model')}
-      </text>
-      {/* filled radar zone */}
-      <path d={areaPath} fill="url(#skyGuideGrad)" fillOpacity="0.85" clipPath="url(#skyGuideRadar)" />
-      <path d={path} stroke="url(#skyGuideGrad)" strokeWidth="2" fill="none" clipPath="url(#skyGuideRadar)" />
-      {/* dashed forecast continuation, no fill */}
-      <path d={path} stroke="url(#skyGuideGrad)" strokeWidth="2" fill="none"
-            strokeDasharray="4 3" clipPath="url(#skyGuideFcst)" />
-      {/* bleed spike */}
-      <path d={`M${bleedX - W / 2 + 3},${BASE} L${bleedX},${bleedY} L${bleedX + W / 2 - 3},${BASE}`}
-            stroke={sky.storm} strokeWidth="1.5" strokeDasharray="3 2" fill="none" />
-      <circle cx={bleedX} cy={bleedY} r="3" fill="var(--c-bg)" stroke={sky.storm} strokeWidth="1.5" />
-      {/* disagreement ring */}
-      <line x1={argX} y1={argY - 10} x2={argX} y2={BASE} stroke="var(--c-primary)"
-            strokeWidth="1" strokeDasharray="2 2" opacity="0.55" />
-      <circle cx={argX} cy={argY} r="3.5" fill="var(--c-bg)" stroke={sky.storm} strokeWidth="1.5" />
-      {/* radar → model divider */}
-      <line x1={SPLIT} y1="0" x2={SPLIT} y2={BASE + 14} stroke="var(--c-muted)"
-            strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
-      {/* "now" */}
-      <rect x="0" y="0" width="2" height={BASE + 14} fill="currentColor" />
-      {[0, 2, 4, 6].map((i, n) => (
-        <text key={i} x={i * W + 4} y="78" fontSize="8" fontFamily="monospace"
-              fill="var(--c-muted)">{15 + n}:00</text>
-      ))}
-    </svg>
+      <Example tier="rain" solid labelKey="guide_ribbon_lbl_radar" />
+      <Example tier="rain" labelKey="guide_ribbon_lbl_model" />
+      <Example tier="rain" solid mismatch labelKey="guide_ribbon_lbl_mismatch" />
+    </div>
   )
 }
 

@@ -12,6 +12,27 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.41.0] - 2026-09-18 - Gemma Raus just got better: the rain chart is icon tiles now, and confidence tells the truth on a dry day 🌦️
+
+*A redesigned rain chart, and a genuine bug fix hiding underneath it.*
+
+**What happened**
+
+The rain chart's gradient shape was replaced with something closer to a standard weather app: a row of small icon tiles, one per time slot, that fill in solid when radar has actually measured the rain and outline in a dashed style when it's the forecast model's best guess for later. A small ring on a tile means the two sources — radar and the forecast model — disagree there, instead of two different squiggly markers doing that job before.
+
+While rebuilding it, a real bug turned up: the little "confidence" bar next to the chart was reading the model's *chance of rain* as if it were confidence in general — so on a completely dry, highly predictable day, it showed the lowest bar possible, every time. A 3% chance of rain when the forecast says "dry" is about as confident a forecast as you can get; the bar now reads it that way.
+
+**What's new for you**
+
+- **The rain chart is now icon tiles** — solid and filled where it's measured, dashed and outlined where it's predicted — sitting inside its own clearly bordered panel so it reads as one object on the screen, not loose chart ink.
+- **The chart's right-edge "there's more, scroll →" fade is more obvious now**, and it no longer nudges itself sideways after a few seconds of you not touching it — the fade alone tells you it scrolls, so nothing moves without your say-so.
+- **The "confidence" reading is fixed.** A calm, dry forecast now correctly shows high confidence instead of always bottoming out — worth knowing if you've ever wondered why it looked unsure on an obviously settled day.
+- **The dry stretch label moved above the chart**, and the in-app guide was rewritten to match — two sources, radar and forecast model, in three short lines instead of a chart diagram.
+
+**Nothing about GEMMA RAUS / WAIT / BLEIB DRIN changed.** This is the chart's own presentation and one readout number — every threshold behind the actual verdict is untouched.
+
+---
+
 ## [2.40.0] - 2026-09-17 - Gemma Raus just got better: quieter for accessibility, and steadier at the edges 🩹
 
 *A cross-device compatibility pass — mostly things you'll never notice, which is the point.*
