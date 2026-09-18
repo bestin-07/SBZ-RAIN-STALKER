@@ -69,7 +69,14 @@ const TIER_VAR = { dry: null, drizzle: 'var(--c-light)', rain: 'var(--c-wait)', 
 // chip's OWN style (filled vs. dashed-outline), never a different icon. That
 // is also the whole of what the guide needs to teach (see InfoPanel.jsx).
 function TileIcon({ tier, size = 20 }) {
-  const p = { fill: 'none', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  // v3.0.1 — `stroke` was missing from this list entirely. SVG's own default
+  // is `stroke: none`, and `currentColor` only reaches a shape that actually
+  // says `stroke="currentColor"` — the wrapping <span style={{color}}> alone
+  // never draws anything. Every tile shipped as a visually empty box because
+  // of this; renderToStaticMarkup only pins markup, not what a browser
+  // actually paints, so the test suite could not have caught it (this is
+  // exactly the gap flagged when this shipped — a live screenshot did).
+  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' }
   const cloud = 'M7 13.6a3.6 3.6 0 0 1-.4-7.2 4.6 4.6 0 0 1 8.8-1.4A4 4 0 0 1 16.4 13.6H7Z'
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} className="shrink-0" aria-hidden="true">

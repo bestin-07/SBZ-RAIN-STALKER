@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.41.1] - 2026-09-18 - Gemma Raus just got better: the new rain chart icons are actually visible now 🙈
+
+*A live screenshot, minutes after v2.41.0 shipped, caught the tiles rendering empty.*
+
+**What happened**
+
+The icon tiles from v2.41.0 shipped with a real rendering bug: the little rain/drizzle/storm glyphs were never told to actually draw a visible line, so every tile rendered as a blank box — no icon, just an empty shape. The automated tests didn't catch it because they check the underlying markup, not what a browser actually paints, so it took an eyes-on comparison against the design mockup to spot.
+
+**What's new for you**
+
+- **The tile icons draw correctly now** — dry, drizzle, rain and storm all show their glyph, solid and white on a measured radar tile, outlined in colour on a forecast tile, exactly as designed.
+
+**Nothing about the verdict changed.** A pure rendering fix to the chart shipped an hour earlier.
+
+---
+
 ## [2.41.0] - 2026-09-18 - Gemma Raus just got better: the rain chart is icon tiles now, and confidence tells the truth on a dry day 🌦️
 
 *A redesigned rain chart, and a genuine bug fix hiding underneath it.*
