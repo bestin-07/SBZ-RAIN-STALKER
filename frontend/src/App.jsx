@@ -1469,7 +1469,7 @@ export default function App() {
           </div>
           {dayTab === 'now' ? (
             <>
-              <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} />
+              <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} code={currentWeather?.code ?? null} daily={daily} />
               <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} expandAboveRef={tabsRef} />
             </>
           ) : (

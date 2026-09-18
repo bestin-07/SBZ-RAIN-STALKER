@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { showGhost, hasRadarZone, hoursLabel, LIGHT_MIN, LIGHT_MAX } from '../gaps'
+import { showGhost, hasRadarZone, hoursLabel, LIGHT_MIN, LIGHT_MAX, weatherGroup } from '../gaps'
 import { formatClock } from '../time'
 
 // v3.0 — the skyline (a continuous gradient area, v2.37–v2.39) is replaced by
@@ -54,22 +54,71 @@ export function tileTierOf(p) {
   if (p < STORM_THRESHOLD) return 'rain'
   return                          'storm'
 }
-// CSS custom properties, not literal hex: tiles are DOM, not canvas, so — unlike
-// the old skyline's gradient, which needed literal colour strings for a 2D
-// context — they can read the theme tokens directly and never go stale in one
-// theme. Storm reuses --c-danger (same scoped exception the skyline itself
-// carried since v2.37: "a storm on THIS chart reads the same red the RED
-// warning override uses, not a new one"); dry is deliberately colourless — a
-// dry tile gets a plain bordered chip, never a tinted one (the skyline's own
-// "dry has no colour of any kind" rule, v2.37, carried into tile form).
-const TIER_VAR = { dry: null, drizzle: 'var(--c-light)', rain: 'var(--c-wait)', storm: 'var(--c-danger)' }
+// v3.3 — dry and storm tiles are FILLED and carry a real theme colour now
+// (maintainer-directed redesign off two reference screenshots: dry icons
+// "filled, never hollow"; severe weather split into named Sturm/Gewitter/
+// Hagel glyphs instead of one generic bolt). Drizzle/rain are unchanged —
+// "the rain I like it, more lines more heavy rain" — only the two tiers that
+// were still a single undifferentiated shape (dry, storm) got a redesign.
+// Storm keeps --c-danger (same scoped exception the chart has carried since
+// v2.37: "a storm on THIS chart reads the same red the RED warning override
+// uses, not a new one"); dry now reads --c-go (clear) or --c-muted (cloudy)
+// instead of staying colourless — see `dryTileColor` below for why that old
+// "dry has no colour" rule is retired rather than kept.
+function tierColorVar(tier, variant) {
+  if (tier === 'drizzle') return 'var(--c-light)'
+  if (tier === 'rain')    return 'var(--c-wait)'
+  if (tier === 'storm')   return 'var(--c-danger)'
+  if (tier === 'dry')     return variant === 'cloud' ? 'var(--c-muted)' : 'var(--c-go)'
+  return null
+}
+
+// Which DRY glyph a tile draws — sun, moon, or a plain cloud. Two signals,
+// both honest about what this app actually knows per-tile (see CLAUDE.md's
+// data-availability note on this redesign):
+//  - day/night is the LOCAL CLOCK against today's real sunrise/sunset
+//    (already served on `/api/ambient`'s `daily`, for the five-day strip —
+//    reused here for free). Exact for every tile's own timestamp, radar or
+//    model zone alike, with zero new data. Falls back to a fixed hour band
+//    if `daily` hasn't loaded yet.
+//  - clear vs. cloudy reads the single `current` weather_code — the only
+//    per-moment code this app fetches. One code applied to every dry tile in
+//    the row: sky doesn't flip every 15 min, so a single "right now" reading
+//    standing in for the whole row is the same precedent already used for
+//    `city_ground`/the daily warnings, not a new kind of guess. A future
+//    `hourly=weather_code` fetch could give the FORECAST zone its own
+//    per-slot code; nothing here forecloses that — this is the honest v1
+//    with what's already on hand.
+function isNightAt(ts, sunrise, sunset) {
+  if (typeof sunrise === 'number' && typeof sunset === 'number') return ts < sunrise || ts > sunset
+  const h = new Date(ts * 1000).getHours()
+  return h < 6 || h >= 21
+}
+export function drySkyVariant(ts, code, sunrise, sunset) {
+  const grp = weatherGroup(code)
+  if (grp === 'cloudy' || grp === 'fog') return 'cloud'
+  return isNightAt(ts, sunrise, sunset) ? 'moon' : 'sun'
+}
+// Which STORM glyph a tile draws. WMO already distinguishes these at the
+// source — 95 = thunderstorm, 96/99 = thunderstorm WITH hail — this just
+// reads the code we already have. Falls back to the generic Sturm glyph
+// (closest to what shipped before this redesign) whenever the code doesn't
+// name a specific severe type, same "unknown reads as the safe default"
+// doctrine as `tracePhantom`'s null-handling.
+export function stormVariant(code) {
+  if (code === 96 || code === 99) return 'hagel'
+  if (code === 95) return 'gewitter'
+  return 'sturm'
+}
 
 // One glyph family per tier, reused for BOTH the radar (solid) and forecast
 // (outline) rendering of a tile, and for the info-panel guide — the only
 // difference between "radar measured this" and "model predicts this" is the
 // chip's OWN style (filled vs. dashed-outline), never a different icon. That
 // is also the whole of what the guide needs to teach (see InfoPanel.jsx).
-function TileIcon({ tier, size = 20 }) {
+// `variant` picks the dry/storm sub-glyph; the guide (which has no code/
+// clock to work from) omits it and gets a sensible default.
+function TileIcon({ tier, size = 20, variant }) {
   // v3.0.1 — `stroke` was missing from this list entirely. SVG's own default
   // is `stroke: none`, and `currentColor` only reaches a shape that actually
   // says `stroke="currentColor"` — the wrapping <span style={{color}}> alone
@@ -79,9 +128,22 @@ function TileIcon({ tier, size = 20 }) {
   // exactly the gap flagged when this shipped — a live screenshot did).
   const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' }
   const cloud = 'M7 13.6a3.6 3.6 0 0 1-.4-7.2 4.6 4.6 0 0 1 8.8-1.4A4 4 0 0 1 16.4 13.6H7Z'
+  const v = variant || (tier === 'dry' ? 'sun' : tier === 'storm' ? 'sturm' : null)
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} className="shrink-0" aria-hidden="true">
-      {tier === 'dry' && <line x1="6" y1="12" x2="18" y2="12" {...p} />}
+      {tier === 'dry' && v === 'sun' && (
+        <g>
+          <circle cx="12" cy="12" r="4.3" fill="currentColor" stroke="none" />
+          <path d="M12 2.4v2.6M12 19v2.6M2.4 12h2.6M19 12h2.6M5.3 5.3l1.8 1.8M17 17l1.8 1.8M18.7 5.3L17 7M7 17l-1.8 1.8"
+                stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" fill="none" />
+        </g>
+      )}
+      {tier === 'dry' && v === 'moon' && (
+        <path d="M13.2 3.2a9 9 0 1 0 7.6 15.7A7.6 7.6 0 0 1 13.2 3.2Z" fill="currentColor" stroke="none" />
+      )}
+      {tier === 'dry' && v === 'cloud' && (
+        <path d={cloud} fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+      )}
       {tier === 'drizzle' && (
         <g {...p}>
           <path d={cloud} />
@@ -94,10 +156,25 @@ function TileIcon({ tier, size = 20 }) {
           <path d="M8 16.3l-1 3.3M12 16.3l-1 3.3M16 16.3l-1 3.3" />
         </g>
       )}
-      {tier === 'storm' && (
-        <g {...p}>
-          <path d={cloud} transform="translate(0,-2)" />
-          <polyline points="13.4,12.8 10.5,17.8 12.8,17.8 11.3,22.2 15.8,16.1 13.3,16.1 14.6,12.8" />
+      {tier === 'storm' && v === 'sturm' && (
+        <g>
+          <path d={cloud} transform="translate(0,-2)" fill="currentColor" fillOpacity="0.32"
+                stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          <path d="M13.4 12.8 L10.5 17.8 L12.8 17.8 L11.3 22.2 L15.8 16.1 L13.3 16.1 L14.6 12.8 Z"
+                fill="currentColor" stroke="none" />
+        </g>
+      )}
+      {tier === 'storm' && v === 'gewitter' && (
+        <path d="M13 2 L6.5 13.5 L11 13.5 L9 22 L17.5 9.5 L12.5 9.5 Z" fill="currentColor" stroke="none" />
+      )}
+      {tier === 'storm' && v === 'hagel' && (
+        <g>
+          <path d={cloud} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <g fill="currentColor" stroke="none">
+            <circle cx="9" cy="17.6" r="1.15" />
+            <circle cx="13.2" cy="18.1" r="1.15" />
+            <circle cx="11" cy="21" r="1.15" />
+          </g>
         </g>
       )}
     </svg>
@@ -155,8 +232,8 @@ function SourceIcon({ inRadar, size = 14 }) {
 // a reader experiences as the same fact, "the sources here don't agree".
 // Maintainer call: one badge, not two, once the chart itself stopped being a
 // continuous line these could ride along.
-function Tile({ tier, solid, mismatch, mist, timeLabel }) {
-  const col = TIER_VAR[tier]
+function Tile({ tier, variant, solid, mismatch, mist, timeLabel }) {
+  const col = tierColorVar(tier, variant)
   return (
     <div style={{ width: TILE_W }} className="shrink-0 flex flex-col items-center gap-1">
       <div className="relative">
@@ -175,7 +252,7 @@ function Tile({ tier, solid, mismatch, mist, timeLabel }) {
             : { background: 'transparent', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }}
         >
           <span style={{ color: solid ? (col ? '#fff' : 'var(--c-muted)') : (col ?? 'var(--c-muted)') }}>
-            <TileIcon tier={tier} />
+            <TileIcon tier={tier} variant={variant} />
           </span>
         </div>
         {mismatch && (
@@ -356,7 +433,7 @@ function modelPeakAt(mTimes, mPrecips, t0, t1) {
   return best
 }
 
-export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin }) {
+export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin, code, daily }) {
   const scrollRef = useRef(null)
   const [scrollX, setScrollX] = useState(0)
   // v2.39.6, kept and widened (v3.0 — "emphasise the fade" ask): the fade is
@@ -389,6 +466,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   }, [forecast])
 
   const nowS = Math.floor(Date.now() / 1000)
+  // Today's real sunrise/sunset (v3.3, dry-tile day/night) — already fetched
+  // for the five-day strip, reused here for free. See `drySkyVariant` above.
+  const sunrise = typeof daily?.sunrise?.[0] === 'number' ? daily.sunrise[0] : null
+  const sunset  = typeof daily?.sunset?.[0]  === 'number' ? daily.sunset[0]  : null
   const rslots = (forecast?.times || [])
     .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i], prob: forecast.modelProb?.[i] }))
     .filter(s => s.t >= nowS - 300 && s.t < nowS + HORIZON_S)
@@ -597,12 +678,15 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
                   const inRadar = i < splitI
                   const trace = b.p > 0 && b.p < DRY_THRESHOLD
                   const tier = tileTierOf(b.p)
+                  const variant = tier === 'dry' ? drySkyVariant(b.t, code, sunrise, sunset)
+                                : tier === 'storm' ? stormVariant(code)
+                                : undefined
                   const mismatch = inRadar
                     ? (() => { const mp = modelPeakAt(mTimesR, mPrecipsR, b.t, b.end); return mp != null && showGhost(b.p, mp) })()
                     : (b.p >= DRY_THRESHOLD && b.agree === false)
                   const d = new Date(b.t * 1000)
                   return (
-                    <Tile key={i} tier={tier} solid={inRadar} mismatch={mismatch} mist={trace}
+                    <Tile key={i} tier={tier} variant={variant} solid={inRadar} mismatch={mismatch} mist={trace}
                           timeLabel={d.getMinutes() === 0 ? `${String(d.getHours()).padStart(2, '0')}:00` : ''} />
                   )
                 })}

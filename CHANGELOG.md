@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.43.0] - 2026-09-18 - Gemma Raus just got better: the ribbon now knows what kind of dry it is ☀️
+
+*A dry tile has always just been a flat line — no matter if it's a clear afternoon or a grey overcast one. It looked the same either way, and the storm tiles couldn't tell you if heavy weather meant lightning, hail, or just wind.*
+
+**What happened**
+
+Every dry tile on today's ribbon drew the exact same plain line, whether the sky outside was blue or solid grey — and every storm tile drew the same generic cloud-and-bolt, whether it was a thunderstorm, hail, or a gale. Nothing distinguished them, so the ribbon told you *when* it was dry or stormy but never quite *what to expect*.
+
+**What's new for you**
+
+- **Dry tiles now show a filled sun, moon, or cloud** — sun during the day, moon at night, and a plain cloud on a grey, overcast dry stretch. The day/night split follows the real sunrise and sunset for today, so a dry evening naturally drifts from sun to moon as you scroll the ribbon forward.
+- **Storm tiles are now specific**: a lightning bolt for a thunderstorm, a cloud with hail for a thunderstorm carrying hail, and the familiar cloud-and-bolt for general severe weather when the exact type isn't known.
+- Rain and drizzle tiles are untouched — same blue drops, same "more drops for heavier rain" read as before.
+
+**Nothing about the verdict changed.** This only changes which icon a dry or storm tile draws — `getStatus`, every threshold and every countdown are byte-identical.
+
+---
+
 ## [2.42.2] - 2026-09-18 - Gemma Raus just got better: a capital D 🔤
 
 *Spotted from a live screenshot within minutes of the last release: "dry for a good while, take your time" as the biggest text on screen, lowercase d and all.*
