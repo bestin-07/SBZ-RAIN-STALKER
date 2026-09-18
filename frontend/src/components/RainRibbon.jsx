@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { showGhost, hasRadarZone, hoursLabel, LIGHT_MIN, LIGHT_MAX } from '../gaps'
+import { formatClock } from '../time'
 
 // v3.0 — the skyline (a continuous gradient area, v2.37–v2.39) is replaced by
 // discrete icon tiles: 15-min solid chips in the radar zone, 30-min dashed
@@ -309,8 +310,7 @@ function ConfidencePips({ pct }) {
   )
 }
 function fmtSlotTime(ts) {
-  const d = new Date(ts * 1000)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return formatClock(new Date(ts * 1000))
 }
 function relFromNow(t, ts, nowSec) {
   if (ts <= nowSec) return t('ro_now')
@@ -428,6 +428,8 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
   const scrubIsDry = (scrubBar?.p ?? 0) < DRY_THRESHOLD
   const confPct = confidencePct(scrubInRadar, scrubTrace, scrubBar?.prob, scrubBar?.agree, scrubIsDry)
   const scrubT = scrubIdx === 0 ? nowS : (scrubBar?.t ?? nowS)
+  const scrubStatusKey = slotStatusKey(scrubBar?.p ?? 0, scrubTrace)
+  const confPips = pctToPips(confPct)
 
   const cursorCol = theme === 'light' ? '#0A0A0A' : '#F1F3F5'
 
@@ -478,12 +480,34 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
             </span>
           </div>
           <div className="flex items-center justify-between gap-2 mt-0.5">
+            {/* "Trocken" at rest already restates what the (promoted) headline
+                and the dry-window bracket both already say — a live screen
+                review counted it as the third of four separate "it's dry"
+                statements on one screen. Kept for every OTHER reading
+                (trace/light/rain/storm), where it's the only place that
+                specific scrubbed slot's claim is spoken — only the literal
+                dry case is blank here. The row's layout (and the confidence
+                block's position) is unchanged either way. */}
             <span className="font-mono text-sm">
-              {t(slotStatusKey(scrubBar?.p ?? 0, scrubTrace))}
+              {scrubStatusKey === 'ro_status_dry' ? '' : t(scrubStatusKey)}
             </span>
-            <span className="flex items-center gap-1.5 shrink-0" aria-label={t('ro_confidence', { n: pctToPips(confPct) })}>
-              <span className="font-mono text-[9px] text-muted uppercase tracking-wide">{t('ro_confidence_label')}</span>
+            {/* role="img" + a single aria-label carries the full "confidence
+                N of 5" value to assistive tech; the pip bar alone was
+                aria-hidden and invisible to a screen reader, and the numeric
+                "N/5" text makes the value visible to sighted users too,
+                instead of leaving "Sicherheit" as a label with no value next
+                to it. */}
+            <span
+              className="flex items-center gap-1.5 shrink-0"
+              role="img"
+              aria-label={t('ro_confidence', { n: confPips })}
+            >
+              {/* tracking-wide → tracking-normal: at 9px, extra letterspacing on
+                  an already-small caps label costs more legibility than it adds
+                  — WCAG AA contrast/legibility pass. */}
+              <span aria-hidden="true" className="font-mono text-[9px] text-muted uppercase tracking-normal">{t('ro_confidence_label')}</span>
               <ConfidencePips pct={confPct} />
+              <span aria-hidden="true" className="font-mono text-[9px] text-primary">{confPips}/5</span>
             </span>
           </div>
         </div>
@@ -561,7 +585,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
                   const txt = mins < 60 ? t('bracket_dry_min', { min: mins }) : t('bracket_dry_h', { h: hoursLabel(mins) })
                   return (
                     <div className="absolute" style={{ left: CURSOR_X + dryRun.a * TILE_W + 3, width: (dryRun.b - dryRun.a + 1) * TILE_W - 6 }}>
-                      <div className="font-mono font-bold text-[9px] tracking-wide truncate" style={{ color: 'var(--c-go)' }}>{txt}</div>
+                      <div className="font-mono font-bold text-[9px] tracking-normal truncate" style={{ color: 'var(--c-go)' }}>{txt}</div>
                       <div className="h-[1.5px] mt-[5px]" style={{ background: 'var(--c-go)', opacity: 0.6 }} />
                     </div>
                   )
@@ -610,7 +634,8 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
           their existing text; both now describe the SAME visual (the small
           ring badge on a tile) instead of two different marker shapes. */}
       {hasData && (
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.07em] text-muted">
+        // tracking-[0.07em] → [0.05em]: same legibility pass as the readout row above.
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.05em] text-muted">
           {hasTrace && (
             <span className="flex items-center gap-1">
               <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--c-light)' }} aria-hidden="true" />

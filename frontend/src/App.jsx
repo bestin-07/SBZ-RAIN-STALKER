@@ -166,21 +166,29 @@ export default function App() {
   useEffect(() => { privacyOpenRef.current = privacyOpen }, [privacyOpen])
   const installPromptRef = useRef(null)
   const [installable, setInstallable] = useState(false)
-  const [iosHintDismissed, setIosHintDismissed] = useState(() => saved('ios_hint_dismissed', '') === '1')
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
                     || window.navigator.standalone === true
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
              || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  // iOS install hints. Safari can install via Share → Add to Home Screen; every
-  // other iOS browser (Chrome/Firefox/Edge/Opera = CriOS/FxiOS/...) cannot install
-  // at all on iOS, so point those users to Safari. Returns the i18n key, or null.
+  // Device/browser install path, shared by InstallPrompt (the one-time popup)
+  // and InfoPanel's own install row. Safari can install via Share → Add to
+  // Home Screen; every other iOS browser (Chrome/Firefox/Edge/Opera =
+  // CriOS/FxiOS/...) cannot install at all on iOS, so those get pointed to
+  // Safari instead.
   const _ua = navigator.userAgent
   const isIOSSafari = isIOS && /Safari/.test(_ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(_ua)
   const isIOSOther  = isIOS && /CriOS|FxiOS|EdgiOS|OPiOS/.test(_ua)
   const isAndroid   = /Android/.test(_ua)
-  const iosHint = (!isStandalone && !iosHintDismissed)
-    ? (isIOSSafari ? 'ios_install' : isIOSOther ? 'ios_open_safari' : null)
-    : null
+  // Shared by InstallPrompt's one-time popup and InfoPanel's install row —
+  // one trigger for the captured `beforeinstallprompt` event, used wherever
+  // the app offers a real "Install" button (only ever true when `installable`).
+  const handleInstall = async () => {
+    if (installPromptRef.current) {
+      installPromptRef.current.prompt()
+      const { outcome } = await installPromptRef.current.userChoice
+      if (outcome === 'accepted') setInstallable(false)
+    }
+  }
 
   const t = useI18n(lang)
   const status = getStatus(currentPrecip, gaps, currentWeather, t, tickNow, trend)
@@ -1254,19 +1262,12 @@ export default function App() {
     loading:      location ? loading      : false,
     notifyState:  location ? notifyState  : 'unsupported',
     onNotifyToggle: location ? toggleNotifications : null,
-    installable: installable && !isStandalone,
-    onInstall: async () => {
-      if (installPromptRef.current) {
-        installPromptRef.current.prompt()
-        const { outcome } = await installPromptRef.current.userChoice
-        if (outcome === 'accepted') setInstallable(false)
-      }
-    },
-    iosHint,
-    onDismissIosHint: () => {
-      setIosHintDismissed(true)
-      try { localStorage.setItem('ios_hint_dismissed', '1') } catch {}
-    },
+    // The persistent "Add to home screen" strip + the iOS hint strip are gone
+    // from the header (see InstallPrompt.jsx and InfoPanel's own install row
+    // below) — they nagged on every visit with no dismiss for the Chrome/Edge
+    // case, duplicating what InstallPrompt already does as a proper one-time,
+    // dismissible, localStorage-remembered popup. Header no longer needs
+    // install-related props at all.
   }
 
   return (
@@ -1478,7 +1479,11 @@ export default function App() {
         </div>
       )}
 
-      <InfoPanel open={infoOpen} onClose={closeInfo} onPrivacy={() => openPrivacy('info')} t={t} theme={theme} />
+      <InfoPanel
+        open={infoOpen} onClose={closeInfo} onPrivacy={() => openPrivacy('info')} t={t} theme={theme}
+        installable={installable && !isStandalone} onInstall={handleInstall} isStandalone={isStandalone}
+        isIOSSafari={isIOSSafari} isIOSOther={isIOSOther} isAndroid={isAndroid}
+      />
 
       {notifyModalOpen && (
         <NotifyModal
@@ -1494,7 +1499,7 @@ export default function App() {
       <InstallPrompt
         t={t}
         installable={installable && !isStandalone}
-        onInstall={headerProps.onInstall}
+        onInstall={handleInstall}
         isStandalone={isStandalone}
         isIOSSafari={isIOSSafari}
         isIOSOther={isIOSOther}

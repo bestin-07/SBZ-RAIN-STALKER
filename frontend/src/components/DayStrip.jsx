@@ -99,7 +99,7 @@ export default function DayStrip({ daily, theme, t, lang, skipToday = false }) {
           the shrink-0/truncate pairing that line required — it's short and
           fixed, never at risk of wrapping on its own. */}
       <div className="flex items-baseline gap-3 mb-1.5 shrink-0">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted whitespace-nowrap">
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted whitespace-nowrap">
           {t(skipToday ? 'days_title_forecast' : 'days_title')}
         </span>
       </div>

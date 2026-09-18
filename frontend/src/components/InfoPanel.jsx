@@ -5,7 +5,10 @@ import { TileIcon } from './RainRibbon'
 // e.g. 'https://paypal.me/yourhandle'
 const DONATE_URL = import.meta.env.VITE_DONATE_URL || ''
 
-export default function InfoPanel({ open, onClose, onPrivacy, t, theme }) {
+export default function InfoPanel({
+  open, onClose, onPrivacy, t, theme,
+  installable, onInstall, isStandalone, isIOSSafari, isIOSOther, isAndroid,
+}) {
   if (!open) return null
 
   return (
@@ -119,10 +122,35 @@ export default function InfoPanel({ open, onClose, onPrivacy, t, theme }) {
           <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3 mt-8">
             {t('install_title')}
           </div>
+          {/* Device-aware, not a static "Brave OR Safari" paragraph regardless
+              of what's actually open — a small standing home for install
+              guidance now that the header's own persistent strip is gone
+              (see App.jsx/Header.jsx). Chrome/Edge (a captured
+              beforeinstallprompt) get a real button; every other case gets
+              the one line of text that applies to it. */}
           <div className="space-y-2 mb-10 border-l-2 border-border pl-4">
-            <p className="font-mono text-xs text-muted leading-relaxed">{t('install_brave')}</p>
-            <p className="font-mono text-xs text-muted leading-relaxed">{t('install_safari')}</p>
-            <p className="font-mono text-xs text-primary leading-relaxed">{t('install_note')}</p>
+            {isStandalone ? (
+              <p className="font-mono text-xs text-go leading-relaxed">{t('install_already')}</p>
+            ) : (
+              <>
+                <p className="font-mono text-xs text-muted leading-relaxed">
+                  {installable ? t('ip_body')
+                    : isIOSSafari ? t('ip_ios_safari')
+                    : isIOSOther ? t('ip_ios_other')
+                    : isAndroid ? t('ip_android')
+                    : t('ip_generic')}
+                </p>
+                {installable && (
+                  <button
+                    onClick={onInstall}
+                    className="min-h-[44px] px-4 rounded-lg bg-primary text-bg font-display font-bold text-sm active:scale-95 transition"
+                  >
+                    {t('ip_btn')}
+                  </button>
+                )}
+                <p className="font-mono text-xs text-primary leading-relaxed">{t('install_note')}</p>
+              </>
+            )}
           </div>
 
           <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3 mt-8">

@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import SkyLine from './SkyLine'
 import { useFitText } from '../useFitText'
+import { formatClock } from '../time'
 
 const ACTIVITY_EMOJI = {
   swim: '🏊', run: '🏃', bike: '🚴', moto: '🏍️', picnic: '🧺',
@@ -28,12 +29,20 @@ const COLORS = {
 //
 // It reports only what was actually read: a lane with no reading says so (`—`)
 // rather than borrowing the other lane's number.
+//
+// The radar lane is silent when it is CLEAR ("Radar frei") — that fact is
+// already carried by the headline and the ribbon's dry-window bracket, and
+// saying it a third time here was the exact redundancy a live UI review
+// flagged ("dry" stated four times on one screen). A wet radar reading still
+// prints (mm value) — that's the genuinely useful case, e.g. a dry gauge next
+// to a wet radar, which is precisely what this line exists to explain.
 function SourceLine({ signals, t }) {
   if (!signals) return null
   const { ground, radar, held, updated } = signals
   const wet = v => typeof v === 'number' && v >= 0.1
   const dot = v => (v === null || v === undefined ? 'var(--c-muted)' : wet(v) ? 'var(--c-wait)' : 'var(--c-go)')
   const mm = v => v.toFixed(1)
+  const showRadar = typeof radar !== 'number' || wet(radar)
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-2.5 border-t border-border">
@@ -41,15 +50,16 @@ function SourceLine({ signals, t }) {
         <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(ground) }} />
         {typeof ground === 'number' ? t('lane_ground', { mm: mm(ground) }) : t('lane_ground_none')}
       </span>
-      <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
-        <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(radar) }} />
-        {typeof radar !== 'number' ? t('lane_radar_none')
-          : wet(radar) ? t('lane_radar', { mm: mm(radar) }) : t('lane_radar_clear')}
-      </span>
+      {showRadar && (
+        <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(radar) }} />
+          {typeof radar !== 'number' ? t('lane_radar_none') : t('lane_radar', { mm: mm(radar) })}
+        </span>
+      )}
       {held && <span className="font-mono text-[10px] text-muted">{t('lane_held')}</span>}
       {updated && (
         <span className="font-mono text-[10px] text-muted ml-auto">
-          {new Date(updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {formatClock(updated)}
         </span>
       )}
     </div>
@@ -62,13 +72,24 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
   // countdown with an arbitrary minute count — can be long enough to wrap at
   // some viewport width. Hook is called before the early return below, since
   // hooks can't follow a conditional return.
+  //
+  // GO state only: `status.headline` is always the literal brand wordmark
+  // (t('GO_NOW') === "GEMMA RAUS", see gaps.js) — identical to the header's
+  // own title directly above this block. A live screen review flagged the
+  // dry state as saying "dry" four times over; this is the biggest of the
+  // four. Rather than repeat the brand name a second time, the descriptive
+  // sub line ("dry for hours, take your time") takes the headline's slot —
+  // every other state's headline (BLEIB DRIN / PASST SCHON / a countdown)
+  // carries real information the header doesn't, so those are untouched.
+  const isGo = status?.type === 'go'
+  const headlineText = isGo ? status?.sub : status?.headline
   const headlineRef = useRef(null)
   useFitText(headlineRef, () => {
     const p = headlineRef.current?.parentElement
     if (!p) return 0
     const cs = getComputedStyle(p)
     return p.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
-  }, [status?.headline])
+  }, [headlineText])
 
   if (!status) return null
 
@@ -99,17 +120,25 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
           which read as oversized rather than confident. text-4xl (36px)
           keeps it the clear focal point of the block without dominating
           the screen; useFitText (above) still shrinks further only if an
-          unusually long headline still doesn't fit at this base size. */}
+          unusually long headline still doesn't fit at this base size.
+          GO state (see isGo above) keeps the tagline at roughly its own
+          former sub-line size — one step up (text-sm → text-base) rather
+          than jumping to the display-sized brand treatment, so removing the
+          brand-duplicate headline doesn't turn into a redesign of the block. */}
       <div
         ref={headlineRef}
-        className="font-display font-bold text-4xl leading-none tracking-tight"
+        className={isGo
+          ? 'font-mono font-bold text-base leading-snug tracking-tight'
+          : 'font-display font-bold text-4xl leading-none tracking-tight'}
         style={{ color: `var(--c-${status.type}, ${fallback})` }}
       >
-        {status.headline}
+        {headlineText}
       </div>
-      <div className="font-mono text-sm text-muted mt-2 leading-snug">
-        {status.sub}
-      </div>
+      {!isGo && (
+        <div className="font-mono text-sm text-muted mt-2 leading-snug">
+          {status.sub}
+        </div>
+      )}
       {/* What the weather has taken off the table. An EMPTY row is the good news —
           on a clear day nothing renders here at all. Each icon carries its own
           label, so a screen reader hears "no swimming" rather than a bare emoji.

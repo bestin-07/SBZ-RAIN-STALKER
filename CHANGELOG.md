@@ -12,6 +12,28 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.42.0] - 2026-09-18 - Gemma Raus just got better: easier to read, easier to reach, easier to install 🧭
+
+*A pass through the main screen with fresh eyes — a few things were saying the same thing twice, a few things were too small to tap, and the "install this" nag had gotten annoying.*
+
+**What happened**
+
+The dry state used to say "dry" four times in a row (a giant "GEMMA RAUS" repeating the header's own name, a tagline, a "Radar frei" chip, and a "Trocken" line) — noisy, and it buried the one line that actually mattered. The radar time on the map just showed a clock ("Radar 15:10") with no sense of how old that reading actually was. A few small caps labels ("Boden 0.0 mm", "SICHERHEIT", the dry-window bracket) were quietly failing contrast guidelines, and the header's icon buttons and the "Add to home screen" strip were sized for a mouse, not a thumb. And that install strip nagged on every single visit with no way to dismiss it for good.
+
+**What's new for you**
+
+- **Less repetition on the home screen.** The dry-state headline is now the one line that actually says something ("dry for hours, take your time") instead of repeating the app's own name; the redundant "Radar frei"/"Trocken" restatements are gone.
+- **The radar time now tells you its age**, not just its clock time — "radar 12 min ago" instead of a bare timestamp — and turns muted with a note if the reading (or the feed itself) has gone stale.
+- **All clock times are 24-hour, everywhere**, including a spot that had been quietly rendering in 12-hour AM/PM.
+- **The confidence bars now carry a visible number** ("4/5") and reach screen readers properly, not just a row of decorative dashes.
+- **Header buttons and the map popup are easier to tap and to read** — every icon button now has a proper touch-sized hit area, small caps labels are brighter, and a map popup can no longer render clipped off-screen. Escape closes it and hands focus back where you were.
+- **The "install this app" nudge is now a proper one-time popup**, closable and remembered — it won't nag you again once dismissed. If you change your mind later, there's now a small, device-aware "Install app" button right in the guide (☰ → the install section).
+- **The in-app guide's "how to use this" section got a rewrite** — same information, much shorter and plainer, so a first-time visitor can skim it in seconds. The technical bits (data sources, how ground vs. radar readings are blended, the disclaimer) are untouched.
+
+**Nothing about the verdict changed.** This release is display, layout, accessibility and copy only — `getStatus`, every threshold, and every countdown are byte-identical.
+
+---
+
 ## [2.41.6] - 2026-09-18 - Gemma Raus just got better: the source icon actually looks like radar now 📡
 
 *Same-day fix — the first pass didn't look like what it was supposed to.*

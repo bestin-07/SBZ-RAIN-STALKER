@@ -27,7 +27,15 @@
   --c-panel:   #141720;
   --c-border:  #1E2128;
   --c-primary: #F1F3F5;
-  --c-muted:   #6B7280;
+  /* Measured (WCAG relative-luminance contrast): the original #6B7280 cleared
+     only 3.70:1 against --c-panel, 3.84:1 against --c-surface and 4.12:1
+     against --c-bg — all below the 4.5:1 AA floor for small text, which is
+     exactly the size every label using this token renders at (9-10px mono
+     caps: "Boden 0.0 mm", "SICHERHEIT", the ribbon legend). Lightened to the
+     nearest value that clears 4.5:1 against the WORST case (--c-panel, the
+     ribbon's own card background) — 5.03:1 there, 5.22 on --c-surface, 5.60
+     on --c-bg — while keeping the same blue-grey hue. */
+  --c-muted:   #7A8292;
   /* Status headline + warning accents. Dark theme keeps the vivid palette that
      reads well on near-black; light theme overrides with darkened variants
      below (the vivid ones wash out on the cream background). */
@@ -54,7 +62,12 @@ html.light {
   --c-muted:   #55524B;
   /* Darkened accents — all clear WCAG AA (≥4.5:1) on the cream bg/surface,
      where the dark-theme gold/cyan/amber dropped to ~2:1 and were unreadable. */
-  --c-go:      #7A5E00;
+  /* Measured: the original #7A5E00 cleared only 4.42:1 against --c-panel —
+     just under the 4.5:1 AA floor — where the ribbon's own "TROCKEN · X STD"
+     dry-window bracket text renders it directly (`style={{color:'var(--c-go)'}}`
+     in RainRibbon.jsx). Darkened slightly to clear it (5.12:1 there, 6.22 on
+     --c-bg, 5.68 on --c-surface) — same gold-olive hue, same identity. */
+  --c-go:      #6E5500;
   --c-light:   #1E86B0;
   --c-wait:    #0A6E9C;
   --c-stuck:   #024D6E;
@@ -186,7 +199,14 @@ html.light {
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
 }
 .gr-status-popup .leaflet-popup-tip { background: var(--c-surface); border: 1px solid var(--c-border); }
-.gr-status-popup .leaflet-popup-content { margin: 0.7rem 0.9rem; }
+/* Item 5 — the map can be as short as 160px (its own "shock absorber" floor
+   for a stacked banner day), and Leaflet's autoPan can only PAN a too-tall
+   popup into view, never shrink it — a popup taller than its own map has no
+   position that fits. This clamp guarantees the content itself never grows
+   past a height that comfortably fits alongside the tip/margins in the
+   shortest map, scrolling internally in the rare case content is longer
+   (a long place name + hint line). */
+.gr-status-popup .leaflet-popup-content { margin: 0.7rem 0.9rem; max-height: 120px; overflow-y: auto; }
 .gr-status-popup a.leaflet-popup-close-button { color: var(--c-muted); }
 .gr-pop-name { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-muted); margin-bottom: 0.3rem; }
 .gr-pop-head { font-family: 'Archivo', system-ui, sans-serif; font-weight: 700; font-stretch: 125%; font-size: 1.05rem; line-height: 1.1; }

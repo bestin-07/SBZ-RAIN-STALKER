@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { formatClock } from '../time'
 
 function fmtClock(unix) {
-  const d = new Date(unix * 1000)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return formatClock(new Date(unix * 1000))
 }
+
+// A past radar frame more than this many minutes old is shown as degraded —
+// the animation genuinely cycles through the last ~40 min of history by
+// design, so this fires transiently as the loop passes through its oldest
+// frames (honest: that echo pattern really is that old at that instant) and
+// persistently if RainViewer's own feed has actually gone stale.
+const RADAR_STALE_MIN = 15
 
 const SALZBURG = [47.802, 13.045]
 const SALZBURG_CENTER = [47.8009, 13.0448]  // city centre — an extra tappable point
@@ -138,6 +145,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const currentPopupRef = useRef(null)       // the open popup (for re-render on lang switch)
   const openArgsRef     = useRef(null)       // args of the open popup
   const tileRetryRef    = useRef(null)       // coalesced tile-retry timer
+  const popupTriggerRef = useRef(null)       // element focus returns to when a popup closes
 
   // ---- Tile recovery (v2.25.1) ----
   // Leaflet never retries a tile that failed: the request errors once and that
@@ -163,6 +171,10 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     }, 2000)
   }, [redrawTiles])
   const [radarFrame, setRadarFrame] = useState(null)  // { time, forecast } of the shown frame
+  // Explicit failure state: a fetch that errors or 404s used to be indistinguishable
+  // from a slow-but-fine one — the chip just silently kept showing whatever frame
+  // (or nothing) it last had, with no signal that the *next* attempt had failed.
+  const [radarError, setRadarError] = useState(false)
   useEffect(() => { computeRef.current = computeStatusAt }, [computeStatusAt])
 
   // Tap a point → popup with that spot's status. Opens a loading popup first, then
@@ -172,6 +184,14 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const openStatusPopup = useCallback((lat, lon, name, pre, opts = {}) => {
     const map = mapRef.current
     if (!map) return
+    // Item 5 — focus return: for a keyboard user, the marker/dot that was
+    // tabbed-to-and-activated IS `document.activeElement` at this point
+    // (Leaflet markers are keyboard-focusable by default). Capture it now so
+    // the map's `popupclose` handler (bound once, below) can hand focus back
+    // to it. `document.body`/no real focus (a mouse tap, or the auto-opened
+    // "your location" popup on load) has nothing meaningful to return to.
+    const active = document.activeElement
+    popupTriggerRef.current = (active && active !== document.body) ? active : null
     const failMsg  = t ? t('pop_fail') : 'couldn’t load — tap to retry'
     const hintLine = opts.hint ? `<div class="gr-pop-hint">${escHtml(opts.hint)}</div>` : ''
     const render = (status) => {
@@ -190,8 +210,26 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
         ${hintLine}
       </div>`
     }
-    const popup = L.popup({ maxWidth: 240, className: 'gr-status-popup', autoPanPadding: [24, 24] })
-      .setLatLng([lat, lon])
+    // Item 5 — constrain the popup to the map bounds. `autoPan`/`keepInView`
+    // are explicit here (autoPan is Leaflet's own default, but the intent
+    // should be readable at the call site, not just inherited silently).
+    // `closeOnEscapeKey` is likewise Leaflet's own default (true) — kept
+    // explicit for the same reason. The genuinely new half is the CSS
+    // max-height clamp on `.gr-status-popup .leaflet-popup-content` (see
+    // index.css): the map can be as short as 160px (`min-h-[160px]`, the
+    // "shock absorber" for a stacked banner day), and autoPan alone can only
+    // ever PAN a too-tall popup, never shrink it — a popup taller than the
+    // map it lives in has nowhere to pan TO. The clamp guarantees the popup
+    // itself can never exceed a height that fits, so autoPan's panning
+    // always has a genuine solution to find.
+    const popup = L.popup({
+      maxWidth: 240,
+      className: 'gr-status-popup',
+      autoPan: true,
+      keepInView: true,
+      autoPanPadding: [16, 16],
+      closeOnEscapeKey: true,
+    }).setLatLng([lat, lon])
     currentPopupRef.current = popup
     openArgsRef.current = { lat, lon, name, isUser: !!opts.isUser, hint: opts.hint }
     // Preloaded status (from the area-status pass) → instant + guaranteed to match
@@ -228,6 +266,23 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     })
 
     mapRef.current = map
+
+    // Item 5 — Escape already closes the popup (Leaflet's own default,
+    // `closeOnEscapeKey: true`, bound at the document level regardless of
+    // what currently has focus). What Leaflet does NOT do on its own is
+    // return focus anywhere afterward — for a keyboard user who tabbed to a
+    // marker, pressed Enter to open its popup, then pressed Escape, focus
+    // would otherwise silently fall back to the document body. Restore it to
+    // whatever was focused when the popup opened (captured in
+    // openStatusPopup, above), if that element still exists in the DOM.
+    const onPopupClose = () => {
+      const el = popupTriggerRef.current
+      popupTriggerRef.current = null
+      if (el && document.contains(el) && typeof el.focus === 'function') {
+        try { el.focus({ preventScroll: true }) } catch { el.focus() }
+      }
+    }
+    map.on('popupclose', onPopupClose)
 
     // The flex-mounted container can report a stale/zero size when Leaflet
     // initialises (sibling banners settle height after first paint), which
@@ -271,7 +326,11 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       if (!mapRef.current) return
       try {
         const res = await fetch(RAINVIEWER_API)
-        if (!res.ok) return
+        // Say so, rather than silently leaving whatever the last successful
+        // fetch put on screen — a failed refresh used to be indistinguishable
+        // from a fine one, and the frame it kept showing just quietly aged
+        // past the staleness threshold with no explanation why.
+        if (!res.ok) { setRadarError(true); return }
         const data = await res.json()
         const rawHost = data.host
         const host = typeof rawHost === 'string' && /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}$/.test(rawHost)
@@ -285,7 +344,8 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
         const past    = (data.radar?.past     ?? []).slice(-4)
         const nowcast = (data.radar?.nowcast  ?? [])
         const frames  = [...past, ...nowcast]
-        if (!frames.length) return
+        if (!frames.length) { setRadarError(true); return }
+        setRadarError(false)
         // Frame timestamps + past/forecast flag, for the little running-time banner.
         framesMetaRef.current = frames.map((f, i) => ({ time: f.time, forecast: i >= past.length }))
         // Play order: forecast frames dwell 2 ticks each, so the loop *feels* forward-
@@ -334,7 +394,9 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
           }
         }, 700)
       } catch {
-        // RainViewer unavailable — base map + area dots remain
+        // RainViewer unavailable — base map + area dots remain, but say so
+        // instead of quietly leaving the previous frame (or nothing) on screen.
+        setRadarError(true)
       }
     }
 
@@ -343,6 +405,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
 
     return () => {
       map.off('zoomend', syncRvOpacity)
+      map.off('popupclose', onPopupClose)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('pageshow', onVisible)
       if (tileRetryRef.current) { clearTimeout(tileRetryRef.current); tileRetryRef.current = null }
@@ -714,6 +777,20 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       }
     : { top: expandTopPx ?? window.innerHeight * EXPAND_TOP_VH / 100 }
 
+  // Radar staleness (item 1): a past ("radar") frame's AGE, not just its clock
+  // time — "Radar 15:10" next to a "jetzt" of 15:45 gave no sense of how far
+  // behind that reading actually was. Forecast/nowcast frames have no "age" in
+  // this sense (their timestamp is in the future by design); only past frames
+  // are aged and can go stale. Recomputed on every render — the animation
+  // timer above re-sets `radarFrame` every ~700ms while it has frames to
+  // cycle through, which is what keeps this ticking forward in step with the
+  // loop; see RADAR_STALE_MIN's own comment for why the loop itself can
+  // legitimately show an aged frame.
+  const frameAgeMin = radarFrame && !radarFrame.forecast
+    ? Math.max(0, Math.round(Date.now() / 60000 - radarFrame.time / 60))
+    : null
+  const radarDegraded = radarError || (frameAgeMin !== null && frameAgeMin > RADAR_STALE_MIN)
+
   return (
     <>
       {/* The flex-slot stand-in described above — present for exactly as long
@@ -739,15 +816,47 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
         style={wrapStyle}
       >
       <div ref={containerRef} className="absolute inset-0" style={{ zIndex: 0 }} />
-      {radarFrame && (
-        <div className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5
-                        rounded-full bg-surface/90 backdrop-blur border border-border
-                        px-2.5 py-1 font-mono text-xs text-muted">
+      {(radarFrame || radarError) && (
+        // Degraded (fetch failed, or the shown frame is older than
+        // RADAR_STALE_MIN): muted border/text instead of the ordinary primary
+        // dot + border, plus a short note — never just the same-looking chip
+        // with an older number in it. The absolute clock time moves to a
+        // title tooltip; the main text now leads with the frame's AGE.
+        <div
+          className={`absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5
+                      rounded-full bg-surface/90 backdrop-blur border px-2.5 py-1 font-mono text-xs
+                      ${radarDegraded ? 'border-border text-muted opacity-80' : 'border-border text-muted'}`}
+          title={radarFrame
+            ? `${radarFrame.forecast ? (t ? t('lbl_nowcast') : 'nowcast') : (t ? t('lbl_radar') : 'radar')} ${fmtClock(radarFrame.time)}`
+            : undefined}
+        >
           <span
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ background: radarFrame.forecast ? '#1BAEE2' : 'var(--c-primary)' }}
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{ background: radarError ? 'var(--c-danger)' : radarFrame?.forecast ? '#1BAEE2' : radarDegraded ? 'var(--c-warn)' : 'var(--c-primary)' }}
           />
-          {radarFrame.forecast ? (t ? t('lbl_nowcast') : 'nowcast') : (t ? t('lbl_radar') : 'radar')} {fmtClock(radarFrame.time)}
+          {!radarFrame ? (
+            // Fetch never succeeded (yet) — say so outright rather than
+            // rendering nothing, which read as if the chip simply forgot to
+            // appear.
+            t ? t('radar_unavailable') : 'radar unavailable'
+          ) : radarError ? (
+            // Had a frame before, but the latest refresh failed — keep
+            // showing that frame's age (still true), plus an explicit note
+            // that the feed itself isn't updating right now.
+            <>
+              {radarFrame.forecast
+                ? `${t ? t('lbl_nowcast') : 'nowcast'} ${fmtClock(radarFrame.time)}`
+                : (frameAgeMin === 0 ? (t ? t('radar_just_now') : 'radar just now') : (t ? t('radar_ago', { min: frameAgeMin }) : `radar ${frameAgeMin} min ago`))}
+              <span className="opacity-80">· {t ? t('radar_update_failed') : 'update failed'}</span>
+            </>
+          ) : radarFrame.forecast ? (
+            `${t ? t('lbl_nowcast') : 'nowcast'} ${fmtClock(radarFrame.time)}`
+          ) : (
+            <>
+              {frameAgeMin === 0 ? (t ? t('radar_just_now') : 'radar just now') : (t ? t('radar_ago', { min: frameAgeMin }) : `radar ${frameAgeMin} min ago`)}
+              {radarDegraded && <span className="opacity-80">· {t ? t('radar_stale_note') : 'stale'}</span>}
+            </>
+          )}
         </div>
       )}
       {/* Compass (v2.6): the wording says things like "rain to the northeast" —

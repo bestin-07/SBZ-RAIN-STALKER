@@ -257,17 +257,38 @@ for (const lang of ['de', 'en']) {
     // always radar). The old per-case source strings ("radar is clear" etc.)
     // are gone — the readout now just names the instrument ("Radar"), and
     // the pip bar carries the rest.
+    //
+    // UI/a11y pass: "Trocken" at rest is dropped from the readout — it was
+    // the third of four separate "it's dry" statements stacked on one screen
+    // (the promoted headline and the ribbon's dry-window bracket already say
+    // it). The confidence block now also carries a visible "N/5" value
+    // (not just the pip bar) and role="img" + one aria-label on the
+    // container, so the value reaches assistive tech too.
     it('the scrub readout reads dry/clear at rest, with full confidence', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
       const html = renderToStaticMarkup(
         <RainRibbon forecast={{ times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 2.66 * 3600 }}
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
-      expect(html).toContain(esc(t('ro_status_dry')))
+      expect(html).not.toContain(esc(t('ro_status_dry')))
       expect(html).toContain(esc(t('ro_src_radar')))
       expect(html).toContain(esc(t('ro_confidence_label')))
+      expect(html).toContain('5/5')
+      expect(html).toContain('role="img"')
       expect(html).toContain(esc(t('ro_confidence', { n: 5 })))
       expect(html).toContain(esc(t('ro_back_now')))
+    })
+
+    // …but a non-dry reading still gets its status word — only the literal
+    // "dry" restatement was the redundancy; rain/light/storm readings are the
+    // one place that scrubbed slot's claim is spoken at all.
+    it('the scrub readout still names a wet reading', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const html = renderToStaticMarkup(
+        <RainRibbon forecast={{ times, precips: times.map((_, i) => (i === 0 ? 0.6 : 0)), isNowcast: true, radarUntil: now + 2.66 * 3600 }}
+                    theme="light" t={t} unstable={false} modelRainMin={null} />)
+      expect(html).toContain(esc(t('ro_status_rain')))
     })
 
     // v2.38 — faint drizzle gets a mist marker (`.gr-mist`), never a taller
@@ -311,13 +332,45 @@ for (const lang of ['de', 'en']) {
       expect(renderToStaticMarkup(<DayStrip daily={null} theme="dark" t={t} lang={lang} />)).toBe('')
     })
 
-    it('GapBanner source line prints both lanes', () => {
+    // UI pass: a CLEAR radar reading ("Radar frei") no longer prints — the
+    // headline (now the promoted tagline, see below) and the ribbon's own
+    // dry-window bracket already say "dry"; this line restating it a third
+    // time was the exact four-times-over redundancy a live screen review
+    // flagged. A ground fact always prints (it's never redundant — it's the
+    // one genuinely measured value); a WET radar reading still prints too,
+    // since that's the case this line exists to explain (e.g. a dry gauge
+    // next to a wet radar).
+    it('GapBanner source line prints ground always, radar only when wet', () => {
       const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'dry', weather: null }
-      const html = renderToStaticMarkup(
+      const dryHtml = renderToStaticMarkup(
         <GapBanner status={status} blocked={[]} t={t}
                    signals={{ ground: 0, radar: 0, held: false, updated: Date.now() }} />)
-      expect(html).toContain(t('lane_ground', { mm: '0.0' }))
-      expect(html).toContain(t('lane_radar_clear'))
+      expect(dryHtml).toContain(t('lane_ground', { mm: '0.0' }))
+      expect(dryHtml).not.toContain(t('lane_radar_clear'))
+
+      const wetHtml = renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} t={t}
+                   signals={{ ground: 0, radar: 0.4, held: false, updated: Date.now() }} />)
+      expect(wetHtml).toContain(t('lane_radar', { mm: '0.4' }))
+    })
+
+    // The GO headline is the promoted tagline (status.sub), not a second
+    // "GEMMA RAUS" repeating the header's own wordmark directly above it —
+    // the biggest of the four "dry" restatements a live screen review found.
+    // Every other state's headline (a countdown, BLEIB DRIN, …) carries
+    // information the header doesn't, so only GO is affected.
+    it('GapBanner promotes the tagline to the headline slot for GO, and drops the duplicate sub', () => {
+      const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'Trocken für Stunden, lass dir Zeit', weather: null }
+      const html = renderToStaticMarkup(<GapBanner status={status} blocked={[]} t={t} />)
+      expect(html).toContain('Trocken für Stunden, lass dir Zeit')
+      expect(html.match(/Trocken für Stunden, lass dir Zeit/g)).toHaveLength(1)
+      expect(html).not.toContain('GEMMA RAUS')
+
+      // A non-GO state is untouched: headline AND sub both still render.
+      const stuck = { type: 'stuck', headline: 'BLEIB DRIN', sub: 'no break in sight', weather: null }
+      const stuckHtml = renderToStaticMarkup(<GapBanner status={stuck} blocked={[]} t={t} />)
+      expect(stuckHtml).toContain('BLEIB DRIN')
+      expect(stuckHtml).toContain('no break in sight')
     })
 
     // THE v2.30.0 OUTAGE. `forecast` is null on the very first render, before any

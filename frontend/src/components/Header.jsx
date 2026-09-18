@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { useFitText } from '../useFitText'
+import { formatClock } from '../time'
 
 export default function Header({
   accuracy, lastUpdated, onRefresh, loading,
@@ -7,8 +8,6 @@ export default function Header({
   lang, onLangToggle,
   onInfo, onLogo,
   notifyState, onNotifyToggle,
-  installable, onInstall,
-  iosHint, onDismissIosHint,
   t,
 }) {
   const acc30 = accuracy?.['30min']?.accuracy
@@ -29,8 +28,7 @@ export default function Header({
 
   function formatTime(ts) {
     if (!ts) return null
-    const d = new Date(ts)
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    return formatClock(ts)
   }
 
   return (
@@ -61,10 +59,14 @@ export default function Header({
             </span>
           )}
 
+          {/* w-11 h-11 (44px) — the minimum touch target size; the glyph inside
+              each button stays its original visual size (text-xl/text-sm/19px
+              svg, unchanged), only the tappable box grows, matching the
+              44px buttons RadarMap already uses for relocate/close. */}
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="w-9 h-9 flex items-center justify-center rounded-lg border border-border font-mono text-xl text-muted hover:text-primary hover:border-primary transition-colors disabled:opacity-30 leading-none"
+            className="w-11 h-11 flex items-center justify-center rounded-lg border border-border font-mono text-xl text-muted hover:text-primary hover:border-primary transition-colors disabled:opacity-30 leading-none"
             aria-label="refresh"
           >
             {loading ? '·' : '↺'}
@@ -74,7 +76,7 @@ export default function Header({
               what a bare "EN"/"DE" means. */}
           <button
             onClick={onLangToggle}
-            className="flex items-center h-9 px-1 rounded-lg border border-border font-mono text-xs leading-none"
+            className="flex items-center h-11 px-1 rounded-lg border border-border font-mono text-xs leading-none"
             aria-label="switch language"
           >
             <span className={`px-1.5 py-1 rounded ${lang === 'de' ? 'bg-primary text-bg' : 'text-muted'}`}>DE</span>
@@ -83,7 +85,7 @@ export default function Header({
 
           <button
             onClick={onThemeToggle}
-            className="w-9 h-9 flex items-center justify-center rounded-lg border border-border font-mono text-xl text-muted hover:text-primary hover:border-primary transition-colors leading-none"
+            className="w-11 h-11 flex items-center justify-center rounded-lg border border-border font-mono text-xl text-muted hover:text-primary hover:border-primary transition-colors leading-none"
             aria-label="toggle theme"
           >
             {theme === 'dark' ? '☾' : '☀'}
@@ -92,7 +94,7 @@ export default function Header({
           {notifyState !== 'unsupported' && (
             <button
               onClick={onNotifyToggle}
-              className={`w-9 h-9 flex items-center justify-center rounded-lg border transition-colors ${
+              className={`w-11 h-11 flex items-center justify-center rounded-lg border transition-colors ${
                 notifyState === 'subscribed'
                   ? 'text-go border-go'
                   : 'text-muted border-border hover:text-primary hover:border-primary'
@@ -107,7 +109,7 @@ export default function Header({
 
           <button
             onClick={onInfo}
-            className="w-9 h-9 flex items-center justify-center rounded-lg border border-border font-mono text-sm text-muted hover:text-primary hover:border-primary transition-colors leading-none"
+            className="w-11 h-11 flex items-center justify-center rounded-lg border border-border font-mono text-sm text-muted hover:text-primary hover:border-primary transition-colors leading-none"
             aria-label="guide"
           >
             ?
@@ -115,25 +117,14 @@ export default function Header({
         </div>
       </div>
 
-      {/* Install strip — shown when browser supports beforeinstallprompt (Chrome/Edge)
-          Brave/Safari users are guided via the info panel instead */}
-      {installable && (
-        <button
-          onClick={onInstall}
-          className="w-full flex items-center justify-between pl-safe pr-safe py-2 bg-surface border-t border-border font-mono text-xs text-muted hover:text-primary transition-colors"
-        >
-          <span>{lang === 'de' ? 'App zum Startbildschirm hinzufügen' : 'Add to home screen'}</span>
-          <span className="text-base leading-none">⊕</span>
-        </button>
-      )}
-
-      {/* iOS install hint: Safari = manual Share→A2HS; other iOS browsers = open in Safari */}
-      {iosHint && (
-        <div className="w-full flex items-center justify-between gap-3 pl-safe pr-safe py-2 bg-surface border-t border-border font-mono text-xs text-muted">
-          <span className="leading-relaxed">{t(iosHint)}</span>
-          <button onClick={onDismissIosHint} aria-label="dismiss" className="shrink-0 text-muted hover:text-primary px-1">✕</button>
-        </div>
-      )}
+      {/* The persistent "Add to home screen" strip and the iOS install hint
+          used to live here — one with no dismiss at all, the other only
+          dismissible via its own separate flag. Both nagged on every visit.
+          Install guidance now lives in exactly one place: InstallPrompt.jsx,
+          a one-time popup (closable, remembered in localStorage like the
+          app's other one-off notices) that covers every browser/device case,
+          plus a standing "Install app" row in the info panel for anyone who
+          dismissed it and wants it again later. */}
     </header>
   )
 }
