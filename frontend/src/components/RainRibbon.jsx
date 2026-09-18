@@ -121,8 +121,16 @@ function Tile({ tier, solid, mismatch, mist, timeLabel }) {
       <div className="relative">
         <div
           className="w-10 h-[52px] rounded-[10px] flex items-center justify-center"
+          // v3.0.3 (round 2) — the solid dry tile's own outline used
+          // `--c-border`, the app's general hairline-border token, tuned
+          // subtle everywhere else it's used. On this tile it needed to be a
+          // real, deliberately visible chip edge, not a hairline — ask, "make
+          // the border really lighter" (dark mode). Switched to `--c-muted`,
+          // the same tone the dashed/forecast dry tile already used, so a
+          // solid dry tile and a dashed dry tile now share one border colour,
+          // differing only by line style — one fewer thing to keep in sync.
           style={solid
-            ? { background: col ?? 'transparent', border: col ? 'none' : '1.3px solid var(--c-border)' }
+            ? { background: col ?? 'transparent', border: col ? 'none' : '1.3px solid var(--c-muted)' }
             : { background: 'transparent', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }}
         >
           <span style={{ color: solid ? (col ? '#fff' : 'var(--c-muted)') : (col ?? 'var(--c-muted)') }}>
@@ -213,6 +221,16 @@ function restScrollX(forecast, nowSec) {
 // A fixed reference sits this many px into the viewport; the track (spacer +
 // tiles) scrolls under it. UNCHANGED — see restScrollX's comment above.
 const CURSOR_X = 96
+// v3.0.4 — trailing spacer after the LAST tile, so the browser's own native
+// scroll max actually lets the final tile reach the cursor. Without this,
+// the native max is `scrollWidth - clientWidth`, and since `clientWidth`
+// (up to ~420px, the card's own cap) is far bigger than `CURSOR_X`, the
+// natural end of the content runs out of room to scroll long before the
+// last tile can ever line up under the fixed cursor — a live report: "I can
+// see the end but can't scroll to it." `420 - CURSOR_X` covers the widest
+// the card can ever be (its own `max-w-[420px]`), so this is always enough
+// room regardless of actual viewport width, never too little.
+const TRAIL_W = 420 - CURSOR_X
 
 // v3.1 (confidence fix) — `prob` is the model's chance of RAIN, but the tile
 // reads "confidence in this tile's own claim". Those are the same number
@@ -389,7 +407,12 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
     if (e.key === 'ArrowRight') { el.scrollLeft += step; e.preventDefault() }
     else if (e.key === 'ArrowLeft') { el.scrollLeft -= step; e.preventDefault() }
     else if (e.key === 'Home') { el.scrollLeft = restScrollX(forecast, nowS); e.preventDefault() }
-    else if (e.key === 'End') { el.scrollLeft = contentW; e.preventDefault() }
+    // v3.0.4 — was `el.scrollLeft = contentW`, which undershoots now that the
+    // track carries a trailing spacer (TRAIL_W) past the last tile — the
+    // browser's own `scrollWidth` already accounts for it and always lands
+    // on the true native max, so reading it back is simpler AND correct
+    // regardless of TRAIL_W's exact value.
+    else if (e.key === 'End') { el.scrollLeft = el.scrollWidth; e.preventDefault() }
   }
   function backToNow() {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -460,14 +483,24 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
                onScroll={e => {
                  const el = e.currentTarget
                  setScrollX(el.scrollLeft)
-                 setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 1)
+                 // v3.0.4 — measured against the real content edge
+                 // (CURSOR_X + contentW), not el.scrollWidth: scrollWidth now
+                 // includes TRAIL_W, the padding added so the last tile CAN
+                 // reach the cursor, and that padding isn't something the
+                 // fade should still be hinting at once the last real tile is
+                 // already fully on screen.
+                 setAtEnd(el.scrollLeft + el.clientWidth >= CURSOR_X + contentW - 1)
                }}
                onPointerDown={onScrubPointerDown}
                onPointerMove={onScrubPointerMove}
                onPointerUp={onScrubPointerUp}
                onPointerLeave={onScrubPointerUp}
                onKeyDown={onScrubKeyDown}>
-            <div style={{ width: CURSOR_X + contentW }}>
+            {/* v3.0.4 — TRAIL_W added past the tiles: see that constant's own
+                comment. Purely extra scroll room; nothing inside this div is
+                sized or positioned relative to it, so it changes nothing
+                about the bracket or the tiles themselves. */}
+            <div style={{ width: CURSOR_X + contentW + TRAIL_W }}>
               {/* v3.0 — the dry-window bracket moves ABOVE the tile row
                   (was: a canvas-drawn strip below the skyline). Same
                   dryRunIn run, same duration text; only where it sits

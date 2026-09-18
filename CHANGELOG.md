@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.41.4] - 2026-09-18 - Gemma Raus just got better: you can finally scroll all the way to the end 🏁
+
+*A real bug: the last stretch of the chart existed, but nothing could scroll it into view.*
+
+**What happened**
+
+The chart's "now" line sits fixed a little left of centre while the tiles scroll under it — but the browser only lets you scroll until there's nothing left to reveal, and there wasn't enough room reserved after the last tile for it to ever actually reach that line. You could see the last few hours of the 12-hour chart, but never scroll far enough to bring them fully into place.
+
+**What's new for you**
+
+- **You can now scroll (or press End) all the way to the last tile**, with room to bring it right up to the "now" line, on any screen size.
+- **The dry tiles' own outline is a shade lighter in dark mode**, matching the visible outline dashed forecast tiles already had.
+
+**Nothing about the verdict changed.** Scroll range and one border colour.
+
+---
+
 ## [2.41.3] - 2026-09-18 - Gemma Raus just got better: a fourth guide tile, and the dark-mode borders are back 🌓
 
 *Two more rounds of same-day screenshot feedback.*
