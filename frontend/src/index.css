@@ -11,6 +11,14 @@
   color-scheme: dark;
   --c-bg:      #08090B;
   --c-surface: #111318;
+  /* v3.0.2 — a second elevation step, for a panel that needs to read as
+     clearly "raised" on its own (the rain-ribbon tile card) rather than the
+     gentle lift `--c-surface` gives popups/dropdowns. `--c-surface` alone was
+     too close to `--c-bg` on a near-black screen to register as boxed at a
+     glance — a live screenshot comparison showed it. Scoped to its own token
+     rather than darkening `--c-surface` itself, which several other elements
+     already rely on staying subtle. */
+  --c-panel:   #1B1F28;
   --c-border:  #1E2128;
   --c-primary: #F1F3F5;
   --c-muted:   #6B7280;
@@ -32,6 +40,7 @@ html.light {
   color-scheme: light;
   --c-bg:      #F2F0EB;
   --c-surface: #E8E6E1;
+  --c-panel:   #DEDBD2;
   --c-border:  #C8C6C0;
   --c-primary: #0A0A08;
   /* darker than before: #6B6860 only cleared ~4.3:1 on surface (fails AA for

@@ -132,11 +132,19 @@ function Tile({ tier, solid, mismatch, mist, timeLabel }) {
         {mismatch && (
           <span aria-hidden="true"
                 className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
-                style={{ background: 'var(--c-surface)', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }} />
+                style={{ background: 'var(--c-panel)', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }} />
         )}
-        {mist && <span aria-hidden="true" className="gr-mist absolute rounded-full pointer-events-none"
-                       style={{ top: -4, left: '50%', marginLeft: -5, width: 10, height: 10,
-                                background: 'var(--c-light)', opacity: 0.55, filter: 'blur(2px)' }} />}
+        {/* v3.0.2 — was a blurred, low-opacity dot floating above the tile's
+            centre, which read as a stray artifact rather than something
+            belonging to the tile (a live screenshot: "what's with these
+            small blue dots?"). Now a small solid badge in the OPPOSITE
+            corner from the mismatch ring (top-left, so the two can never
+            collide on the same tile — a trace reading can also be a
+            mismatch), same size language as that badge, no blur. Keeps its
+            `.gr-mist` pulse (index.css, reduced-motion guarded) as the one
+            thing that still marks it "unconfirmed" rather than measured. */}
+        {mist && <span aria-hidden="true" className="gr-mist absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full pointer-events-none"
+                       style={{ background: 'var(--c-light)', border: '1.5px solid var(--c-panel)' }} />}
       </div>
       <span className="font-mono text-[9px] text-muted leading-none">{timeLabel || ' '}</span>
     </div>
@@ -415,16 +423,19 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
         </div>
       )}
 
-      {/* v3.0 — the tile track sits in its own bordered, elevated card
-          (`bg-surface`, a distinct shade from the page background in both
-          themes — index.css already defines it that way for exactly this
-          "raised panel" use). Maintainer ask: box it, so the scrollable
-          strip reads as one contained object rather than chart ink floating
-          on the page. The fixed cursor stays a sibling of the scroll box,
-          positioned against this same wrapper — its own logic is completely
-          untouched (see restScrollX/CURSOR_X above). */}
+      {/* v3.0 — the tile track sits in its own bordered, elevated card.
+          v3.0.2 — `bg-surface` (`--c-surface`) turned out too close to
+          `--c-bg` to read as boxed at a glance, dark theme especially (a
+          live screenshot showed it: the panel barely separated from the
+          page, and the right-edge fade had almost nothing to fade INTO).
+          `--c-panel` (index.css) is a second, more deliberate elevation step
+          reserved for exactly this — a panel that needs to stand on its own,
+          not the gentle lift `--c-surface` gives a popup. The fixed cursor
+          stays a sibling of the scroll box, positioned against this same
+          wrapper — its own logic is completely untouched (see
+          restScrollX/CURSOR_X above). */}
       <div className="px-4 pb-2">
-        <div className="relative max-w-[420px] rounded-xl border border-border bg-surface">
+        <div className="relative max-w-[420px] rounded-xl border border-border bg-[var(--c-panel)]">
           <div ref={scrollRef}
                className="relative overflow-x-auto scrollbar-none rounded-xl cursor-grab active:cursor-grabbing"
                tabIndex={hasData ? 0 : -1}
@@ -455,19 +466,24 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
                   changed, per the maintainer's own read of the mockup. It
                   scrolls WITH the tiles it labels — it is a row inside the
                   same track, not a fixed overlay. */}
-              <div className="h-5 relative px-3 pt-2">
+              {/* v3.0.2 — h-5→h-7 and the underline's own margin widened: a
+                  live screenshot showed the gold underline sitting close
+                  enough to the tiles below that it visually clipped into
+                  their top edge. The bracket strip now leaves clear air
+                  between its own rule and the first tile. */}
+              <div className="h-7 relative px-3 pt-2">
                 {dryRun && (() => {
                   const mins = (rbars[dryRun.b].end - rbars[dryRun.a].t) / 60
                   const txt = mins < 60 ? t('bracket_dry_min', { min: mins }) : t('bracket_dry_h', { h: hoursLabel(mins) })
                   return (
                     <div className="absolute" style={{ left: CURSOR_X + dryRun.a * TILE_W + 3, width: (dryRun.b - dryRun.a + 1) * TILE_W - 6 }}>
                       <div className="font-mono font-bold text-[9px] tracking-wide truncate" style={{ color: 'var(--c-go)' }}>{txt}</div>
-                      <div className="h-[1.5px] mt-[3px]" style={{ background: 'var(--c-go)', opacity: 0.6 }} />
+                      <div className="h-[1.5px] mt-[5px]" style={{ background: 'var(--c-go)', opacity: 0.6 }} />
                     </div>
                   )
                 })()}
               </div>
-              <div className="relative flex items-end pb-2.5 pt-0.5">
+              <div className="relative flex items-end pb-2.5 pt-1.5">
                 <div style={{ width: CURSOR_X }} className="shrink-0" aria-hidden="true" />
                 {rbars.map((b, i) => {
                   const inRadar = i < splitI

@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.41.2] - 2026-09-18 - Gemma Raus just got better: three polish fixes from your own screenshots 🔧
+
+*Same-day follow-up, off a light-mode/dark-mode comparison.*
+
+**What happened**
+
+Three small things stood out once the new chart was actually on screen: the little "drizzle possible" dot looked like a stray blurred blob floating above a tile rather than something that belonged to it; the boxed panel barely stood out from the background in dark mode, which also made the right-edge scroll fade nearly invisible; and the dry-window label's underline sat close enough to the tiles below it to visually clip into them.
+
+**What's new for you**
+
+- **The drizzle marker is now a small, solid badge** in the tile's corner — same idea as the "sources disagree" ring, just a different corner, so the two can never collide.
+- **The chart's boxed panel has real contrast now**, especially in dark mode — a new, more deliberate elevation shade instead of the subtler one shared with popups. The scroll fade reads much more clearly against it.
+- **More breathing room above the tiles**, so the dry-window label's underline no longer sits on top of the icons.
+
+**Nothing about the verdict changed.** All three are spacing and colour only.
+
+---
+
 ## [2.41.1] - 2026-09-18 - Gemma Raus just got better: the new rain chart icons are actually visible now 🙈
 
 *A live screenshot, minutes after v2.41.0 shipped, caught the tiles rendering empty.*
