@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.42.1] - 2026-09-18 - Gemma Raus just got better: the guide button is back 🔧
+
+*Same-day fix, reported within the hour: the 44px touch-target pass made the header's icon row too wide on a narrow phone, and the guide ("?") button quietly ran off the edge of the screen.*
+
+**What happened**
+
+v2.42.0 grew every header icon button to a proper 44×44px touch target — five buttons, all a little wider than before. On a narrow phone that pushed the row past the edge of the screen, and since nothing in that row wraps or scrolls, the last button (the guide/"?" button) rendered off-screen and unreachable. Separately, once the guide's status legend was visible next to the app's real headline behaviour, it was clear the two had drifted apart: the guide still paired an all-caps colored badge with a separate grey sentence, but the real GO-state headline is now a single colored sentence (see 2.41.x), so the badge+description format no longer matched what the app actually shows. And the new guide sentences (English) weren't capitalized — readable, but sloppy next to the rest of the panel, which is.
+
+**What's new for you**
+
+- **The manual refresh button is gone.** It was a fifth button doing the same job pull-to-refresh (the swipe-down gesture) already does — pull-to-refresh itself is completely untouched and works exactly as before. Removing the duplicate also frees up the room the guide button needed.
+- **The guide's four status examples are now one colored sentence each**, not a badge plus a separate grey line — matching how the real headline reads on screen, still fully color-coded per state.
+- **The new guide sentences now start with a capital letter**, in English, like the rest of the panel.
+
+**Nothing about the verdict changed.** Header layout, a guide-panel legend, and a copy fix — `getStatus`, every threshold and every countdown are untouched.
+
+---
+
 ## [2.42.0] - 2026-09-18 - Gemma Raus just got better: easier to read, easier to reach, easier to install 🧭
 
 *A pass through the main screen with fresh eyes — a few things were saying the same thing twice, a few things were too small to tap, and the "install this" nag had gotten annoying.*

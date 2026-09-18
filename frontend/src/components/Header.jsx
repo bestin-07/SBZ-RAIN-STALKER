@@ -3,7 +3,7 @@ import { useFitText } from '../useFitText'
 import { formatClock } from '../time'
 
 export default function Header({
-  accuracy, lastUpdated, onRefresh, loading,
+  accuracy, lastUpdated,
   theme, onThemeToggle,
   lang, onLangToggle,
   onInfo, onLogo,
@@ -59,18 +59,18 @@ export default function Header({
             </span>
           )}
 
-          {/* w-11 h-11 (44px) — the minimum touch target size; the glyph inside
-              each button stays its original visual size (text-xl/text-sm/19px
-              svg, unchanged), only the tappable box grows, matching the
-              44px buttons RadarMap already uses for relocate/close. */}
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="w-11 h-11 flex items-center justify-center rounded-lg border border-border font-mono text-xl text-muted hover:text-primary hover:border-primary transition-colors disabled:opacity-30 leading-none"
-            aria-label="refresh"
-          >
-            {loading ? '·' : '↺'}
-          </button>
+          {/* The manual refresh button is gone — pull-to-refresh (the gesture
+              on the scrollable column, App.jsx) already calls the same
+              handleRefresh, and a second, redundant trigger was one of five
+              44px buttons competing for the same row: on a narrow phone the
+              row overflowed and pushed the guide ("?") button off-screen
+              entirely. One fewer button fixes both the redundancy and the
+              overflow.
+              w-11 h-11 (44px) — the minimum touch target size on what
+              remains; the glyph inside each button stays its original
+              visual size (text-xl/text-sm/19px svg), only the tappable box
+              grew, matching the 44px buttons RadarMap already uses for
+              relocate/close. */}
 
           {/* Segmented language toggle: active language highlighted — no guessing
               what a bare "EN"/"DE" means. */}

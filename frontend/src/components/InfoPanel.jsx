@@ -32,11 +32,18 @@ export default function InfoPanel({
             {t('guide_what_is')}
           </p>
 
-          <div className="space-y-4 mb-5">
-            <StatusRow color="var(--c-go)"    badge="GEMMA RAUS"        desc={t('guide_green')} />
-            <StatusRow color="var(--c-light)" badge={t('LIGHT_RAIN')}    desc={t('guide_light')} />
-            <StatusRow color="var(--c-wait)"  badge={t('guide_ex_wait')}  desc={t('guide_yellow')} />
-            <StatusRow color="var(--c-stuck)" badge={t('guide_ex_stuck')} desc={t('guide_red')} />
+          {/* One colored sentence per state, not a colored badge word next to
+              a separate grey description — the GO state's own headline on
+              the real screen is now a colored sentence too (see GapBanner),
+              not a repeat of the brand name, so a two-column badge+desc
+              layout here no longer matched what the app actually shows. The
+              color alone still carries which state is which, same as on the
+              real headline. */}
+          <div className="space-y-3 mb-5">
+            <p className="font-mono text-sm font-bold leading-relaxed" style={{ color: 'var(--c-go)' }}>{t('guide_green')}</p>
+            <p className="font-mono text-sm font-bold leading-relaxed" style={{ color: 'var(--c-light)' }}>{t('guide_light')}</p>
+            <p className="font-mono text-sm font-bold leading-relaxed" style={{ color: 'var(--c-wait)' }}>{t('guide_yellow')}</p>
+            <p className="font-mono text-sm font-bold leading-relaxed" style={{ color: 'var(--c-stuck)' }}>{t('guide_red')}</p>
           </div>
 
           {/* ── THE SKY LINE (v2.30) ── */}
@@ -311,20 +318,6 @@ function DayGuide({ t }) {
         {t('guide_days_lbl_window')}
       </text>
     </svg>
-  )
-}
-
-function StatusRow({ color, badge, desc }) {
-  return (
-    <div className="flex items-start gap-3">
-      <span
-        className="font-display font-bold text-sm shrink-0 leading-tight"
-        style={{ color }}
-      >
-        {badge}
-      </span>
-      <span className="font-mono text-xs text-muted leading-relaxed pt-px">{desc}</span>
-    </div>
   )
 }
 

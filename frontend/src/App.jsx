@@ -1258,8 +1258,8 @@ export default function App() {
     // below only meaningful once we have location data
     accuracy:     location ? accuracy     : null,
     lastUpdated:  location ? lastUpdated  : null,
-    onRefresh:    location ? handleRefresh : null,
-    loading:      location ? loading      : false,
+    // Header's own refresh button is gone (pull-to-refresh below covers it;
+    // handleRefresh/loading are still very much used there) — see Header.jsx.
     notifyState:  location ? notifyState  : 'unsupported',
     onNotifyToggle: location ? toggleNotifications : null,
     // The persistent "Add to home screen" strip + the iOS hint strip are gone
