@@ -17,8 +17,14 @@
      too close to `--c-bg` on a near-black screen to register as boxed at a
      glance — a live screenshot comparison showed it. Scoped to its own token
      rather than darkening `--c-surface` itself, which several other elements
-     already rely on staying subtle. */
-  --c-panel:   #1B1F28;
+     already rely on staying subtle.
+     v3.0.3 — the first value (#1B1F28) was picked to sit close to
+     `--c-border` (#1E2128) without checking what THAT does to anything that
+     draws a border ON the panel: a live screenshot showed the dry tiles'
+     own outline (`--c-border`) essentially invisible against it, near-zero
+     contrast. Pulled darker, back toward `--c-bg`, so `--c-border` reads
+     against it the same way it already does against `--c-surface`. */
+  --c-panel:   #141720;
   --c-border:  #1E2128;
   --c-primary: #F1F3F5;
   --c-muted:   #6B7280;

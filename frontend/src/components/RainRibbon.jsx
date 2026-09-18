@@ -446,8 +446,16 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin 
                  // with the idle auto-drift gone, this is the ONLY cue that
                  // the strip continues — it needs to visibly cut a tile in
                  // half, not just soften an edge.
-                 WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 56px), transparent 100%)',
-                 maskImage: 'linear-gradient(to right, black calc(100% - 56px), transparent 100%)',
+                 // v3.0.3 — most of that width was a slow, low-contrast taper
+                 // that a live screenshot review called "not that visible" —
+                 // largely the `--c-panel` fix above (the fade reveals the
+                 // panel's own colour, so a panel too close to the tiles gave
+                 // it almost nothing to fade INTO), but the curve itself is
+                 // also tightened: solid right up to `calc(100% - 44px)`,
+                 // then a shorter, steeper drop — a crisper cut instead of a
+                 // long gradual one.
+                 WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 44px), transparent 100%)',
+                 maskImage: 'linear-gradient(to right, black calc(100% - 44px), transparent 100%)',
                } : undefined}
                onScroll={e => {
                  const el = e.currentTarget

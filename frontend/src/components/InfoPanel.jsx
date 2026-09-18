@@ -206,15 +206,19 @@ export default function InfoPanel({ open, onClose, onPrivacy, t, theme }) {
   )
 }
 
-// v3.0 — the guide is three example TILES, using the exact same TileIcon the
-// real ribbon draws (imported, not redrawn) so this cannot drift from the
-// real chart the way the old hand-drawn skyline illustration could. Three
-// examples are the whole lesson: solid = radar, dashed = model, a ring badge
-// = the two disagree. Nothing else about the tile grammar needs a diagram —
-// the icon shapes themselves (dry/drizzle/rain/storm) are read the way any
-// weather-app icon is, no legend required.
+// v3.0 — the guide is example TILES, using the exact same TileIcon the real
+// ribbon draws (imported, not redrawn) so this cannot drift from the real
+// chart the way the old hand-drawn skyline illustration could. solid = radar,
+// dashed = model, a ring badge = the two disagree — nothing else about the
+// tile grammar needs a diagram, the icon shapes themselves (dry/drizzle/
+// rain/storm) are read the way any weather-app icon is, no legend required.
+// v3.0.3 — a 4th example added for the trace/"drizzle possible" marker: the
+// one piece of the real chart's vocabulary this guide didn't yet explain —
+// the small corner badge a reader sees and has no way to look up otherwise.
+// `mist` mirrors the real Tile's own badge exactly (top-LEFT, so it can never
+// collide with the mismatch ring at top-right on a tile that is both).
 function RibbonGuide({ t }) {
-  const Example = ({ tier, solid, mismatch, labelKey }) => (
+  const Example = ({ tier, solid, mismatch, mist, label }) => (
     <div className="flex flex-col items-center gap-1.5">
       <div className="relative">
         <div className="w-11 h-14 rounded-[10px] flex items-center justify-center"
@@ -225,20 +229,25 @@ function RibbonGuide({ t }) {
         </div>
         {mismatch && (
           <span aria-hidden="true" className="absolute -top-1 -right-1 w-3 h-3 rounded-full"
-                style={{ background: 'var(--c-bg)', border: '1.5px dashed var(--c-wait)' }} />
+                style={{ background: 'var(--c-surface)', border: '1.5px dashed var(--c-wait)' }} />
+        )}
+        {mist && (
+          <span aria-hidden="true" className="absolute -top-1 -left-1 w-3 h-3 rounded-full"
+                style={{ background: 'var(--c-light)', border: '1.5px solid var(--c-surface)' }} />
         )}
       </div>
       <span className="font-mono text-[9px] tracking-wide uppercase text-muted text-center leading-tight max-w-[64px]">
-        {t(labelKey)}
+        {label}
       </span>
     </div>
   )
   return (
     <div className="flex items-start justify-around gap-2 mb-4 py-1"
          role="img" aria-label={t('guide_ribbon_title')}>
-      <Example tier="rain" solid labelKey="guide_ribbon_lbl_radar" />
-      <Example tier="rain" labelKey="guide_ribbon_lbl_model" />
-      <Example tier="rain" solid mismatch labelKey="guide_ribbon_lbl_mismatch" />
+      <Example tier="rain" solid label={t('guide_ribbon_lbl_radar')} />
+      <Example tier="rain" label={t('guide_ribbon_lbl_model')} />
+      <Example tier="rain" solid mismatch label={t('guide_ribbon_lbl_mismatch')} />
+      <Example tier="dry" solid mist label={t('legend_trace')} />
     </div>
   )
 }

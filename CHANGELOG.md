@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.41.3] - 2026-09-18 - Gemma Raus just got better: a fourth guide tile, and the dark-mode borders are back 🌓
+
+*Two more rounds of same-day screenshot feedback.*
+
+**What happened**
+
+The in-app guide explained three of the four things a tile can show you — measured, predicted, sources disagree — but not the small "drizzle possible" corner marker, the one thing a reader would actually see and have nowhere to look up. Separately, fixing the boxed panel's dark-mode contrast a moment ago had a side effect nobody caught until a screenshot showed it: the tiles' own thin outline almost vanished into the new panel colour, and the scroll fade — which reveals that same panel colour — got harder to see along with it.
+
+**What's new for you**
+
+- **The guide now shows a fourth example tile**, the drizzle marker, using the exact same wording as the chip on the real chart.
+- **Dark mode's tile outlines are visible again**, and the panel itself sits at a shade that doesn't erase them.
+- **The scroll fade is crisper** — solid right up to near the edge, then a shorter, sharper cut, instead of a long, hard-to-notice taper.
+
+**Nothing about the verdict changed.** Colour, contrast and one guide illustration — the chart's decisions are untouched.
+
+---
+
 ## [2.41.2] - 2026-09-18 - Gemma Raus just got better: three polish fixes from your own screenshots 🔧
 
 *Same-day follow-up, off a light-mode/dark-mode comparison.*
