@@ -110,25 +110,33 @@ function TileIcon({ tier, size = 20 }) {
 // convention (fill:none, stroke:currentColor) so it visually belongs next to
 // the tiles below it, and is purely decorative (the label text already says
 // which instrument this is) — aria-hidden, same as TileIcon.
-function SourceIcon({ inRadar, size = 13 }) {
-  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }
+// v3.2.1 — the first pass (concentric arcs fanning from a dot / four separate
+// boxes) read as a wifi icon and a row of app tiles, not as either reference
+// picture. Redrawn literally against the two reference glyphs: radar is now
+// an actual scope circle with a filled sweep-beam wedge and a centre blip
+// (a real radar screen, not a signal fan); the model glyph is one connected
+// grid box — not four floating squares — with a wavy isobar-style line drawn
+// across it.
+function SourceIcon({ inRadar, size = 14 }) {
+  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} className="shrink-0" aria-hidden="true">
       {inRadar ? (
-        // Radial sweep — a radar/sonar blip fanning outward in arcs, echoing
-        // "measured, radial" from the reference.
-        <g {...p}>
-          <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
-          <path d="M8.2 15.2a5.4 5.4 0 0 1 7.6 0" />
-          <path d="M4.8 11.8a10.2 10.2 0 0 1 14.4 0" />
+        // Radar scope — a circle, a filled sweep-beam wedge rotating out from
+        // the centre, and a centre blip, echoing "measured, radial".
+        <g>
+          <circle cx="12" cy="12" r="8" {...p} />
+          <path d="M12 12 L12 4 A8 8 0 0 1 19.5 9.3 Z" fill="currentColor" stroke="none" opacity="0.85" />
+          <circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none" />
         </g>
       ) : (
-        // Grid — a computed field on a lattice, echoing "computed, gridded".
+        // Grid + isobar — one connected lattice (not separate boxes) with a
+        // contour line drawn across it, echoing "computed, gridded".
         <g {...p}>
-          <rect x="3.5" y="3.5" width="7" height="7" rx="1" />
-          <rect x="13.5" y="3.5" width="7" height="7" rx="1" />
-          <rect x="3.5" y="13.5" width="7" height="7" rx="1" />
-          <rect x="13.5" y="13.5" width="7" height="7" rx="1" />
+          <rect x="3.5" y="3.5" width="17" height="17" rx="1.5" />
+          <line x1="12" y1="3.5" x2="12" y2="20.5" />
+          <line x1="3.5" y1="12" x2="20.5" y2="12" />
+          <path d="M4.5 15.5 Q9 10 12 12.5 T19.5 8" />
         </g>
       )}
     </svg>

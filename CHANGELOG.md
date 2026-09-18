@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.41.6] - 2026-09-18 - Gemma Raus just got better: the source icon actually looks like radar now 📡
+
+*Same-day fix — the first pass didn't look like what it was supposed to.*
+
+**What happened**
+
+v2.41.5 added a little icon next to the "Radar"/"Forecast model" label, but the shapes were wrong: the radar glyph read as a wifi signal, and the model glyph read as four separate app icons rather than a grid. Caught immediately and redrawn against the same reference.
+
+**What's new for you**
+
+- **Radar is now an actual radar-scope circle** with a sweeping beam and a centre blip.
+- **The model icon is now one connected grid** with a contour line running through it, instead of four floating squares.
+
+**Nothing about the verdict changed.** Two redrawn icons; every threshold, countdown and state is untouched.
+
+---
+
 ## [2.41.5] - 2026-09-18 - Gemma Raus just got better: the chart now shows you which instrument is talking 📡
 
 *A small addition, asked for directly: make it obvious at a glance whether you're looking at radar or a forecast model.*
