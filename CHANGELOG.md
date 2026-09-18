@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.42.2] - 2026-09-18 - Gemma Raus just got better: a capital D 🔤
+
+*Spotted from a live screenshot within minutes of the last release: "dry for a good while, take your time" as the biggest text on screen, lowercase d and all.*
+
+**What happened**
+
+The rotating sub-line phrases ("dry for hours, take your time" and its variants) are written lowercase-first on purpose — that's the app's established casual voice for sub-lines everywhere. Since 2.41.x, the dry state promotes one of those phrases into the HEADLINE slot instead of repeating the brand name — and a headline that starts lowercase just reads like a typo, even though the sentence itself is fine as a sub-line.
+
+**What's new for you**
+
+- **The promoted GO headline now always starts with a capital letter.** Every other sub-line, in every other state and language, is untouched — this only affects the one spot where a sub-line phrase is standing in as the headline.
+
+**Nothing about the verdict changed.** One capitalized letter at the render site; the underlying text and every threshold are untouched.
+
+---
+
 ## [2.42.1] - 2026-09-18 - Gemma Raus just got better: the guide button is back 🔧
 
 *Same-day fix, reported within the hour: the 44px touch-target pass made the header's icon row too wide on a narrow phone, and the guide ("?") button quietly ran off the edge of the screen.*

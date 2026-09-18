@@ -373,6 +373,20 @@ for (const lang of ['de', 'en']) {
       expect(stuckHtml).toContain('no break in sight')
     })
 
+    // Live report: "dry for a good while, take your time" rendered with a
+    // lowercase d as the biggest text on screen. The rotating sub-line
+    // variants (s_clear_hours etc.) are written lowercase-first on purpose —
+    // that's the established sub-line voice — but once GO promotes one into
+    // the HEADLINE slot it needs to read like a headline. Capitalized at the
+    // render site only; the i18n string itself, and every other language
+    // (German sentences already start capitalized), are untouched.
+    it('capitalizes the promoted GO headline without touching the sub-line voice elsewhere', () => {
+      const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'dry for a good while, take your time', weather: null }
+      const html = renderToStaticMarkup(<GapBanner status={status} blocked={[]} t={t} />)
+      expect(html).toContain('Dry for a good while, take your time')
+      expect(html).not.toContain('>dry for a good while')
+    })
+
     // THE v2.30.0 OUTAGE. `forecast` is null on the very first render, before any
     // data arrives — every read in RainRibbon's render body is written `forecast?.`
     // for that reason, and v2.30.0's new hasModelZone line was not. It threw a

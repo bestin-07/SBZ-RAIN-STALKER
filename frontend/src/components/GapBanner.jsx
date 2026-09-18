@@ -7,6 +7,16 @@ const ACTIVITY_EMOJI = {
   swim: '🏊', run: '🏃', bike: '🚴', moto: '🏍️', picnic: '🧺',
 }
 
+// The rotating sub-line variants (s_clear_hours etc., i18n.js) are written in
+// the app's established casual sub-line voice — lowercase-first in English,
+// same as every other s_*/n_* status string. That's fine as a sub-line; it
+// reads wrong once GO promotes one into the HEADLINE slot ("dry for a good
+// while, take your time" as the biggest text on screen). Capitalizes only
+// the rendered headline, never the underlying string — the sub-line voice
+// elsewhere (and every other language, where sentences already start
+// capitalized) is untouched.
+const capFirst = s => (typeof s === 'string' && s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+
 const COLORS = {
   go:      '#D4A017',
   light:   '#6CD1EB',
@@ -82,7 +92,7 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
   // every other state's headline (BLEIB DRIN / PASST SCHON / a countdown)
   // carries real information the header doesn't, so those are untouched.
   const isGo = status?.type === 'go'
-  const headlineText = isGo ? status?.sub : status?.headline
+  const headlineText = capFirst(isGo ? status?.sub : status?.headline)
   const headlineRef = useRef(null)
   useFitText(headlineRef, () => {
     const p = headlineRef.current?.parentElement
