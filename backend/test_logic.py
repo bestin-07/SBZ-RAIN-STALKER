@@ -41,6 +41,7 @@ NS = _extract({
     "_area_watch", "_AW_SECTORS",
     "_deaccumulate",
     "DAILY_FORECAST_DAYS", "DAILY_TTL_S",
+    "_parse_grid_response", "GRID_BBOX",
 })
 
 
@@ -209,6 +210,88 @@ class TestDailyOutlook(unittest.TestCase):
         # of 4 h keeps the outlook from going stale enough to miss a day boundary.
         self.assertGreaterEqual(NS["DAILY_TTL_S"], 1800)
         self.assertLessEqual(NS["DAILY_TTL_S"], 4 * 3600)
+
+
+class TestNowcastGrid(unittest.TestCase):
+    """v2.44.0: the expanded map's time-scrubber reads a whole-area GRID from the
+    same GeoSphere nowcast dataset the per-point series already uses (not a new
+    instrument) — see CLAUDE.md. `_parse_grid_response` is the pure parse step,
+    kept separate from the HTTP call so it's testable against a synthetic response
+    without a network mock (RainViewer's own free-tier nowcast is unavailable to
+    probe from here in the first place)."""
+
+    def setUp(self):
+        self.parse = NS["_parse_grid_response"]
+
+    def _sample(self, n_times=3):
+        times = [f"2026-09-18T14:{15*i:02d}:00+00:00" for i in range(n_times)]
+        return {
+            "timestamps": times,
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [13.045, 47.802]},
+                    "properties": {"parameters": {"rr": {"name": "RR", "unit": "kg m-2",
+                                                           "data": [0.0] * n_times}}},
+                },
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [13.05, 47.81]},
+                    "properties": {"parameters": {"rr": {"name": "RR", "unit": "kg m-2",
+                                                           "data": [0.4, 1.2, 0.0][:n_times]}}},
+                },
+            ],
+        }
+
+    def test_bbox_covers_the_areas_towns(self):
+        # Every AREAS surrounding-town dot (frontend/src/api.js) must fall inside the
+        # bbox we request, or the scrubber would silently blank out for a wide pan —
+        # the failure mode would look like a bug in the overlay, not an undersized box.
+        south, west, north, east = (float(x) for x in NS["GRID_BBOX"].split(","))
+        towns = [
+            ("Hallein", 47.6835, 13.0965), ("Bad Reichenhall", 47.7247, 12.8753),
+            ("Freilassing", 47.8366, 12.9699), ("Seekirchen", 47.9021, 13.1316),
+            ("Oberndorf", 47.9412, 12.9384), ("Eugendorf", 47.8567, 13.1067),
+        ]
+        for name, lat, lon in towns:
+            self.assertTrue(south <= lat <= north, f"{name} lat outside GRID_BBOX")
+            self.assertTrue(west <= lon <= east, f"{name} lon outside GRID_BBOX")
+
+    def test_parses_timestamps_and_cells(self):
+        out = self.parse(self._sample())
+        self.assertEqual(len(out["times"]), 3)
+        self.assertEqual(len(out["cells"]), 2)
+        cell = out["cells"][1]
+        self.assertAlmostEqual(cell["lat"], 47.81)
+        self.assertAlmostEqual(cell["lon"], 13.05)
+        self.assertEqual(cell["precips"], [0.4, 1.2, 0.0])
+
+    def test_uppercase_parameter_key_still_parses(self):
+        # The OpenAPI schema's own example uses "RR" (uppercase) even though the
+        # point endpoint we mirror is confirmed lowercase "rr" — don't assume either.
+        sample = self._sample()
+        sample["features"][0]["properties"]["parameters"] = {
+            "RR": {"name": "RR", "unit": "kg m-2", "data": [0.0, 0.0, 0.0]}
+        }
+        out = self.parse(sample)
+        self.assertEqual(len(out["cells"]), 2)  # both features still usable
+
+    def test_empty_response_raises(self):
+        with self.assertRaises(ValueError):
+            self.parse({"timestamps": [], "features": []})
+
+    def test_mismatched_length_cell_is_skipped_not_fatal(self):
+        sample = self._sample()
+        sample["features"][0]["properties"]["parameters"]["rr"]["data"] = [0.0]  # wrong length
+        out = self.parse(sample)
+        self.assertEqual(len(out["cells"]), 1)  # the other, well-formed cell survives
+
+    def test_all_cells_malformed_raises(self):
+        sample = self._sample()
+        for f in sample["features"]:
+            del f["geometry"]
+        with self.assertRaises(ValueError):
+            self.parse(sample)
 
 
 class TestPushContract(unittest.TestCase):

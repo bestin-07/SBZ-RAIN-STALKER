@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, ambientDaily, AREAS } from './api'
+import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, ambientDaily, ambientNowcastGrid, AREAS } from './api'
 import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, radarZoneEnd, easesToGoableMin, settleStuckHold, blockedActivities, rvNowValue, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
@@ -137,6 +137,7 @@ export default function App() {
   const [areaWatch, setAreaWatch] = useState(null)    // city-scale wet/dry direction + trend (v2.4)
   const [uvIndex, setUvIndex] = useState(null)
   const [daily, setDaily] = useState(null)      // five-day outlook served on /api/ambient (v2.30)
+  const [nowcastGrid, setNowcastGrid] = useState(null)  // whole-area future radar for the expanded map scrubber (v2.44.0)
   // What the two NOW-lane instruments actually read this cycle — display only, shown
   // under the headline so a verdict can be traced to an instrument (v2.30).
   const [signals, setSignals] = useState(null)
@@ -1033,6 +1034,7 @@ export default function App() {
           updated: nowMs,
         })
         setDaily(ambientDaily())
+        setNowcastGrid(ambientNowcastGrid())
         setGaps(detectedGaps)
         setTrend(trendNow)
         setTickNow(Math.floor(Date.now() / 1000))
@@ -1470,7 +1472,7 @@ export default function App() {
           {dayTab === 'now' ? (
             <>
               <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} code={currentWeather?.code ?? null} daily={daily} />
-              <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} expandAboveRef={tabsRef} />
+              <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} expandAboveRef={tabsRef} nowcastGrid={nowcastGrid} />
             </>
           ) : (
             <DayStrip daily={daily} theme={theme} t={t} lang={lang} skipToday />

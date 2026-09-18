@@ -71,6 +71,34 @@ function precipColor(p) {
   return               '#E05C00'  // storm/thunderstorm — matches radar warm core
 }
 
+// Circle style for one future-grid cell (v2.44.0). Same precipColor() as every
+// other marker in this file, so the scrubber's future frames read as an extension
+// of the same colour language, not a new one. No stroke — a soft filled patch,
+// not a bordered chip, so it doesn't compete with the dot markers drawn above it.
+// Dry cells stay faint (still honest that data exists there) rather than invisible.
+function gridCellStyle(p) {
+  const wet = typeof p === 'number' && p >= 0.1
+  return { color: 'transparent', weight: 0, fillColor: precipColor(p), fillOpacity: wet ? 0.55 : 0.12 }
+}
+
+// Half the grid's own cell spacing, in metres — sized so adjacent circles just
+// touch/slightly overlap (no gaps, no double-coverage haze). Computed from the
+// ACTUAL returned coordinates rather than assumed to be exactly 1km, since the
+// dataset's native resolution is a GeoSphere implementation detail, not a contract.
+function computeGridRadiusM(cells) {
+  if (!cells || cells.length < 2) return 600
+  const lats = [...new Set(cells.map(c => c.lat))].sort((a, b) => a - b)
+  const lons = [...new Set(cells.map(c => c.lon))].sort((a, b) => a - b)
+  const dLat = lats.length > 1 ? Math.min(...lats.slice(1).map((v, i) => v - lats[i])) : null
+  const dLon = lons.length > 1 ? Math.min(...lons.slice(1).map((v, i) => v - lons[i])) : null
+  const midLat = lats[Math.floor(lats.length / 2)]
+  const spacingsM = []
+  if (dLat) spacingsM.push(dLat * 111320)
+  if (dLon) spacingsM.push(dLon * 111320 * Math.cos(midLat * Math.PI / 180))
+  if (!spacingsM.length) return 600
+  return Math.min(...spacingsM) / 2 * 1.15
+}
+
 // Rough metres between two lat/lon (equirectangular — fine at city scale).
 function distM(aLat, aLon, bLat, bLon) {
   const r = Math.PI / 180, R = 6371000
@@ -128,7 +156,7 @@ function areaIcon(name, precip, code, status, dryLabel = 'dry') {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, relocating, computeStatusAt, expandAboveRef }) {
+export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, relocating, computeStatusAt, expandAboveRef, nowcastGrid }) {
   const containerRef   = useRef(null)
   const wrapRef        = useRef(null)
   const mapRef         = useRef(null)
@@ -140,6 +168,18 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const animTimerRef   = useRef(null)
   const animRefreshRef = useRef(null)
   const framesMetaRef  = useRef([])
+  // ---- Expanded-map time-scrubber (v2.44.0) ----
+  // Collapsed map: untouched, same RainViewer auto-loop as before. Expanded map:
+  // a slider lets the user pick ANY frame — past RainViewer tiles (unchanged) or
+  // future GeoSphere grid cells (new, see fetch_nowcast_grid in the backend) —
+  // instead of watching the auto-loop cycle. `scrubIdx` null = auto-loop (collapsed,
+  // or expanded before the user has touched the slider); a number = that index into
+  // the unified past+future frame list, frozen until the map closes.
+  const gridLayerRef   = useRef(null)   // L.LayerGroup of per-cell circles
+  const gridCirclesRef = useRef([])     // circles, aligned 1:1 with nowcastGrid.cells
+  const gridRadiusMRef = useRef(600)    // half the grid spacing, computed per snapshot
+  const canvasRendererRef = useRef(null) // shared L.canvas() so ~800 cells cost one canvas, not 800 SVG nodes
+  const scrubIdxRef    = useRef(null)
   const computeRef     = useRef(computeStatusAt)
   const statusCacheRef = useRef(new Map())   // key "lat,lon" → { status, ts }
   const currentPopupRef = useRef(null)       // the open popup (for re-render on lang switch)
@@ -171,6 +211,8 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     }, 2000)
   }, [redrawTiles])
   const [radarFrame, setRadarFrame] = useState(null)  // { time, forecast } of the shown frame
+  const [scrubIdx, setScrubIdx] = useState(null)       // v2.44.0: null = auto-loop, else a manual frame index
+  useEffect(() => { scrubIdxRef.current = scrubIdx }, [scrubIdx])
   // Explicit failure state: a fetch that errors or 404s used to be indistinguishable
   // from a slow-but-fine one — the chip just silently kept showing whatever frame
   // (or nothing) it last had, with no signal that the *next* attempt had failed.
@@ -310,17 +352,16 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     // ---- RainViewer animated overlay ----
     // maxNativeZoom is 7 (see the note at the tileLayer below — z8+ returns a
     // "Zoom Level Not Supported" placeholder image, not an empty tile). The
-    // zoomend listener hides the layers above RV_MAX_ZOOM as a second guard.
-    const rvVisible = () => !!mapRef.current && mapRef.current.getZoom() <= RV_MAX_ZOOM
-
-    const syncRvOpacity = () => {
-      const idx = animIdxRef.current
-      rvLayersRef.current.forEach((l, i) => {
-        try { l.setOpacity(rvVisible() && i === idx ? 0.5 : 0) } catch {}
-      })
-    }
-
-    map.on('zoomend', syncRvOpacity)
+    // zoomend listener redraws the active frame (below) as a second guard.
+    //
+    // v2.44.0 — paints via applyFrameRef (a ref mirroring the component-body
+    // applyFrame() every render, see below) instead of toggling opacity inline,
+    // so the auto-loop and the expanded map's scrubber share exactly one
+    // painting function and can never draw two different pictures of the same
+    // index. Collapsed map: this is a no-op behaviour change — the auto-loop
+    // still ticks every 700ms exactly as before.
+    const syncDisplay = () => applyFrameRef.current?.(animIdxRef.current)
+    map.on('zoomend', syncDisplay)
 
     async function setupAnimation() {
       if (!mapRef.current) return
@@ -377,8 +418,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
         })
         let pos = playlist.length - 1
         animIdxRef.current = playlist[pos]
-        syncRvOpacity()
-        setRadarFrame(framesMetaRef.current[animIdxRef.current] ?? null)
+        syncDisplay()
 
         animTimerRef.current = setInterval(() => {
           const layers = rvLayersRef.current
@@ -386,11 +426,13 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
           pos = (pos + 1) % playlist.length
           const prev = animIdxRef.current
           const next = playlist[pos]
+          animIdxRef.current = next
           if (next !== prev) {                       // dwell tick: same frame stays lit
-            try { layers[prev].setOpacity(0) } catch {}
-            if (rvVisible()) { try { layers[next].setOpacity(0.5) } catch {} }
-            animIdxRef.current = next
-            setRadarFrame(framesMetaRef.current[next] ?? null)
+            // v2.44.0 — the expanded map's slider owns the display while the user
+            // is scrubbing; the auto-loop still ticks animIdxRef forward in the
+            // background (so collapsing resumes wherever it naturally is) but
+            // must not fight the user's chosen frame by repainting over it.
+            if (!(expandedRef.current && scrubIdxRef.current !== null)) syncDisplay()
           }
         }, 700)
       } catch {
@@ -404,7 +446,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     animRefreshRef.current = setInterval(setupAnimation, 5 * 60 * 1000)
 
     return () => {
-      map.off('zoomend', syncRvOpacity)
+      map.off('zoomend', syncDisplay)
       map.off('popupclose', onPopupClose)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('pageshow', onVisible)
@@ -418,6 +460,74 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       mapRef.current = null
     }
   }, [])
+
+  // ---- Expanded-map time-scrubber (v2.44.0), continued ----
+  // getScrubFrames/applyFrame are plain functions — fresh closure every render,
+  // same convention as openMap/closeMapAnimated below — so they always see the
+  // latest `nowcastGrid` prop. applyFrameRef mirrors the current applyFrame for
+  // the mount effect's timer/zoomend handlers above, whose own closures were
+  // fixed at mount and would otherwise keep seeing the nowcastGrid from the
+  // very first render forever.
+  const getScrubFrames = () => {
+    const past = framesMetaRef.current.map((f, i) => ({ time: f.time, forecast: f.forecast, i }))
+    const future = (nowcastGrid?.times || []).map((t, i) => ({ time: t, forecast: true, i }))
+    return { past, future, all: [...past, ...future] }
+  }
+
+  // Paints one frame from the unified past+future list: swaps which RainViewer
+  // tile layer is opaque (past half, unchanged mechanism) or which grid-cell
+  // colours are shown (future half, new) and updates the time chip. Called both
+  // by the always-running auto-loop (idx = animIdxRef.current) and by the
+  // slider (idx = scrubIdx) — one function, so the two can never disagree about
+  // what a given index looks like.
+  const applyFrame = (idx) => {
+    const { past, future } = getScrubFrames()
+    const inPast = idx < past.length
+    const rvVisible = !!mapRef.current && mapRef.current.getZoom() <= RV_MAX_ZOOM
+    rvLayersRef.current.forEach((l, i) => {
+      try { l.setOpacity(rvVisible && inPast && i === idx ? 0.5 : 0) } catch {}
+    })
+    const cells = gridCirclesRef.current
+    if (cells.length) {
+      const gi = inPast ? -1 : idx - past.length
+      cells.forEach((circle, ci) => {
+        try {
+          circle.setStyle(gi >= 0 ? gridCellStyle(nowcastGrid?.cells?.[ci]?.precips?.[gi]) : { fillOpacity: 0 })
+        } catch {}
+      })
+    }
+    const frame = inPast ? past[idx] : future[idx - past.length]
+    setRadarFrame(frame ? { time: frame.time, forecast: frame.forecast } : null)
+  }
+
+  const applyFrameRef = useRef(applyFrame)
+  useEffect(() => { applyFrameRef.current = applyFrame })
+
+  // Build/refresh the future-grid circle layer when a new snapshot arrives. Cell
+  // positions are effectively fixed (same bbox every cycle) but rebuilt fully
+  // rather than diffed — simpler, and cheap at a few hundred circles on one
+  // shared canvas renderer. A background refresh must not blank whatever frame
+  // is currently on screen, so the active index is repainted at the end.
+  useEffect(() => {
+    if (!mapRef.current) return
+    if (!canvasRendererRef.current) canvasRendererRef.current = L.canvas({ padding: 0.5 })
+    gridCirclesRef.current.forEach(c => { try { c.remove() } catch {} })
+    gridCirclesRef.current = []
+    if (gridLayerRef.current) { try { mapRef.current.removeLayer(gridLayerRef.current) } catch {} }
+    const cells = nowcastGrid?.cells
+    if (!cells || !cells.length) { gridLayerRef.current = null; return }
+    gridRadiusMRef.current = computeGridRadiusM(cells)
+    const group = L.layerGroup()
+    gridCirclesRef.current = cells.map(cell => L.circle([cell.lat, cell.lon], {
+      radius: gridRadiusMRef.current,
+      renderer: canvasRendererRef.current,
+      interactive: false,
+      ...gridCellStyle(undefined),   // hidden until applyFrame paints the active frame
+    }).addTo(group))
+    group.addTo(mapRef.current)
+    gridLayerRef.current = group
+    applyFrameRef.current?.(scrubIdxRef.current ?? animIdxRef.current)
+  }, [nowcastGrid])
 
   // Swap base tile layer when theme changes
   useEffect(() => {
@@ -663,6 +773,14 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
 
   const openMap = () => {
     if (expandedRef.current || !wrapRef.current) return
+    // v2.44.0 — expanding freezes the display on "now" (the boundary between
+    // past and future) and hands control to the slider; the auto-loop keeps
+    // ticking animIdxRef in the background (see the timer above) so collapsing
+    // resumes wherever it would naturally be, untouched.
+    const { past } = getScrubFrames()
+    const startIdx = Math.max(past.length - 1, 0)
+    setScrubIdx(startIdx)
+    applyFrame(startIdx)
     if (prefersReducedMotion()) {
       // Jump straight to the settled open state — no intermediate rect, no
       // CSS transition to skip mid-flight (which still visually moves the
@@ -701,6 +819,17 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     const onResize = () => setExpandTopPx(measureExpandTop())
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
+  }, [expanded])
+
+  // v2.44.0 — once the map has collapsed, hand the display back to the
+  // (never-paused) auto-loop and let the slider forget its position, so
+  // reopening later starts fresh on "now" again rather than resuming a stale
+  // scrub. animIdxRef kept ticking the whole time the map was expanded, so this
+  // repaints wherever the auto-loop naturally is — no jump, no stale frame.
+  useEffect(() => {
+    if (expanded) return
+    setScrubIdx(null)
+    applyFrameRef.current?.(animIdxRef.current)
   }, [expanded])
 
   const closeMapAnimated = () => {
@@ -790,6 +919,29 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     ? Math.max(0, Math.round(Date.now() / 60000 - radarFrame.time / 60))
     : null
   const radarDegraded = radarError || (frameAgeMin !== null && frameAgeMin > RADAR_STALE_MIN)
+
+  // v2.44.0 — the expanded map's scrubber: one shared list of past (RainViewer)
+  // and future (GeoSphere grid) frames. Only computed while it can actually be
+  // shown, matching the "collapsed is untouched" boundary the rest of this
+  // feature keeps — a collapsed map never builds or renders any of this.
+  const scrubFrames = expanded ? getScrubFrames() : null
+  const scrubActiveIdx = scrubIdx ?? (scrubFrames ? Math.max(scrubFrames.past.length - 1, 0) : 0)
+  const scrubActiveFrame = scrubFrames?.all?.[scrubActiveIdx] ?? null
+
+  const onScrub = (e) => {
+    const idx = Number(e.target.value)
+    setScrubIdx(idx)
+    applyFrame(idx)
+  }
+
+  const scrubLabel = (frame) => {
+    if (!frame) return t ? t('radar_unavailable') : 'radar unavailable'
+    const clock = fmtClock(frame.time)
+    if (!frame.forecast) return `${t ? t('lbl_radar') : 'radar'} ${clock}`
+    const min = Math.max(0, Math.round((frame.time - Date.now() / 1000) / 60))
+    const plus = t ? t('time_plus_min', { min }) : `+${min} min`
+    return `${t ? t('lbl_nowcast') : 'nowcast'} ${clock} · ${plus}`
+  }
 
   return (
     <>
@@ -928,6 +1080,28 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
             </svg>
           )}
         </button>
+      )}
+      {/* v2.44.0 — expanded-only time scrubber, centred bottom. Collapsed map:
+          none of this renders, none of this is built — the auto-loop above is
+          the only code path that runs, byte-identical to before this feature. */}
+      {expanded && scrubFrames && scrubFrames.all.length > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-1.5
+                        w-[min(300px,78vw)]">
+          <div className="rounded-full bg-surface/90 backdrop-blur border border-border
+                          px-3 py-1 font-mono text-xs text-muted whitespace-nowrap">
+            {scrubLabel(scrubActiveFrame)}
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={scrubFrames.all.length - 1}
+            step={1}
+            value={scrubActiveIdx}
+            onChange={onScrub}
+            aria-label={t ? t('map_scrub') : 'Scrub radar time'}
+            className="w-full accent-primary"
+          />
+        </div>
       )}
       </div>
     </>

@@ -371,6 +371,64 @@ async def fetch_nowcast_timeline(client: httpx.AsyncClient, point: dict):
     return times, precips
 
 
+# ---- Whole-area future radar for the map's expanded time-scrubber (v2.44.0) ------
+# Same instrument as fetch_nowcast_timeline above (GeoSphere nowcast-v1-15min-1km),
+# requested as a GRID instead of 11 separate points: one call returns every ~1km
+# cell across the whole viewing area (city + surrounding AREAS towns) for every
+# 15-min step out to +3h. RainViewer's own free-tier nowcast dropped to zero
+# frames (confirmed live, see CLAUDE.md) — this replaces it with real radar
+# extrapolation, not a model, for the map's expanded scrubber only.
+# DISPLAY LAYER ONLY: never read by getStatus/the verdict/push/accuracy pipeline,
+# which all still use the per-point `nowcast` series above, untouched.
+GRID_BBOX = "47.60,12.85,47.96,13.17"  # south,west,north,east — city + AREAS towns
+
+
+def _parse_grid_response(data):
+    """Pure parse, kept separate from the HTTP call so it's unit-testable without
+    a network mock. Raises ValueError on any unexpected shape (caller keeps the
+    previous grid, same doctrine as every other fetch_ in this file)."""
+    from datetime import datetime  # local import: keeps this extractable standalone
+    # by test_logic.py's AST-based _extract(), same technique _area_watch uses for math.
+    ts = data.get("timestamps", [])
+    features = data.get("features", [])
+    if not ts or not features:
+        raise ValueError("unexpected grid response: no timestamps/features")
+    times = [int(datetime.fromisoformat(s).timestamp()) for s in ts]
+    cells = []
+    for f in features:
+        geom = f.get("geometry") or {}
+        coords = geom.get("coordinates")
+        params = (f.get("properties") or {}).get("parameters") or {}
+        # Dataset uses lowercase "rr" (confirmed live on the point endpoint this
+        # grid call mirrors); fall back case-insensitively in case the grid
+        # endpoint's own casing differs — never assumed, only checked.
+        rr = params.get("rr")
+        if rr is None:
+            rr = next((v for k, v in params.items() if isinstance(k, str) and k.lower() == "rr"), None)
+        if not coords or len(coords) != 2 or not isinstance(rr, dict) or "data" not in rr:
+            continue
+        vals = rr["data"]
+        if len(vals) != len(times):
+            continue
+        cells.append({
+            "lat": coords[1], "lon": coords[0],
+            "precips": [float(v) if isinstance(v, (int, float)) else 0.0 for v in vals],
+        })
+    if not cells:
+        raise ValueError("no usable grid cells in response")
+    return {"times": times, "cells": cells}
+
+
+async def fetch_nowcast_grid(client: httpx.AsyncClient):
+    r = await client.get(
+        f"{GEOSPHERE}/grid/forecast/nowcast-v1-15min-1km",
+        params={"parameters": "rr", "bbox": GRID_BBOX, "output_format": "geojson"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    return _parse_grid_response(r.json())
+
+
 def _deaccumulate(vals):
     """Accumulated series → per-interval amounts. Clamps negatives to 0 (model
     runs can reset the accumulator mid-series at a new forecast base time)."""
@@ -1420,6 +1478,16 @@ async def run_cycle():
         except Exception as e:
             print(f"[warnings] {e}")
             severe_warnings = []
+
+        # Whole-area future radar grid (v2.44.0) — same "one query represents the
+        # area" precedent as city_ground/severe_warnings above. Kept on failure
+        # (previous grid stands) rather than blanking the scrubber for one bad cycle.
+        try:
+            grid = await fetch_nowcast_grid(client)
+            if grid:
+                _ambient["nowcastGrid"] = grid
+        except Exception as e:
+            print(f"[nowcast-grid] {e}")
 
         # Five-day outlook (v2.30) — city centre. Served, never consulted: nothing
         # in the verdict, the push logic or the accuracy verification reads this.

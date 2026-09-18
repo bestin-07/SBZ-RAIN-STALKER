@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.44.0] - 2026-09-18 - Gemma Raus just got better: the map can now show you the future 🗺️
+
+*The map's radar loop only ever showed the last 40 minutes — RainViewer, the free radar service it uses, quietly stopped sending forecast frames at all. You could watch rain arrive on the headline countdown, but never actually see it approaching on the map itself.*
+
+**What happened**
+
+The radar animation on the map has always cycled through a handful of past frames. It used to also splice in a few minutes of RainViewer's own short forecast — but that free forecast feed has gone quiet (we checked live: zero frames, consistently), so lately the loop was showing pure history and nothing ahead. Meanwhile the app's own weather brain already reads a real 3-hour rain forecast for the whole city, every 5 minutes — it just wasn't drawn on the map yet.
+
+**What's new for you**
+
+- **Tap the map to expand it, and a time slider appears along the bottom.** Drag it left for the last ~40 minutes of real radar history, or right past "now" into a genuine 3-hour-ahead forecast — the same trusted forecast that already drives the headline above, now painted across the whole map as soft colored patches instead of just a single number.
+- A small label above the slider always says exactly what you're looking at — "Radar 14:32" for the past, or "Nowcast 15:15 · +45 min" for the future.
+- The small map you see before tapping is untouched — same quick auto-looping radar reel as always. The slider only shows up once you've expanded the map, so nothing changes until you actually want to look ahead.
+
+**Nothing about the verdict changed.** This is a new way to LOOK at data the app already trusts — `getStatus`, every threshold, and the countdown on the headline are all byte-identical.
+
+---
+
 ## [2.43.0] - 2026-09-18 - Gemma Raus just got better: the ribbon now knows what kind of dry it is ☀️
 
 *A dry tile has always just been a flat line — no matter if it's a clear afternoon or a grey overcast one. It looked the same either way, and the storm tiles couldn't tell you if heavy weather meant lightning, hail, or just wind.*
