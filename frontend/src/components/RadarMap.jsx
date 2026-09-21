@@ -71,32 +71,25 @@ function precipColor(p) {
   return               '#E05C00'  // storm/thunderstorm — matches radar warm core
 }
 
-// Circle style for one future-grid cell (v2.44.0). Same precipColor() as every
-// other marker in this file, so the scrubber's future frames read as an extension
-// of the same colour language, not a new one. No stroke — a soft filled patch,
-// not a bordered chip, so it doesn't compete with the dot markers drawn above it.
-// Dry cells stay faint (still honest that data exists there) rather than invisible.
-function gridCellStyle(p) {
-  const wet = typeof p === 'number' && p >= 0.1
-  return { color: 'transparent', weight: 0, fillColor: precipColor(p), fillOpacity: wet ? 0.55 : 0.12 }
-}
-
-// Half the grid's own cell spacing, in metres — sized so adjacent circles just
-// touch/slightly overlap (no gaps, no double-coverage haze). Computed from the
-// ACTUAL returned coordinates rather than assumed to be exactly 1km, since the
-// dataset's native resolution is a GeoSphere implementation detail, not a contract.
-function computeGridRadiusM(cells) {
-  if (!cells || cells.length < 2) return 600
-  const lats = [...new Set(cells.map(c => c.lat))].sort((a, b) => a - b)
-  const lons = [...new Set(cells.map(c => c.lon))].sort((a, b) => a - b)
-  const dLat = lats.length > 1 ? Math.min(...lats.slice(1).map((v, i) => v - lats[i])) : null
-  const dLon = lons.length > 1 ? Math.min(...lons.slice(1).map((v, i) => v - lons[i])) : null
-  const midLat = lats[Math.floor(lats.length / 2)]
-  const spacingsM = []
-  if (dLat) spacingsM.push(dLat * 111320)
-  if (dLon) spacingsM.push(dLon * 111320 * Math.cos(midLat * Math.PI / 180))
-  if (!spacingsM.length) return 600
-  return Math.min(...spacingsM) / 2 * 1.15
+// v2.44.1 — the future-grid layer was originally ~960 individual L.circle
+// vector layers on a shared L.canvas() renderer. Replaced with a single
+// L.imageOverlay after two live reports the same release: the overlay was
+// essentially invisible (the per-circle opacity WAS working — it's simply
+// dry almost everywhere almost always, and 960 near-transparent 0.12-opacity
+// discs read as "nothing") and the map rendered incorrectly on some iOS
+// browsers (Leaflet's Canvas renderer + several hundred vector layers is
+// real DOM/GPU pressure and a known rough edge on older iOS WebKit — the
+// standing hypothesis, since nothing else about map rendering changed this
+// release). A tiny raster (one pixel per cell) stretched by the BROWSER's
+// own image scaling over the grid's bounds is cheaper, uses only Leaflet's
+// long-proven ImageOverlay (already battle-tested by RainViewer's own tile
+// layers), and its natural bilinear upscaling gives a soft heatmap look for
+// free — see buildGridDataUrl (component body, below) for the actual draw.
+// precipColor() branches all return literal hex strings (never a CSS var),
+// so parsing one back to RGB here is always safe.
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
 // Rough metres between two lat/lon (equirectangular — fine at city scale).
@@ -175,10 +168,11 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // instead of watching the auto-loop cycle. `scrubIdx` null = auto-loop (collapsed,
   // or expanded before the user has touched the slider); a number = that index into
   // the unified past+future frame list, frozen until the map closes.
-  const gridLayerRef   = useRef(null)   // L.LayerGroup of per-cell circles
-  const gridCirclesRef = useRef([])     // circles, aligned 1:1 with nowcastGrid.cells
-  const gridRadiusMRef = useRef(600)    // half the grid spacing, computed per snapshot
-  const canvasRendererRef = useRef(null) // shared L.canvas() so ~800 cells cost one canvas, not 800 SVG nodes
+  // v2.44.1 — one L.imageOverlay (a raster, see hexToRgb's comment above) instead
+  // of per-cell vector layers.
+  const gridOverlayRef = useRef(null)   // the L.imageOverlay instance
+  const gridMetaRef    = useRef(null)   // { lats:[asc], lons:[asc] } derived from nowcastGrid
+  const gridCanvasRef  = useRef(null)   // reused offscreen <canvas> the raster is drawn into
   const scrubIdxRef    = useRef(null)
   const computeRef     = useRef(computeStatusAt)
   const statusCacheRef = useRef(new Map())   // key "lat,lon" → { status, ts }
@@ -461,25 +455,64 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     }
   }, [])
 
-  // ---- Expanded-map time-scrubber (v2.44.0), continued ----
-  // getScrubFrames/applyFrame are plain functions — fresh closure every render,
-  // same convention as openMap/closeMapAnimated below — so they always see the
-  // latest `nowcastGrid` prop. applyFrameRef mirrors the current applyFrame for
-  // the mount effect's timer/zoomend handlers above, whose own closures were
-  // fixed at mount and would otherwise keep seeing the nowcastGrid from the
-  // very first render forever.
+  // ---- Expanded-map time-scrubber (v2.44.0/v2.44.1), continued ----
+  // getScrubFrames/buildGridDataUrl/applyFrame are plain functions — fresh
+  // closure every render, same convention as openMap/closeMapAnimated below —
+  // so they always see the latest `nowcastGrid` prop. applyFrameRef mirrors
+  // the current applyFrame for the mount effect's timer/zoomend handlers
+  // above, whose own closures were fixed at mount and would otherwise keep
+  // seeing the nowcastGrid from the very first render forever.
   const getScrubFrames = () => {
     const past = framesMetaRef.current.map((f, i) => ({ time: f.time, forecast: f.forecast, i }))
     const future = (nowcastGrid?.times || []).map((t, i) => ({ time: t, forecast: true, i }))
     return { past, future, all: [...past, ...future] }
   }
 
+  // Renders one future frame as a tiny raster — one pixel per grid cell — and
+  // returns a data URL. Leaflet's ImageOverlay then stretches that over the
+  // grid's real bounds with the BROWSER's own image scaling, which is what
+  // gives the soft heatmap look for free; nothing here does interpolation of
+  // its own, so it never implies more spatial precision than an 11×… cell
+  // grid actually has. `gi < 0` draws nothing (fully transparent) — used
+  // when a past RainViewer frame is showing instead. Dry cells are drawn at
+  // low alpha rather than skipped entirely — still honest that data exists
+  // there — but the layer is genuinely faint on a genuinely dry forecast,
+  // which is most of the time; that's a true reading, not a bug.
+  const buildGridDataUrl = (cells, gi) => {
+    const meta = gridMetaRef.current
+    if (!meta || !gridCanvasRef.current) return null
+    const { lats, lons } = meta
+    const canvas = gridCanvasRef.current
+    canvas.width = lons.length
+    canvas.height = lats.length
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    if (gi >= 0 && cells) {
+      const lonIdx = new Map(lons.map((v, i) => [v, i]))
+      const latIdx = new Map(lats.map((v, i) => [v, i]))
+      for (const cell of cells) {
+        const col = lonIdx.get(cell.lon)
+        const row = latIdx.get(cell.lat)
+        if (col === undefined || row === undefined) continue
+        const p = cell.precips[gi]
+        const wet = typeof p === 'number' && p >= 0.1
+        const [r, g, b] = hexToRgb(precipColor(p))
+        ctx.fillStyle = `rgba(${r},${g},${b},${wet ? 0.6 : 0.08})`
+        // Canvas rows grow downward; latitude grows upward (north = highest
+        // lat, drawn at the TOP of the image) — flip the row so the raster
+        // reads right-way-up once stretched over `bounds`.
+        ctx.fillRect(col, lats.length - 1 - row, 1, 1)
+      }
+    }
+    return canvas.toDataURL('image/png')
+  }
+
   // Paints one frame from the unified past+future list: swaps which RainViewer
-  // tile layer is opaque (past half, unchanged mechanism) or which grid-cell
-  // colours are shown (future half, new) and updates the time chip. Called both
-  // by the always-running auto-loop (idx = animIdxRef.current) and by the
-  // slider (idx = scrubIdx) — one function, so the two can never disagree about
-  // what a given index looks like.
+  // tile layer is opaque (past half, unchanged mechanism) or redraws the grid
+  // raster and fades it in (future half) and updates the time chip. Called
+  // both by the always-running auto-loop (idx = animIdxRef.current) and by
+  // the slider (idx = scrubIdx) — one function, so the two can never disagree
+  // about what a given index looks like.
   const applyFrame = (idx) => {
     const { past, future } = getScrubFrames()
     const inPast = idx < past.length
@@ -487,14 +520,14 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     rvLayersRef.current.forEach((l, i) => {
       try { l.setOpacity(rvVisible && inPast && i === idx ? 0.5 : 0) } catch {}
     })
-    const cells = gridCirclesRef.current
-    if (cells.length) {
+    const overlay = gridOverlayRef.current
+    if (overlay) {
       const gi = inPast ? -1 : idx - past.length
-      cells.forEach((circle, ci) => {
-        try {
-          circle.setStyle(gi >= 0 ? gridCellStyle(nowcastGrid?.cells?.[ci]?.precips?.[gi]) : { fillOpacity: 0 })
-        } catch {}
-      })
+      const url = buildGridDataUrl(nowcastGrid?.cells, gi)
+      try {
+        if (url) overlay.setUrl(url)
+        overlay.setOpacity(gi >= 0 ? 0.8 : 0)
+      } catch {}
     }
     const frame = inPast ? past[idx] : future[idx - past.length]
     setRadarFrame(frame ? { time: frame.time, forecast: frame.forecast } : null)
@@ -503,29 +536,36 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const applyFrameRef = useRef(applyFrame)
   useEffect(() => { applyFrameRef.current = applyFrame })
 
-  // Build/refresh the future-grid circle layer when a new snapshot arrives. Cell
-  // positions are effectively fixed (same bbox every cycle) but rebuilt fully
-  // rather than diffed — simpler, and cheap at a few hundred circles on one
-  // shared canvas renderer. A background refresh must not blank whatever frame
-  // is currently on screen, so the active index is repainted at the end.
+  // Build/refresh the future-grid overlay when a new snapshot arrives. Cell
+  // positions are effectively fixed (same bbox every cycle) but the bounds/
+  // index meta is rebuilt fully rather than diffed — simpler, and cheap at
+  // this size. A background refresh must not blank whatever frame is
+  // currently on screen, so the active index is repainted at the end.
   useEffect(() => {
     if (!mapRef.current) return
-    if (!canvasRendererRef.current) canvasRendererRef.current = L.canvas({ padding: 0.5 })
-    gridCirclesRef.current.forEach(c => { try { c.remove() } catch {} })
-    gridCirclesRef.current = []
-    if (gridLayerRef.current) { try { mapRef.current.removeLayer(gridLayerRef.current) } catch {} }
     const cells = nowcastGrid?.cells
-    if (!cells || !cells.length) { gridLayerRef.current = null; return }
-    gridRadiusMRef.current = computeGridRadiusM(cells)
-    const group = L.layerGroup()
-    gridCirclesRef.current = cells.map(cell => L.circle([cell.lat, cell.lon], {
-      radius: gridRadiusMRef.current,
-      renderer: canvasRendererRef.current,
-      interactive: false,
-      ...gridCellStyle(undefined),   // hidden until applyFrame paints the active frame
-    }).addTo(group))
-    group.addTo(mapRef.current)
-    gridLayerRef.current = group
+    if (gridOverlayRef.current) {
+      try { mapRef.current.removeLayer(gridOverlayRef.current) } catch {}
+      gridOverlayRef.current = null
+    }
+    if (!cells || !cells.length) { gridMetaRef.current = null; return }
+    const lats = [...new Set(cells.map(c => c.lat))].sort((a, b) => a - b)
+    const lons = [...new Set(cells.map(c => c.lon))].sort((a, b) => a - b)
+    // Half a cell's own spacing, so the raster's outer edge lines up with the
+    // edge of the outermost cell rather than stopping dead at its centre.
+    const dLat = lats.length > 1 ? (lats[1] - lats[0]) : 0.01
+    const dLon = lons.length > 1 ? (lons[1] - lons[0]) : 0.01
+    const bounds = L.latLngBounds(
+      [lats[0] - dLat / 2, lons[0] - dLon / 2],
+      [lats[lats.length - 1] + dLat / 2, lons[lons.length - 1] + dLon / 2]
+    )
+    gridMetaRef.current = { lats, lons }
+    if (!gridCanvasRef.current) gridCanvasRef.current = document.createElement('canvas')
+    const overlay = L.imageOverlay(buildGridDataUrl(cells, -1) || '', bounds, {
+      opacity: 0, interactive: false, zIndex: 350,
+    })
+    overlay.addTo(mapRef.current)
+    gridOverlayRef.current = overlay
     applyFrameRef.current?.(scrubIdxRef.current ?? animIdxRef.current)
   }, [nowcastGrid])
 
@@ -1085,10 +1125,10 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
           none of this renders, none of this is built — the auto-loop above is
           the only code path that runs, byte-identical to before this feature. */}
       {expanded && scrubFrames && scrubFrames.all.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-1.5
-                        w-[min(300px,78vw)]">
-          <div className="rounded-full bg-surface/90 backdrop-blur border border-border
-                          px-3 py-1 font-mono text-xs text-muted whitespace-nowrap">
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2
+                        w-[min(360px,88vw)] rounded-2xl bg-surface/90 backdrop-blur border border-border
+                        px-4 py-2.5 shadow-lg">
+          <div className="font-mono text-sm text-primary whitespace-nowrap">
             {scrubLabel(scrubActiveFrame)}
           </div>
           <input
@@ -1099,7 +1139,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
             value={scrubActiveIdx}
             onChange={onScrub}
             aria-label={t ? t('map_scrub') : 'Scrub radar time'}
-            className="w-full accent-primary"
+            className="gr-scrub w-full"
           />
         </div>
       )}

@@ -12,6 +12,24 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.44.1] - 2026-09-21 - Gemma Raus just got better: the future overlay actually shows up now, and the slider's easier to grab 🎚️
+
+*Two reports on the map slider within days of it shipping: "I don't see anything on the map" while scrubbing forward, and the map rendering incorrectly on some iPhones.*
+
+**What happened**
+
+We checked the live data first rather than guessing: the future forecast was genuinely there, just genuinely dry everywhere at that moment — and drawn as hundreds of nearly-transparent little circles, a dry forecast looked identical to nothing rendering at all. Separately, painting all those circles is exactly the kind of extra work that can trip up older iPhone browsers, which lines up with the rendering report.
+
+**What's new for you**
+
+- **The future overlay is now one smooth, soft-edged wash of color** instead of hundreds of tiny separate dots — much easier to actually see, and it should also be kinder to older iPhones.
+- **A dry forecast still looks faint** — that's honest, not a bug — but it no longer looks broken.
+- **The slider is bigger and easier to drag**, with a proper thumb you can actually grab, and the time label next to it is larger and easier to read at a glance.
+
+**Nothing about the verdict changed.** Purely how the same trusted forecast is drawn.
+
+---
+
 ## [2.44.0] - 2026-09-18 - Gemma Raus just got better: the map can now show you the future 🗺️
 
 *The map's radar loop only ever showed the last 40 minutes — RainViewer, the free radar service it uses, quietly stopped sending forecast frames at all. You could watch rain arrive on the headline countdown, but never actually see it approaching on the map itself.*

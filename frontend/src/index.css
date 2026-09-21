@@ -299,3 +299,49 @@ html.light .leaflet-control-attribution a {
     animation: none !important;
   }
 }
+
+/* Expanded-map time-scrubber (v2.44.1) — a bare <input type="range"> renders
+   tiny and inconsistently across browsers (notably a very thin, hard-to-grab
+   track/thumb on iOS Safari), which is exactly the wrong touch target for a
+   control someone is dragging with a thumb on a phone. `-webkit-appearance:
+   none`/`appearance: none` opts out of each browser's native look so the
+   track and thumb below are what actually renders, sized deliberately larger
+   than the platform default in both engines that need separate pseudo-
+   elements for it (WebKit and Firefox — there is no single cross-browser
+   selector for either part). */
+.gr-scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  touch-action: pan-x;
+}
+.gr-scrub::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--c-border);
+}
+.gr-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  border: 3px solid var(--c-surface);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.gr-scrub::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--c-border);
+}
+.gr-scrub::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  border: 3px solid var(--c-surface);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
