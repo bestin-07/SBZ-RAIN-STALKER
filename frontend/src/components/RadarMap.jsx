@@ -497,7 +497,11 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
         const p = cell.precips[gi]
         const wet = typeof p === 'number' && p >= 0.1
         const [r, g, b] = hexToRgb(precipColor(p))
-        ctx.fillStyle = `rgba(${r},${g},${b},${wet ? 0.6 : 0.08})`
+        // v2.44.2 — dry alpha raised 0.08 -> 0.16 (live report: on a genuinely
+        // dry forecast — the common case — the whole layer read as "nothing
+        // rendering" rather than "faint because dry"). Still clearly the
+        // fainter of the two, never confusable with real rain.
+        ctx.fillStyle = `rgba(${r},${g},${b},${wet ? 0.6 : 0.16})`
         // Canvas rows grow downward; latitude grows upward (north = highest
         // lat, drawn at the TOP of the image) — flip the row so the raster
         // reads right-way-up once stretched over `bounds`.
@@ -524,10 +528,12 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
     if (overlay) {
       const gi = inPast ? -1 : idx - past.length
       const url = buildGridDataUrl(nowcastGrid?.cells, gi)
-      try {
-        if (url) overlay.setUrl(url)
-        overlay.setOpacity(gi >= 0 ? 0.8 : 0)
-      } catch {}
+      // v2.44.2 — setUrl/setOpacity used to share one try/catch: if setUrl ever
+      // threw, setOpacity was skipped too and the overlay stayed invisible with
+      // no error surfaced. Split so a failure in one can never silently cancel
+      // the other.
+      if (url) { try { overlay.setUrl(url) } catch {} }
+      try { overlay.setOpacity(gi >= 0 ? 0.85 : 0) } catch {}
     }
     const frame = inPast ? past[idx] : future[idx - past.length]
     setRadarFrame(frame ? { time: frame.time, forecast: frame.forecast } : null)
@@ -1121,26 +1127,50 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
           )}
         </button>
       )}
-      {/* v2.44.0 — expanded-only time scrubber, centred bottom. Collapsed map:
-          none of this renders, none of this is built — the auto-loop above is
-          the only code path that runs, byte-identical to before this feature. */}
+      {/* v2.44.0/v2.44.2 — expanded-only time scrubber. Collapsed map: none of
+          this renders, none of this is built — the auto-loop above is the only
+          code path that runs, byte-identical to before this feature.
+          v2.44.2 — raised from bottom-5 to bottom-20 (live report: it was
+          overlapping/cropping the relocate crosshair, which sits at
+          bottom-4 right-4 ≈ a 44px button spanning up to 60px from the
+          bottom). This container's own bottom edge now sits at 80px, clear
+          of the button with room to spare regardless of pill height. */}
       {expanded && scrubFrames && scrubFrames.all.length > 0 && (
-        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2
-                        w-[min(360px,88vw)] rounded-2xl bg-surface/90 backdrop-blur border border-border
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2
+                        w-[min(340px,84vw)] rounded-2xl bg-surface/90 backdrop-blur border border-border
                         px-4 py-2.5 shadow-lg">
-          <div className="font-mono text-sm text-primary whitespace-nowrap">
+          <div className="flex items-center gap-2 font-mono text-sm text-primary whitespace-nowrap">
+            <span
+              aria-hidden="true"
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: scrubActiveFrame?.forecast ? '#1BAEE2' : 'var(--c-primary)' }}
+            />
             {scrubLabel(scrubActiveFrame)}
           </div>
-          <input
-            type="range"
-            min={0}
-            max={scrubFrames.all.length - 1}
-            step={1}
-            value={scrubActiveIdx}
-            onChange={onScrub}
-            aria-label={t ? t('map_scrub') : 'Scrub radar time'}
-            className="gr-scrub w-full"
-          />
+          <div className="relative w-full">
+            {/* A tick marking "now" — the past/future boundary — so it reads at
+                a glance that there IS a future range to drag into, not just a
+                track that happens to stop where you first see it. */}
+            {scrubFrames.future.length > 0 && (
+              <div
+                aria-hidden="true"
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-px h-3 bg-muted/70 pointer-events-none"
+                style={{
+                  left: `${(scrubFrames.past.length - 1) / Math.max(scrubFrames.all.length - 1, 1) * 100}%`,
+                }}
+              />
+            )}
+            <input
+              type="range"
+              min={0}
+              max={scrubFrames.all.length - 1}
+              step={1}
+              value={scrubActiveIdx}
+              onChange={onScrub}
+              aria-label={t ? t('map_scrub') : 'Scrub radar time'}
+              className="gr-scrub w-full"
+            />
+          </div>
         </div>
       )}
       </div>

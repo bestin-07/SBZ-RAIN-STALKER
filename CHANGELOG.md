@@ -12,6 +12,25 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.44.2] - 2026-09-21 - Gemma Raus just got better: the slider's out of the crosshair's way, and dry reads as dry instead of blank 🎯
+
+*Two more live reports, same day: the slider pill was overlapping the "center on me" button, and dry stretches on the new overlay still looked like nothing was there.*
+
+**What happened**
+
+The slider sat close to the bottom-right corner, the same corner the recenter button lives in — on some screens they crowded each other. Separately, a genuinely dry forecast (which is most of the time) was drawn so faintly on the new overlay that it was easy to mistake for "not working" rather than "correctly showing dry."
+
+**What's new for you**
+
+- **The slider moved up**, clear of the recenter button, so both are easy to tap.
+- **A small tick mark on the slider track now shows exactly where "now" is** — drag past it to see the forecast.
+- **Dry areas on the overlay are a touch more visible now** — still clearly fainter than real rain, but no longer looking like nothing rendered.
+- A small colored dot next to the time label now matches whether you're looking at measured radar or the forecast.
+
+**Nothing about the verdict changed.**
+
+---
+
 ## [2.44.1] - 2026-09-21 - Gemma Raus just got better: the future overlay actually shows up now, and the slider's easier to grab 🎚️
 
 *Two reports on the map slider within days of it shipping: "I don't see anything on the map" while scrubbing forward, and the map rendering incorrectly on some iPhones.*
