@@ -354,6 +354,25 @@ for (const lang of ['de', 'en']) {
       expect(wetHtml).toContain(t('lane_radar', { mm: '0.4' }))
     })
 
+    // Live report (2026-09-24): every gauge in the city read TAWES RR 0.1mm/10min,
+    // gaugeSlotValue() rescales that to 0.15000000000000002 (v2.21.0's ×1.5 slot
+    // conversion) — genuinely BELOW LIGHT_MIN (0.2), so the verdict correctly stays
+    // GO/gold with the s_barely_drizzle wording. But the source line's old plain
+    // `.toFixed(1)` ROUNDED that 0.15 up to the printed "0.2" — visually the exact
+    // LIGHT_MIN boundary — right under a gold headline that hadn't crossed it. The
+    // user read the number, not the color: "i felt it should be blue... still a good
+    // drizzle". The number was lying, not the verdict. Every threshold in gaps.js
+    // sits on a 0.1 boundary, so truncating (not rounding) the display guarantees a
+    // printed value can never claim a boundary the verdict didn't actually cross.
+    it('source line never rounds a sub-threshold reading up to look like it crossed a boundary', () => {
+      const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'a touch of drizzle', weather: null }
+      const html = renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} t={t}
+                   signals={{ ground: 0.1 * 1.5, radar: 0, held: false, updated: Date.now() }} />)
+      expect(html).toContain(t('lane_ground', { mm: '0.1' }))
+      expect(html).not.toContain(t('lane_ground', { mm: '0.2' }))
+    })
+
     // The GO headline is the promoted tagline (status.sub), not a second
     // "GEMMA RAUS" repeating the header's own wordmark directly above it —
     // the biggest of the four "dry" restatements a live screen review found.

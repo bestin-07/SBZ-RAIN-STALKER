@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.44.3] - 2026-09-24 - Gemma Raus just got better: the numbers on screen now agree with the color 🔵
+
+*A live report: "i felt it should be blue now and go anyways, because its not dry per see you know still a good drizzle" — and checking the real data, the drizzle was real. The number was the problem, not the verdict.*
+
+**What happened**
+
+Every rain gauge in the city was genuinely reading a light, steady drizzle — real enough that it should never have been called "dry." The verdict got that part right and correctly stayed on the gold "go" reading, just short of the blue "go anyway" line. But the little readout at the bottom of the screen — the one that shows the exact gauge and radar numbers — was *rounding* that reading up to a number that looked like it had already crossed the blue line. So you saw a number that said "blue" next to a headline that said "gold," and understandably trusted the number.
+
+**What's new for you**
+
+- **The gauge/radar numbers on the source line now always round down, never up.** A reading just short of a color boundary will now print as just short of it — never as the boundary itself — so the number on screen can never disagree with the color above it.
+- No verdict, threshold, or countdown changed. This only fixes what gets printed.
+
+---
+
 ## [2.44.2] - 2026-09-21 - Gemma Raus just got better: the slider's out of the crosshair's way, and dry reads as dry instead of blank 🎯
 
 *Two more live reports, same day: the slider pill was overlapping the "center on me" button, and dry stretches on the new overlay still looked like nothing was there.*

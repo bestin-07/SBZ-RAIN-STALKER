@@ -51,7 +51,13 @@ function SourceLine({ signals, t }) {
   const { ground, radar, held, updated } = signals
   const wet = v => typeof v === 'number' && v >= 0.1
   const dot = v => (v === null || v === undefined ? 'var(--c-muted)' : wet(v) ? 'var(--c-wait)' : 'var(--c-go)')
-  const mm = v => v.toFixed(1)
+  // Truncate, don't round. Every threshold in gaps.js sits on a 0.1 boundary
+  // (0.1/0.2/0.5/1.5) — a plain .toFixed(1) rounds e.g. gaugeSlotValue(0.1)
+  // (0.15000...02, genuinely < LIGHT_MIN) up to the printed "0.2", which reads
+  // as "the light-rain line was crossed" right next to a headline that stayed
+  // gold because it wasn't. Flooring can only ever print LESS than the real
+  // value, never more — so the number can't claim a boundary the verdict didn't.
+  const mm = v => (Math.floor(v * 10) / 10).toFixed(1)
   const showRadar = typeof radar !== 'number' || wet(radar)
 
   return (
