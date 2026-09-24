@@ -330,8 +330,10 @@ for (const lang of ['de', 'en']) {
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).not.toContain(esc(t('ro_status_dry')))
       expect(html).toContain(esc(t('ro_src_radar')))
-      expect(html).not.toContain(esc(t('ro_confidence_label')))
-      expect(html).not.toContain('5/5')
+      // v2.48.2 — the status/confidence row is always laid out (so the chart never
+      // jumps when you start scrolling) but invisible and hidden from screen readers
+      // at rest — still says nothing at "now".
+      expect(html).toMatch(/h-5 invisible" aria-hidden="true"><span class="font-mono text-sm">/)
       // v2.48.1 — "back to now" only once you've scrolled away from now.
       expect(html).not.toContain(esc(t('ro_back_now')))
     })
@@ -344,8 +346,9 @@ for (const lang of ['de', 'en']) {
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
       // Asserted on the status element itself: "Rain"/"Regen" also occurs in the
       // ribbon's aria-label, so a bare substring check can't tell them apart.
-      expect(html).not.toContain(`<span class="font-mono text-sm">${esc(t('ro_status_rain'))}</span>`)
-      expect(html).not.toContain(esc(t('ro_confidence_label')))
+      // At rest the status row is laid out but invisible (v2.48.2): its word sits inside
+      // the hidden row, never as visible text.
+      expect(html).toContain(`h-5 invisible" aria-hidden="true"><span class="font-mono text-sm">${esc(t('ro_status_rain'))}</span>`)
       expect(html).toContain(esc(t('ro_src_radar')))
     })
 

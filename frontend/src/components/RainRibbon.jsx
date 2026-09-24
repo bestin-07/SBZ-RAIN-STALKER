@@ -560,6 +560,14 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
             <div className="flex items-baseline gap-2 min-w-0">
               <span className="font-display font-bold text-xl">{fmtSlotTime(scrubT)}</span>
               <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
+              {/* v2.48.2 — "back to now" lives in this always-present row: its own
+                  row appearing under the chart was the other half of the jump. */}
+              {scrubIdx > 0 && (
+                <button type="button" onClick={backToNow}
+                        className="self-center shrink-0 font-mono text-[10px] tracking-normal border border-border rounded-full px-2 py-0.5 text-primary hover:border-primary transition-colors">
+                  {t('ro_back_now')}
+                </button>
+              )}
             </div>
             <span className="flex items-center gap-1 shrink-0">
               <SourceIcon inRadar={scrubInRadar} />
@@ -573,8 +581,12 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
               under "GO ANYWAY · light drizzle"), and radar-zone confidence at now
               is always full. The headline owns "now"; this row speaks only once
               you scrub to a slot the headline isn't talking about. */}
-          {scrubIdx > 0 && (
-          <div className="flex items-center justify-between gap-2 mt-0.5">
+          {/* v2.48.2 — the row is ALWAYS laid out (fixed h-5), only its contents
+              hide at rest. Mounting it on the first scroll pushed the whole chart
+              down, and back up on "back to now" — the ribbon jumped every time a
+              word appeared (live report). */}
+          <div className={'flex items-center justify-between gap-2 mt-0.5 h-5 ' + (scrubIdx > 0 ? '' : 'invisible')}
+               aria-hidden={scrubIdx > 0 ? undefined : true}>
             {/* "Trocken" at rest already restates what the (promoted) headline
                 and the dry-window bracket both already say — a live screen
                 review counted it as the third of four separate "it's dry"
@@ -605,7 +617,6 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
               <span aria-hidden="true" className="font-mono text-[9px] text-primary">{confPips}/5</span>
             </span>
           </div>
-          )}
         </div>
       )}
 
@@ -725,17 +736,10 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
         </div>
       </div>
 
-      {/* v2.48.1 — the legend row is gone (maintainer: "too many writings"); the
-          guide (?) explains the dot and the ring. "Back to now" only appears once
-          you have actually scrolled away from now, so at rest nothing is drawn here. */}
-      {hasData && scrubIdx > 0 && (
-        <div className="flex items-center px-4 pb-2.5">
-          <button type="button" onClick={backToNow}
-                  className="ml-auto font-mono text-[10px] tracking-normal border border-border rounded-full px-2.5 py-1 text-primary hover:border-primary transition-colors">
-            {t('ro_back_now')}
-          </button>
-        </div>
-      )}
+      {/* v2.48.1 — no legend row (the guide explains the dot and the ring).
+          v2.48.2 — "back to now" moved up into the time row, so nothing under the
+          chart appears or disappears while scrolling; a fixed bottom gap instead. */}
+      {hasData && <div className="h-2.5" aria-hidden="true" />}
     </div>
   )
 }

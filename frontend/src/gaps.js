@@ -763,23 +763,26 @@ export const HOLD_MAX_MS   = 20 * 60 * 1000   // hard ceiling: however jammed th
                                               // gate gets, a calm READING alone releases
                                               // after this. See the valve below.
 
+// What the hold's two clocks read (v2.48.0). `calm` — the NOW reading is below the light
+// band — gates the fast, evidence-backed release, unchanged in meaning. The reading is the
+// gauge when one is in reach, and the radar-decided NOW value when none is (gauge
+// locality) — not the model-only ground value.
+// `easing` — what starts the HOLD_MAX_MS valve. v2.48.2: any reading below real rain
+// (LIGHT_MAX), i.e. whenever the hold is actually suppressing a GO or GO ANYWAY. It used
+// to need < LIGHT_MIN (v2.48.0 added drizzle days), and a faint drizzle surfaced from the
+// radar image reads exactly LIGHT_MIN — so on an on-and-off drizzle afternoon every flicker
+// reset the clock and STUCK INSIDE outlived the rain indefinitely (live, 2026-09-24,
+// "is this stay inside gonna last forever?"). Now a hold can outlast the real rain by at
+// most HOLD_MAX_MS: it may DELAY good news, never cancel it.
+export function holdReadings({ gaugePresent, groundPrecip, nowPrecip }) {
+  const now = typeof nowPrecip === 'number' ? nowPrecip : Infinity
+  const reading = gaugePresent ? groundPrecip : now
+  return { calm: reading < LIGHT_MIN, easing: reading < LIGHT_MAX }
+}
+
 // Accumulation AND peak, because they fail differently: three slots of 0.09 average out
 // dry but are a continuous drizzle, and one 0.4 spike inside an otherwise dry window is
 // a shower crossing your route. A usable window has neither.
-// What the hold's two clocks read (v2.48.0). `calm` — the NOW reading is below the light
-// band — gates the fast, evidence-backed release, unchanged in meaning. `easing` — what
-// starts the HOLD_MAX_MS valve — additionally counts an afternoon that is drizzle the
-// whole way (drizzleOnlyMin): that is GO ANYWAY weather now, and without it the valve
-// could never start while the drizzle lasted, so the hold sat on "confirming" all
-// afternoon (live, 2026-09-24). The reading is the gauge when one is in reach, and the
-// radar-decided NOW value when none is (gauge locality) — not the model-only ground value.
-export function holdReadings({ gaugePresent, groundPrecip, nowPrecip, drizzleDay }) {
-  const now = typeof nowPrecip === 'number' ? nowPrecip : Infinity
-  const reading = gaugePresent ? groundPrecip : now
-  const calm = reading < LIGHT_MIN
-  return { calm, easing: calm || (drizzleDay != null && now < LIGHT_MAX) }
-}
-
 export function dryWindowOpen(nowcast, nowSec, windowMin = GO_MIN_WINDOW) {
   if (!nowcast?.times?.length) return false   // no radar → absence cannot be corroborated
   const lim = nowSec + windowMin * 60
@@ -1264,7 +1267,9 @@ export function getStatus(
       sub: t(trend.releaseOk ? 's_stuck_clearing' : 's_stuck_softening'),
       weather: weatherNote,
       moto: false,
-      notice: { head: t('n_raining'), sub: t('n_stuck_softening') },
+      // v2.48.2: the reading here is calm (only a go/light candidate is ever held), so the
+      // popup must not say "Raining" over a dry map — it names the hold instead.
+      notice: { head: t('n_easing'), sub: t('n_stuck_softening') },
     }
   }
 

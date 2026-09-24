@@ -2711,26 +2711,39 @@ describe('"it gets much lighter" only after something heavier (v2.48.0)', () => 
   })
 })
 
-describe('holdReadings — the hold can release a drizzle day (v2.48.0)', () => {
-  it('THE LIVE CASE: gauge at 0.45 all afternoon, drizzle the whole way → the valve can start', () => {
-    expect(holdReadings({ gaugePresent: true, groundPrecip: 0.45, nowPrecip: 0.45, drizzleDay: 150 }))
+describe('holdReadings — a hold can outlast the real rain by at most HOLD_MAX_MS (v2.48.0/v2.48.2)', () => {
+  it('THE LIVE CASE (v2.48.0): gauge at 0.45 all afternoon → the valve can start', () => {
+    expect(holdReadings({ gaugePresent: true, groundPrecip: 0.45, nowPrecip: 0.45 }))
       .toEqual({ calm: false, easing: true })
   })
 
-  it('the same gauge without a drizzle day → still not easing (real rain ahead)', () => {
-    expect(holdReadings({ gaugePresent: true, groundPrecip: 0.45, nowPrecip: 0.45, drizzleDay: null }))
-      .toEqual({ calm: false, easing: false })
+  // INTENT CHANGE (v2.48.2): "is this stay inside gonna last forever?" A faint drizzle
+  // surfaced from the radar image reads exactly LIGHT_MIN, which used to reset the valve
+  // every time it flickered. Any reading below real rain now keeps the valve running.
+  it('THE LIVE CASE (v2.48.2): a surfaced faint drizzle (exactly LIGHT_MIN) keeps the valve running', () => {
+    expect(holdReadings({ gaugePresent: false, groundPrecip: 0, nowPrecip: LIGHT_MIN }))
+      .toEqual({ calm: false, easing: true })
+  })
+
+  it('real rain (≥ LIGHT_MAX) stops the valve — nothing to release into', () => {
+    expect(holdReadings({ gaugePresent: true, groundPrecip: LIGHT_MAX, nowPrecip: LIGHT_MAX }).easing).toBe(false)
   })
 
   it('no gauge in reach → the radar-decided NOW value is the reading, not the model-only ground', () => {
-    expect(holdReadings({ gaugePresent: false, groundPrecip: 0.4, nowPrecip: 0.05, drizzleDay: null }))
+    expect(holdReadings({ gaugePresent: false, groundPrecip: 0.4, nowPrecip: 0.05 }))
       .toEqual({ calm: true, easing: true })
-    expect(holdReadings({ gaugePresent: false, groundPrecip: 0, nowPrecip: 0.6, drizzleDay: null }))
+    expect(holdReadings({ gaugePresent: false, groundPrecip: 0, nowPrecip: 0.6 }))
       .toEqual({ calm: false, easing: false })
   })
 
   it('an unknown NOW value is never calm', () => {
-    expect(holdReadings({ gaugePresent: false, groundPrecip: 0, nowPrecip: null, drizzleDay: 150 }))
+    expect(holdReadings({ gaugePresent: false, groundPrecip: 0, nowPrecip: null }))
       .toEqual({ calm: false, easing: false })
+  })
+
+  it('a held BLEIB DRIN popup does not say "Raining" over a calm reading', () => {
+    const s = getStatus(0.05, [], {}, k => k, NOON, { heldStuck: true })
+    expect(s.type).toBe('stuck')
+    expect(s.notice.head).toBe('n_easing')
   })
 })

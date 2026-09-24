@@ -17,6 +17,8 @@ import UpdateNote from './components/UpdateNote'
 
 // Official GeoSphere/ZAMG severe-weather warning hazard types (warntypid 1-7).
 const WARN_EMOJI = { 1: '💨', 2: '🌧', 3: '❄️', 4: '🧊', 5: '⛈', 6: '🥵', 7: '🥶' }
+// Stamped on the BLEIB DRIN hold so a hold never outlives the rules that made it (v2.48.2).
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'
 // Gewitter/Thunderstorm. Kept in the served data (push + the RED headline override
 // still consult it) but suppressed from the DISMISSIBLE BANNER LIST — the always-on
 // `regionalThunder` note already tells the user a thunderstorm is in the region, and
@@ -985,7 +987,11 @@ export default function App() {
         // its own initiative, so it has to be EARNED: a usable 45-min window on radar,
         // a gauge that agrees the rain has stopped, held across two refreshes. Every
         // other transition — including every escalation — is untouched and immediate.
-        const holdRec = nearStory && story?.stuckHold ? story.stuckHold : null
+        // v2.48.2: a hold is a promise made under ONE version's rules. One written before
+        // an update (live: a STUCK from the old drizzle-afternoon rule, carried into
+        // v2.48.0, which would never have said STUCK) is not continuity — drop it.
+        const holdRec = nearStory && story?.stuckHold && story.stuckHold.v === APP_VERSION
+          ? story.stuckHold : null
         // `easing` = the NOW reading is no longer real rain. `releaseOk` adds the radar's
         // agreement that the calm is a WINDOW rather than a lull. With no nowcast at all
         // we cannot ask that question — and an unavailable witness must never be read as
@@ -998,7 +1004,7 @@ export default function App() {
         const usableWindow = hasUsableWindow(gapTimeline.times, gapPrecips, nowSec)
         const drizzleDay = usableWindow ? null : drizzleOnlyMin(gapTimeline.times, gapPrecips, nowSec)
         const { calm, easing } = holdReadings({
-          gaugePresent: stationData !== null, groundPrecip, nowPrecip: displayPrecip, drizzleDay,
+          gaugePresent: stationData !== null, groundPrecip, nowPrecip: displayPrecip,
         })
         const releaseOk = calm && (!nowcast || dryWindowOpen(nowcast, nowSec))
         const settledHold = settleStuckHold(holdRec, { releaseOk, easing, nowMs })
@@ -1025,7 +1031,7 @@ export default function App() {
         // dropping the hold, so a blip can't hand back the flip it was added to stop.
         // Its own ts keeps ageing, so it still goes stale on schedule.
         const stuckHold = settledType === 'stuck'
-          ? { ts: nowMs, calmSince: settledHold.calmSince, easedSince: settledHold.easedSince }
+          ? { ts: nowMs, calmSince: settledHold.calmSince, easedSince: settledHold.easedSince, v: APP_VERSION }
           : settledType === 'loading' ? holdRec : null
 
         try {

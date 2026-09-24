@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.48.2] - 2026-09-24 - Gemma Raus just got better: "stay inside" knows when to let go 🚪
+
+*"Is this stay inside gonna last forever?" It shouldn't have lasted as long as it did.*
+
+**What happened**
+
+After heavy rain, Gemma Raus waits a little before saying "go", so it doesn't flip back and forth. But on an on-and-off drizzly afternoon, every faint speck of drizzle restarted that wait, so "stay inside" could hang on long after the real rain was gone. It could even carry over from before an app update, and the map said "Raining" while the sky was dry.
+
+**What's new for you**
+
+- **"Stay inside" lets go within 20 minutes** of the real rain ending, even if a light drizzle keeps coming and going.
+- **Fresh start after every update:** an old "stay inside" never carries over into a new version.
+- **Honest map label:** while we wait, your spot on the map says "Easing", not "Raining".
+- **A steadier chart:** the rain chart no longer jumps up and down when you scroll through it.
+
+---
+
 ## [2.48.1] - 2026-09-24 - Gemma Raus just got better: less to read, same answer ✂️
 
 *"Too many writings." Fair. We counted seven bits of text above the map, and three of them said something already on screen.*

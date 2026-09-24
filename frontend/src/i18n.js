@@ -152,7 +152,8 @@ export const translations = {
     // brauchbares Fenster bestätigt. Erst wenn es hält, wechselt die Überschrift.
     s_stuck_softening: ['Es lässt nach — noch keine verlässliche Lücke', 'Wird schwächer, aber noch kein sicheres Fenster', 'Der Regen beruhigt sich langsam — noch kurz drinbleiben'],
     s_stuck_clearing: ['Sieht nach Aufklaren aus — wir bestätigen es gerade', 'Gleich könnte sich eine Lücke auftun — noch kurz abwarten', 'Fast geschafft: trockenes Fenster in Sicht, wird noch geprüft'],
-    n_stuck_softening: 'lässt nach, noch keine verlässliche Lücke',
+    n_stuck_softening: 'noch keine verlässliche Lücke',
+    n_easing: 'Lässt nach',
     update_note_title: 'Gemma Raus ist gerade besser geworden ✨',
     // war: „wo über Salzburg es gerade regnet" — falsche Wortstellung im Nebensatz.
     update_note_body: 'Die App sieht jetzt, aus welcher Richtung Regen aufzieht, wo es über Salzburg gerade regnet oder aufklart, und sagt ehrlich, wie sicher jede Angabe ist — für frühere Warnungen und verlässlichere Countdowns. Danke, dass du von Anfang an dabei bist und Feedback gibst — genau das macht die App besser. 💙',
@@ -523,7 +524,8 @@ export const translations = {
     // confirmed yet. The headline only changes once the calm actually holds.
     s_stuck_softening: ['easing off — but no reliable gap yet', 'getting lighter, still no window worth trusting', 'the rain is settling down — sit tight a moment'],
     s_stuck_clearing: ['looks like it\'s clearing — just confirming it holds', 'a window may be opening — give it a minute', 'nearly there: a dry stretch is in sight, checking it sticks'],
-    n_stuck_softening: 'easing, no reliable gap yet',
+    n_stuck_softening: 'no reliable gap yet',
+    n_easing: 'Easing',
     update_note_title: 'Gemma Raus just got better ✨',
     update_note_body: "The app now sees which direction rain is coming from, where over Salzburg it's raining or clearing, and says honestly how sure each claim is — for earlier heads-ups and steadier countdowns. Thank you for being an early user and sharing feedback — that's exactly what makes it better. 💙",
     unsettled_note: 'unsettled air — showers can form fast today, windows may be short',
