@@ -419,6 +419,24 @@ def _parse_grid_response(data):
     return {"times": times, "cells": cells}
 
 
+def _grid_timeline(grid, lat, lon, max_km=1.5):
+    """(times, precips) of the grid cell nearest (lat, lon), or None if there is no cell
+    within max_km. The per-point timeseries endpoint returns exactly this cell (verified
+    live 2026-09-24: all 121 overlapping values and every timestamp identical), so the
+    one grid call can stand in for the 11 per-point calls."""
+    import math  # local import: keeps this extractable standalone by test_logic.py
+    cells = (grid or {}).get("cells") or []
+    times = (grid or {}).get("times") or []
+    if not cells or not times:
+        return None
+    kx = 111.2 * math.cos(math.radians(lat))
+    best = min(cells, key=lambda c: ((c["lat"] - lat) * 111.2) ** 2 + ((c["lon"] - lon) * kx) ** 2)
+    d = math.hypot((best["lat"] - lat) * 111.2, (best["lon"] - lon) * kx)
+    if d > max_km:
+        return None
+    return list(times), list(best["precips"])
+
+
 async def fetch_nowcast_grid(client: httpx.AsyncClient):
     r = await client.get(
         f"{GEOSPHERE}/grid/forecast/nowcast-v1-15min-1km",
@@ -719,7 +737,10 @@ async def fetch_timeline(client: httpx.AsyncClient, point: dict):
 # 429 rate limit and starved the served nowcast → false "rain then dry" retractions.
 # TTL < the 300 s cycle, so each cycle still gets FRESH data but reuses within the cycle.
 _nowcast_cache = {}
-_NOWCAST_TTL = 120
+# Outlives one cycle's own reads (the push check runs ~2½ min in and would otherwise
+# re-fetch all 11 points) but expires before the next 5-min cycle reads it, even when
+# that cycle's grid fetch fails and its seeding came late in the previous one.
+_NOWCAST_TTL = 240
 
 async def _fetch_timeline_sourced(client: httpx.AsyncClient, point: dict):
     """Like fetch_timeline but also returns the source string ('geosphere'|'open_meteo').
@@ -897,15 +918,16 @@ def check_accuracy_health(now_ts: int):
                   f" → threshold {old_th}→{new_th}")
 
 
-def save_last_good_ambient(points: list):
-    """Persist the last successful ambient snapshot so a restart that lands mid-outage
-    (Open-Meteo down right as Railway cycles the container) still has a real snapshot
-    to serve instead of falling into the null-weather skeleton (see run_cycle)."""
+def save_last_good_ambient(points: list, ts: int):
+    """Persist the last complete ambient snapshot (weather + ground + nowcast + AROME)
+    so a restart serves real data at once. v2.46.1: saved AFTER enrichment, with its
+    ts — it used to be saved before ground/nowcast were attached, so every deploy
+    served ~2 min of snapshot with neither and clients fell back to per-IP calls."""
     with get_db() as (_, cur):
         cur.execute(
             "INSERT INTO settings (key, value) VALUES ('last_good_ambient', %s)"
             " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-            (json.dumps(points),),
+            (json.dumps({"ts": ts, "points": points}),),
         )
 
 
@@ -914,6 +936,33 @@ def load_last_good_ambient():
         cur.execute("SELECT value FROM settings WHERE key = 'last_good_ambient'")
         row = cur.fetchone()
     return json.loads(row[0]) if row else None
+
+
+# A restored gauge reading / nowcast older than this is dropped rather than served as
+# current (the client's own stale cap on timelines is also 20 min). Weather fields are
+# kept at any age — they only feed comfort notes and are replaced on the first cycle.
+RESTORE_FRESH_S = 1200
+_TIME_SENSITIVE = ("ground", "ground_ts", "nowcast", "arome")
+
+
+def _restore_ambient(saved, now_ts):
+    """Saved snapshot → (points, ts); (None, 0) if nothing usable. Accepts the pre-v2.46.1
+    bare-list format (no ts → treated as stale)."""
+    if isinstance(saved, list):
+        points, ts = saved, 0
+    elif isinstance(saved, dict) and isinstance(saved.get("points"), list):
+        points, ts = saved["points"], int(saved.get("ts") or 0)
+    else:
+        return None, 0
+    points = [dict(p) for p in points if isinstance(p, dict)]
+    if not points:
+        return None, 0
+    if now_ts - ts > RESTORE_FRESH_S:
+        for p in points:
+            for k in _TIME_SENSITIVE:
+                p.pop(k, None)
+        ts = 0
+    return points, ts
 
 
 def save_last_good_daily(daily: dict, fetched_at: int):
@@ -1418,6 +1467,7 @@ def _filter_virga(times, precips, ptime, pprob):
 async def run_cycle():
     now_ts = int(datetime.now(timezone.utc).timestamp())
     now_dt = datetime.now(timezone.utc)
+    t0 = time.monotonic()
 
     async with httpx.AsyncClient() as client:
         # Ambient weather snapshot for the grid (one batched Open-Meteo call) → served
@@ -1435,12 +1485,9 @@ async def run_cycle():
         except Exception as e:
             print(f"[ambient] {e}")
             amb = None
+        skeleton = False
         if amb:
             new_points = amb
-            try:
-                save_last_good_ambient(amb)
-            except Exception as e:
-                print(f"[ambient] save_last_good failed: {e}")
         elif _ambient.get("points"):
             # Keep the previous weather fields. Copies, so enriching them below never
             # mutates the list clients are being served mid-cycle.
@@ -1458,6 +1505,27 @@ async def run_cycle():
                  "cape": None, "uv": None, "ptime": [], "pprob": [], "mtime": [], "mprecip": []}
                 for p in POINTS
             ]
+            skeleton = True
+
+        # Whole-area nowcast grid (v2.44.0), fetched FIRST since v2.46.1: the per-point
+        # nowcast IS the nearest grid cell (verified live — every value and timestamp
+        # identical), so seeding the per-point cache from it replaces 11 GeoSphere
+        # calls per cycle with none. That headroom is what lets the cycle run on true
+        # 5-min ticks inside GeoSphere's 240 req/h. A failed grid seeds nothing and the
+        # per-point calls below run exactly as before; the previous grid stands for the
+        # scrubber rather than blanking it for one bad cycle.
+        try:
+            grid = await fetch_nowcast_grid(client)
+        except Exception as e:
+            print(f"[nowcast-grid] {e}")
+            grid = None
+        if grid:
+            _ambient["nowcastGrid"] = grid
+            seeded_at = datetime.now(timezone.utc).timestamp()
+            for point in POINTS:
+                tl = _grid_timeline(grid, point["lat"], point["lon"])
+                if tl:
+                    _nowcast_cache[point["name"]] = (seeded_at, (tl[0], tl[1], "geosphere"))
 
         # Store new forecasts for all points × horizons
         forecast_rows = []
@@ -1513,16 +1581,6 @@ async def run_cycle():
             print(f"[warnings] {e}")
             severe_warnings = []
 
-        # Whole-area future radar grid (v2.44.0) — same "one query represents the
-        # area" precedent as city_ground/severe_warnings above. Kept on failure
-        # (previous grid stands) rather than blanking the scrubber for one bad cycle.
-        try:
-            grid = await fetch_nowcast_grid(client)
-            if grid:
-                _ambient["nowcastGrid"] = grid
-        except Exception as e:
-            print(f"[nowcast-grid] {e}")
-
         # Five-day outlook (v2.30) — city centre. Served, never consulted: nothing
         # in the verdict, the push logic or the accuracy verification reads this.
         # On failure (or inside the TTL) the previous snapshot stands rather than
@@ -1562,6 +1620,12 @@ async def run_cycle():
                 pt["arome"] = ar
         _ambient["points"] = new_points   # one swap: never served half-built
         _ambient["ts"] = now_ts
+        _ambient["build_s"] = round(time.monotonic() - t0, 1)   # cycle start → swap
+        if not skeleton:   # a null-weather skeleton must not overwrite the last good weather
+            try:
+                save_last_good_ambient(new_points, now_ts)
+            except Exception as e:
+                print(f"[ambient] save_last_good failed: {e}")
 
         # Convective-initiation watch: compare each point's "wet around now" against
         # last cycle. Several dry→wet flips + real CAPE = cells forming over the basin
@@ -1653,13 +1717,20 @@ async def run_cycle():
             print(f"[warnings] push failed: {e}")
 
 
+# Fixed 5-min ticks: the wait counts from when a cycle STARTED. A flat sleep(300) after
+# a ~150 s cycle made the real cadence ~7½ min (measured live 2026-09-24).
+CYCLE_S = 300
+CYCLE_MIN_GAP_S = 30   # an overrunning cycle still leaves upstream APIs a breather
+
+
 async def scheduler():
     while True:
+        started = time.monotonic()
         try:
             await run_cycle()
         except Exception as e:
             print(f"[scheduler] error: {e}")
-        await asyncio.sleep(300)
+        await asyncio.sleep(max(CYCLE_MIN_GAP_S, CYCLE_S - (time.monotonic() - started)))
 
 
 # ---------------------------------------------------------------------------
@@ -1670,10 +1741,13 @@ async def scheduler():
 async def lifespan(app: FastAPI):
     init_db()
     try:
-        restored = load_last_good_ambient()
+        restored, restored_ts = _restore_ambient(load_last_good_ambient(),
+                                                 int(datetime.now(timezone.utc).timestamp()))
         if restored:
             _ambient["points"] = restored
-            print(f"[ambient] restored last-good snapshot from DB ({len(restored)} points)")
+            _ambient["ts"] = restored_ts
+            print(f"[ambient] restored last-good snapshot from DB ({len(restored)} points, "
+                  f"{'with' if restored_ts else 'without'} ground/nowcast)")
     except Exception as e:
         print(f"[ambient] restore failed: {e}")
     try:

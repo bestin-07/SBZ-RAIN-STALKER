@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { formatClock } from '../time'
+import { gridLattice } from '../gridLattice'
 
 function fmtClock(unix) {
   return formatClock(new Date(unix * 1000))
@@ -480,20 +481,18 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // there — but the layer is genuinely faint on a genuinely dry forecast,
   // which is most of the time; that's a true reading, not a bug.
   const buildGridDataUrl = (cells, gi) => {
-    const meta = gridMetaRef.current
-    if (!meta || !gridCanvasRef.current) return null
-    const { lats, lons } = meta
+    const grid = gridMetaRef.current
+    if (!grid || !gridCanvasRef.current) return null
     const canvas = gridCanvasRef.current
-    canvas.width = lons.length
-    canvas.height = lats.length
+    canvas.width = grid.cols
+    canvas.height = grid.rows
     const ctx = canvas.getContext('2d')
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     if (gi >= 0 && cells) {
-      const lonIdx = new Map(lons.map((v, i) => [v, i]))
-      const latIdx = new Map(lats.map((v, i) => [v, i]))
-      for (const cell of cells) {
-        const col = lonIdx.get(cell.lon)
-        const row = latIdx.get(cell.lat)
+      for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i]
+        const col = grid.colOf[i]
+        const row = grid.rowOf[i]
         if (col === undefined || row === undefined) continue
         const p = cell.precips[gi]
         const wet = typeof p === 'number' && p >= 0.1
@@ -506,7 +505,7 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
         // Canvas rows grow downward; latitude grows upward (north = highest
         // lat, drawn at the TOP of the image) — flip the row so the raster
         // reads right-way-up once stretched over `bounds`.
-        ctx.fillRect(col, lats.length - 1 - row, 1, 1)
+        ctx.fillRect(col, grid.rows - 1 - row, 1, 1)
       }
     }
     return canvas.toDataURL('image/png')
@@ -555,18 +554,10 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       try { mapRef.current.removeLayer(gridOverlayRef.current) } catch {}
       gridOverlayRef.current = null
     }
-    if (!cells || !cells.length) { gridMetaRef.current = null; return }
-    const lats = [...new Set(cells.map(c => c.lat))].sort((a, b) => a - b)
-    const lons = [...new Set(cells.map(c => c.lon))].sort((a, b) => a - b)
-    // Half a cell's own spacing, so the raster's outer edge lines up with the
-    // edge of the outermost cell rather than stopping dead at its centre.
-    const dLat = lats.length > 1 ? (lats[1] - lats[0]) : 0.01
-    const dLon = lons.length > 1 ? (lons[1] - lons[0]) : 0.01
-    const bounds = L.latLngBounds(
-      [lats[0] - dLat / 2, lons[0] - dLon / 2],
-      [lats[lats.length - 1] + dLat / 2, lons[lons.length - 1] + dLon / 2]
-    )
-    gridMetaRef.current = { lats, lons }
+    const lattice = gridLattice(cells)
+    if (!lattice) { gridMetaRef.current = null; return }
+    const bounds = L.latLngBounds(lattice.bounds[0], lattice.bounds[1])
+    gridMetaRef.current = lattice
     if (!gridCanvasRef.current) gridCanvasRef.current = document.createElement('canvas')
     const overlay = L.imageOverlay(buildGridDataUrl(cells, -1) || '', bounds, {
       opacity: 0, interactive: false, zIndex: 350,

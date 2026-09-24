@@ -43,6 +43,8 @@ NS = _extract({
     "DAILY_FORECAST_DAYS", "DAILY_TTL_S",
     "_parse_grid_response", "GRID_BBOX",
     "_tawes_obs_ts",
+    "_grid_timeline", "_restore_ambient", "RESTORE_FRESH_S", "_TIME_SENSITIVE",
+    "CYCLE_S", "CYCLE_MIN_GAP_S", "_NOWCAST_TTL",
 })
 # _extract compiles functions without main.py's imports; _tawes_obs_ts resolves these
 # from its globals (this dict) at call time.
@@ -265,6 +267,109 @@ class TestAmbientSnapshot(unittest.TestCase):
         fn = _main_fn("run_cycle")
         self.assertTrue(self._assign_lines(fn, "ground_ts", "pt"),
                         "ground_ts must be served next to ground so its age is visible")
+
+
+def _call_lines(fn, name):
+    return [n.lineno for n in ast.walk(fn)
+            if isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", None)) == name]
+
+
+class TestGridStandsInForPoints(unittest.TestCase):
+    """v2.46.1: one grid call replaces the 11 per-point nowcast calls (verified live:
+    the per-point series IS the nearest grid cell, every value and timestamp)."""
+
+    GRID = {"times": [100, 1000], "cells": [
+        {"lat": 47.800, "lon": 13.040, "precips": [0.1, 0.2]},
+        {"lat": 47.809, "lon": 13.040, "precips": [0.5, 0.6]},
+        {"lat": 47.800, "lon": 13.053, "precips": [0.9, 1.0]},
+    ]}
+
+    def test_picks_the_nearest_cell(self):
+        f = NS["_grid_timeline"]
+        self.assertEqual(f(self.GRID, 47.8085, 13.041), ([100, 1000], [0.5, 0.6]))
+        self.assertEqual(f(self.GRID, 47.8001, 13.052), ([100, 1000], [0.9, 1.0]))
+
+    def test_outside_the_grid_is_none_not_a_far_cell(self):
+        self.assertIsNone(NS["_grid_timeline"](self.GRID, 47.90, 13.04))
+
+    def test_no_grid_is_none(self):
+        f = NS["_grid_timeline"]
+        for g in (None, {}, {"times": [], "cells": []}, {"times": [1], "cells": []}):
+            self.assertIsNone(f(g, 47.8, 13.04))
+
+    def test_returns_copies(self):
+        times, precips = NS["_grid_timeline"](self.GRID, 47.8, 13.04)
+        precips.append(9)
+        self.assertEqual(self.GRID["cells"][0]["precips"], [0.1, 0.2])
+
+    def test_grid_is_read_before_the_per_point_loop(self):
+        fn = _main_fn("run_cycle")
+        grid = _call_lines(fn, "fetch_nowcast_grid")
+        point = _call_lines(fn, "_fetch_timeline_sourced")
+        self.assertEqual(len(grid), 1)
+        self.assertLess(grid[0], min(point),
+                        "the grid must seed the per-point cache before the per-point loop "
+                        "runs, or all 11 GeoSphere calls come back")
+
+
+class TestCycleCadence(unittest.TestCase):
+    """v2.46.1: a flat sleep(300) after a ~150 s cycle made the real cadence ~7½ min."""
+
+    def test_fixed_ticks(self):
+        self.assertEqual(NS["CYCLE_S"], 300)
+        self.assertGreater(NS["CYCLE_MIN_GAP_S"], 0)
+        fn = _main_fn("scheduler")
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "sleep"
+                    and node.args and isinstance(node.args[0], ast.Constant)):
+                self.fail("scheduler sleeps a constant again — the wait must count from "
+                          "the cycle's START (CYCLE_S - elapsed)")
+
+    def test_nowcast_cache_spans_a_cycle_but_not_two(self):
+        # Push check runs ~150 s into the cycle; the next cycle starts 300 s after this
+        # one did, and its seeding may itself come up to ~45 s after its start.
+        self.assertGreaterEqual(NS["_NOWCAST_TTL"], 180)
+        self.assertLessEqual(NS["_NOWCAST_TTL"], 250)
+
+
+class TestRestoreAmbient(unittest.TestCase):
+    """v2.46.1: the snapshot is saved complete (after enrichment) and a restart serves
+    it at once — but never a stale gauge reading or timeline as if it were current."""
+
+    PT = {"name": "altstadt", "temp": 15, "ground": 0.6, "ground_ts": 1000,
+          "nowcast": {"times": [1], "precips": [0.1]}, "arome": {"times": [], "precips": []}}
+
+    def test_fresh_snapshot_restores_whole(self):
+        pts, ts = NS["_restore_ambient"]({"ts": 10_000, "points": [self.PT]}, 10_000 + 300)
+        self.assertEqual(ts, 10_000)
+        self.assertEqual(pts[0]["ground"], 0.6)
+        self.assertIn("nowcast", pts[0])
+
+    def test_stale_snapshot_drops_time_sensitive_fields_keeps_weather(self):
+        now = 10_000 + NS["RESTORE_FRESH_S"] + 1
+        pts, ts = NS["_restore_ambient"]({"ts": 10_000, "points": [self.PT]}, now)
+        self.assertEqual(ts, 0)
+        self.assertEqual(pts[0]["temp"], 15)
+        for k in NS["_TIME_SENSITIVE"]:
+            self.assertNotIn(k, pts[0])
+        self.assertIn("ground", self.PT, "must not mutate the saved object")
+
+    def test_legacy_bare_list_is_treated_as_stale(self):
+        pts, ts = NS["_restore_ambient"]([self.PT], 10_000)
+        self.assertEqual(ts, 0)
+        self.assertNotIn("ground", pts[0])
+
+    def test_nothing_usable(self):
+        for saved in (None, {}, {"points": []}, "x", [None]):
+            self.assertEqual(NS["_restore_ambient"](saved, 1), (None, 0), saved)
+
+    def test_saved_after_the_swap(self):
+        fn = _main_fn("run_cycle")
+        save = _call_lines(fn, "save_last_good_ambient")
+        swap = TestAmbientSnapshot()._assign_lines(fn, "points", "_ambient")
+        self.assertEqual(len(save), 1)
+        self.assertGreater(save[0], swap[0],
+                           "saving before enrichment persists a snapshot with no ground/nowcast")
 
 
 class TestTawesTimestamp(unittest.TestCase):

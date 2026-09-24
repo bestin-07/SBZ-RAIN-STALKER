@@ -12,6 +12,26 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.46.1] - 2026-09-24 - Gemma Raus just got better: the forecast on the map finally shows up, and the data is fresher 🗺️
+
+*"When I slide the radar into nowcast, nothing is visible." You were right, and it had never worked. We'd blamed dry weather twice.*
+
+**What happened**
+
+The rain forecast for the map comes as a grid of 1 km squares, and that grid is very slightly tilted compared to a normal map. Our drawing code expected perfectly straight rows, so it spread the squares so thinly that nothing was left to see, even during real rain.
+
+We also found our server was refreshing every 7½ minutes, not every 5, and that for about two minutes after each update of the app it had no rain gauge or radar data to hand out.
+
+**What's new for you**
+
+- **Slide the expanded map forward and you now see where the rain is heading** over the next couple of hours.
+- **Fresher numbers:** the server now really refreshes every 5 minutes. It also asks the weather service for less than half as much as before, so it stays well clear of their limits.
+- **No gap after updates:** the app keeps its last good gauge and radar readings across restarts, and throws them away if they're too old to trust.
+
+Nothing about how Gemma Raus decides has changed.
+
+---
+
 ## [2.46.0] - 2026-09-24 - Gemma Raus just got better: one screen, one answer 🎯
 
 *Your screenshot said it best: "Rain" at the top, "light drizzle" in the headline, "Light rain" under the chart, and a rain gauge reading of 0.0 as the only proof. Four ways of saying one thing, and the proof pointed the other way.*
