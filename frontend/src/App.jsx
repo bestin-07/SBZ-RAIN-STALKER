@@ -1029,6 +1029,9 @@ export default function App() {
         // rather than borrowing the radar's number and implying a measurement.
         setSignals({
           ground: stationData !== null ? groundPrecip : null,
+          // The gauge's own measurement time — only when the printed ground number IS
+          // the gauge's (groundPrecip is max(model, gauge); a model value has no such age).
+          groundAt: stationData !== null && stationPrecip >= omForNow ? (stationData.ts ?? null) : null,
           radar: typeof rawNowSlot === 'number' ? rawNowSlot : null,
           held: settledHold.holding,
           updated: nowMs,

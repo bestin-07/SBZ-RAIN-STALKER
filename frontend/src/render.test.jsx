@@ -373,6 +373,24 @@ for (const lang of ['de', 'en']) {
       expect(html).not.toContain(t('lane_ground', { mm: '0.2' }))
     })
 
+    // v2.45.0: the gauge reading is a 10-min sum, published late and held for a 5-min
+    // cycle — "ground 0.6 mm" in Itzling on 2026-09-24 described a shower that had
+    // already passed. The line now says how old the reading is when the backend
+    // serves the gauge's own timestamp, and stays as before when it doesn't.
+    it('source line shows how old the gauge reading is, when known', () => {
+      const status = { type: 'wait', headline: 'NOCH 17 MIN', sub: 'x', weather: null }
+      const nowS = Math.floor(Date.now() / 1000)
+      const aged = renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} t={t}
+                   signals={{ ground: 0.9, groundAt: nowS - 14 * 60, radar: 0, held: false, updated: Date.now() }} />)
+      expect(aged).toContain(t('lane_ground_age', { mm: '0.9', min: 14 }))
+
+      const unknown = renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} t={t}
+                   signals={{ ground: 0.9, groundAt: null, radar: 0, held: false, updated: Date.now() }} />)
+      expect(unknown).toContain(t('lane_ground', { mm: '0.9' }))
+    })
+
     // The GO headline is the promoted tagline (status.sub), not a second
     // "GEMMA RAUS" repeating the header's own wordmark directly above it —
     // the biggest of the four "dry" restatements a live screen review found.

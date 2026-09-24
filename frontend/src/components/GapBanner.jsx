@@ -48,7 +48,7 @@ const COLORS = {
 // to a wet radar, which is precisely what this line exists to explain.
 function SourceLine({ signals, t }) {
   if (!signals) return null
-  const { ground, radar, held, updated } = signals
+  const { ground, groundAt, radar, held, updated } = signals
   const wet = v => typeof v === 'number' && v >= 0.1
   const dot = v => (v === null || v === undefined ? 'var(--c-muted)' : wet(v) ? 'var(--c-wait)' : 'var(--c-go)')
   // Truncate, don't round. Every threshold in gaps.js sits on a 0.1 boundary
@@ -59,12 +59,19 @@ function SourceLine({ signals, t }) {
   // value, never more — so the number can't claim a boundary the verdict didn't.
   const mm = v => (Math.floor(v * 10) / 10).toFixed(1)
   const showRadar = typeof radar !== 'number' || wet(radar)
+  // The gauge reading is a 10-min sum, published late and held for a 5-min cycle —
+  // often 10–20 min old by the time it's on screen. Saying so is the honest version
+  // of "ground 0.6 mm": the user can see why it may not match the sky right now.
+  const groundAge = typeof groundAt === 'number'
+    ? Math.max(1, Math.round((Date.now() / 1000 - groundAt) / 60)) : null
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-2.5 border-t border-border">
       <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
         <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(ground) }} />
-        {typeof ground === 'number' ? t('lane_ground', { mm: mm(ground) }) : t('lane_ground_none')}
+        {typeof ground !== 'number' ? t('lane_ground_none')
+          : groundAge != null ? t('lane_ground_age', { mm: mm(ground), min: groundAge })
+          : t('lane_ground', { mm: mm(ground) })}
       </span>
       {showRadar && (
         <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">

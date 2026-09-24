@@ -265,9 +265,11 @@ async function tawesNearestIds(lat, lon, n = 6) {
   return candidates.includes(ANCHOR_STATION_ID) ? candidates : [...candidates, ANCHOR_STATION_ID]
 }
 
-// Returns { precip, temp } — both from actual sensor readings, not model.
+// Returns { precip, temp, ts } — both from actual sensor readings, not model.
 // precip = max RR across nearest stations (mm / 10 min).
 // temp   = average TL across stations that report it (°C), null if none.
+// ts     = when the gauges measured it (unix s), null if unknown — can be well
+//          behind "now", so the source line shows its age.
 export async function fetchNearbyStationPrecip(lat, lon) {
   // Prefer the backend's shared ground reading. A per-IP direct TAWES call flip-flops
   // under rate limits, and when it drops the app falls back to the spiky radar current
@@ -281,7 +283,8 @@ export async function fetchNearbyStationPrecip(lat, lon) {
       if (pt && 'ground' in pt) {
         // Backend reachable → authoritative. null = TAWES genuinely down server-side →
         // return null so effectivePrecip uses the radar fallback (unchanged semantics).
-        return pt.ground == null ? null : { precip: pt.ground, temp: pt.temp ?? null }
+        return pt.ground == null ? null
+          : { precip: pt.ground, temp: pt.temp ?? null, ts: typeof pt.ground_ts === 'number' ? pt.ground_ts : null }
       }
     }
   } catch { /* fall through to the direct call */ }
@@ -292,7 +295,9 @@ export async function fetchNearbyStationPrecip(lat, lon) {
       { signal: AbortSignal.timeout(6000) }
     )
     if (!r.ok) return null
-    const features = (await r.json())?.features ?? []
+    const j = await r.json()
+    const features = j?.features ?? []
+    const stamp = Array.isArray(j?.timestamps) ? Date.parse(j.timestamps[j.timestamps.length - 1]) : NaN
     const rrVals = features
       .map(f => f?.properties?.parameters?.RR?.data?.[0])
       .filter(v => typeof v === 'number' && !isNaN(v))
@@ -303,6 +308,7 @@ export async function fetchNearbyStationPrecip(lat, lon) {
     return {
       precip: rrVals.length ? Math.max(...rrVals) : null,
       temp:   tlVals.length ? +(tlVals.reduce((a, b) => a + b, 0) / tlVals.length).toFixed(1) : null,
+      ts:     Number.isFinite(stamp) ? Math.floor(stamp / 1000) : null,
     }
   })
 }

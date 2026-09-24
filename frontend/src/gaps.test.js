@@ -1309,6 +1309,34 @@ describe('the 0.1-0.2 dead band must not claim "no rain" (v2.20.0)', () => {
   })
 })
 
+describe('the map popup must not say "Dry" in the 0.1-0.2 band either (v2.45.0)', () => {
+  // Live screen, 2026-09-24: banner "a touch of drizzle, nothing more", map popup for
+  // YOUR LOCATION "Dry · dry right now". v2.20.0 fixed the banner sub; noticeFor kept
+  // hardcoding n_dry for every GO — two verdicts on one screen about the same spot.
+  it('THE BUG: gauge-measured drizzle (0.15) → popup head and sub admit it', () => {
+    const s = getStatus(0.15, [], null, makeT(), NOON, { windowWetMm: 0 })
+    expect(s.type).toBe('go')                       // state unchanged (anti-flicker)
+    expect(s.sub).toBe('s_barely_drizzle')
+    expect(s.notice.head).toBe('n_barely')
+    expect(s.notice.sub).toBe('n_barely_here')
+  })
+  it('keeps the forward countdown in the popup sub — only the "dry" claims change', () => {
+    const s = getStatus(0.15, [], null, makeT(), NOON,
+      { windowWetMm: 0, nextRainAt: NOON + 30 * 60 })
+    expect(s.notice.head).toBe('n_barely')
+    expect(s.notice.sub).toBe('n_rain_in')
+  })
+  it('genuinely dry still reads Dry in the popup', () => {
+    const s = getStatus(0.05, [], null, makeT(), NOON, { windowWetMm: 0 })
+    expect(s.notice.head).toBe('n_dry')
+    expect(s.notice.sub).toBe('n_dry_now')
+  })
+  it('the light state is untouched', () => {
+    const s = getStatus(0.3, [], null, makeT(), NOON, { windowWetMm: 0 })
+    expect(s.notice.head).toBe('n_light')
+  })
+})
+
 describe('modelsAgree — the disagreement max() used to hide', () => {
   it('THE LIVE CASE (2026-08-06, 21:15): ICON-EU 2.2 vs AROME 0.20 → disagree', () => {
     // ICON-EU replaying the storm ~2 h late, against AROME and radar both saying it

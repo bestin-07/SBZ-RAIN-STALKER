@@ -561,7 +561,29 @@ TAWES_CAP_KM = 15  # mirror the frontend cap — distant mountain stations cause
 _tawes_cache = {}
 _TAWES_TTL = 120
 
+def _tawes_obs_ts(payload):
+    """Unix seconds of a TAWES `station/current` reading (its top-level `timestamps`),
+    or None if absent/unparseable. The reading can be well behind wall-clock time —
+    a 10-min sum, published with a delay, then held for a 5-min cycle — so the client
+    shows its age rather than presenting it as "now"."""
+    try:
+        stamps = payload.get("timestamps") or []
+        if not stamps:
+            return None
+        dt = datetime.fromisoformat(stamps[-1])
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except (AttributeError, TypeError, ValueError, IndexError):
+        return None
+
+
 async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
+    return (await fetch_tawes_reading(client, lat, lon, n))[0]
+
+
+async def fetch_tawes_reading(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
+    """(max RR across the nearest gauges in mm/10 min, observation unix ts) — either may be None."""
     stations = await _load_tawes_stations(client)
     if stations:
         scored  = sorted(stations, key=lambda s: _haversine_km(lat, lon, s[1], s[2]))
@@ -583,17 +605,18 @@ async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, 
         timeout=10,
     )
     r.raise_for_status()
+    payload = r.json()
     vals = []
-    for f in r.json().get("features", []):
+    for f in payload.get("features", []):
         try:
             v = f["properties"]["parameters"]["RR"]["data"][0]
             if isinstance(v, (int, float)):
                 vals.append(v)
         except (KeyError, IndexError, TypeError):
             continue
-    val = max(vals) if vals else None
-    _tawes_cache[key] = (nowt, val)
-    return val
+    reading = (max(vals) if vals else None, _tawes_obs_ts(payload))
+    _tawes_cache[key] = (nowt, reading)
+    return reading
 
 
 # ---------------------------------------------------------------------------
@@ -1399,31 +1422,42 @@ async def run_cycle():
     async with httpx.AsyncClient() as client:
         # Ambient weather snapshot for the grid (one batched Open-Meteo call) → served
         # to clients so they don't each hit Open-Meteo. Keep the last snapshot on error.
+        #
+        # Built in `new_points` and swapped into _ambient only once ground + nowcast +
+        # AROME are attached (below). Assigning the bare Open-Meteo points here, as this
+        # used to, served a snapshot with a FRESH ts but no ground/nowcast for the
+        # seconds the GeoSphere calls take — cached 60 s by the browser, 90 s by the
+        # client. Clients then fell back to their own per-IP calls (the path that 429s
+        # on mobile CGNAT); if the gauge call failed too, the NOW lane was left with
+        # Open-Meteo's preceding-hour value, uncapped — a false WAIT caught live 2026-09-24.
         try:
             amb = await fetch_ambient(client)
         except Exception as e:
             print(f"[ambient] {e}")
             amb = None
         if amb:
-            _ambient["points"] = amb
+            new_points = amb
             try:
                 save_last_good_ambient(amb)
             except Exception as e:
                 print(f"[ambient] save_last_good failed: {e}")
-        elif not _ambient.get("points"):
+        elif _ambient.get("points"):
+            # Keep the previous weather fields. Copies, so enriching them below never
+            # mutates the list clients are being served mid-cycle.
+            new_points = [dict(p) for p in _ambient["points"]]
+        else:
             # Open-Meteo failed (e.g. daily limit) AND we have no prior snapshot to keep.
             # GeoSphere may still be fine, so seed a skeleton from POINTS with null weather
             # — the ground + nowcast (attached below, from GeoSphere) then still reach
             # clients instead of the whole snapshot being empty. Decouples our two upstream
             # APIs: one being down no longer wipes the other's data. Client null-guards the
             # weather fields; the virga filter no-ops without probability (serves raw nowcast).
-            _ambient["points"] = [
+            new_points = [
                 {"name": p["name"], "lat": p["lat"], "lon": p["lon"],
                  "temp": None, "wind": None, "code": None, "precip": None,
                  "cape": None, "uv": None, "ptime": [], "pprob": [], "mtime": [], "mprecip": []}
                 for p in POINTS
             ]
-        _ambient["ts"] = now_ts
 
         # Store new forecasts for all points × horizons
         forecast_rows = []
@@ -1464,10 +1498,10 @@ async def run_cycle():
         # call dropped, the app fell back to the spiky radar current slot and swung
         # GO ANYWAY<->STUCK. None = TAWES genuinely down → client falls back to radar.
         try:
-            city_ground = await fetch_tawes_precip(client, 47.7985, 13.0469)  # altstadt (central)
+            city_ground, city_ground_ts = await fetch_tawes_reading(client, 47.7985, 13.0469)  # altstadt (central)
         except Exception as e:
             print(f"[ground] {e}")
-            city_ground = None
+            city_ground, city_ground_ts = None, None
 
         # Official GeoSphere/ZAMG severe-weather warnings — municipality-level, one
         # query for Salzburg city centre covers the whole city (same precedent as
@@ -1514,8 +1548,9 @@ async def run_cycle():
             except Exception as e:
                 print(f"[daily] {e}")
 
-        for pt in _ambient.get("points", []):
+        for pt in new_points:
             pt["ground"] = city_ground   # shared 2-gauge reading (None if TAWES unavailable)
+            pt["ground_ts"] = city_ground_ts   # when the gauges measured it, not when we fetched
             nc = nowcasts.get(pt["name"]) if nowcasts else None
             if nc:
                 precips = _filter_virga(nc["times"], nc["precips"], pt.get("ptime"), pt.get("pprob"))
@@ -1525,6 +1560,8 @@ async def run_cycle():
             ar = aromes.get(pt["name"])
             if ar:
                 pt["arome"] = ar
+        _ambient["points"] = new_points   # one swap: never served half-built
+        _ambient["ts"] = now_ts
 
         # Convective-initiation watch: compare each point's "wet around now" against
         # last cycle. Several dry→wet flips + real CAPE = cells forming over the basin

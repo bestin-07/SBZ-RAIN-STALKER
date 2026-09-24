@@ -42,7 +42,19 @@ NS = _extract({
     "_deaccumulate",
     "DAILY_FORECAST_DAYS", "DAILY_TTL_S",
     "_parse_grid_response", "GRID_BBOX",
+    "_tawes_obs_ts",
 })
+# _extract compiles functions without main.py's imports; _tawes_obs_ts resolves these
+# from its globals (this dict) at call time.
+from datetime import datetime as _dt, timezone as _tz  # noqa: E402
+NS["datetime"], NS["timezone"] = _dt, _tz
+
+
+def _main_fn(name):
+    with open(os.path.join(HERE, "main.py"), encoding="utf-8") as fh:
+        src = fh.read()
+    return next(n for n in ast.parse(src).body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
 
 
 class TestVirgaFilter(unittest.TestCase):
@@ -210,6 +222,72 @@ class TestDailyOutlook(unittest.TestCase):
         # of 4 h keeps the outlook from going stale enough to miss a day boundary.
         self.assertGreaterEqual(NS["DAILY_TTL_S"], 1800)
         self.assertLessEqual(NS["DAILY_TTL_S"], 4 * 3600)
+
+
+class TestAmbientSnapshot(unittest.TestCase):
+    """v2.45.0: /api/ambient must never serve a half-built snapshot.
+
+    run_cycle used to assign the bare Open-Meteo points (fresh ts, no ground/nowcast)
+    at the top of the cycle and attach ground + nowcast only after ~13 awaited upstream
+    calls. Caught live 2026-09-24: one fetch had neither field, the next had both.
+    Clients fell back to per-IP calls, and when the gauge call failed the NOW lane was
+    left with Open-Meteo's preceding-hour value — a false WAIT in the dry.
+    """
+
+    def _assign_lines(self, fn, key, subscript_of):
+        lines = []
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Assign):
+                continue
+            for tgt in node.targets:
+                if (isinstance(tgt, ast.Subscript) and isinstance(tgt.value, ast.Name)
+                        and tgt.value.id == subscript_of
+                        and isinstance(tgt.slice, ast.Constant) and tgt.slice.value == key):
+                    lines.append(node.lineno)
+        return lines
+
+    def test_points_swapped_in_once_after_enrichment(self):
+        fn = _main_fn("run_cycle")
+        points = self._assign_lines(fn, "points", "_ambient")
+        ts = self._assign_lines(fn, "ts", "_ambient")
+        ground = self._assign_lines(fn, "ground", "pt")
+        nowcast = self._assign_lines(fn, "nowcast", "pt")
+        self.assertEqual(len(points), 1, "_ambient['points'] must be assigned exactly once "
+                         "per cycle — an early assignment serves a half-built snapshot")
+        self.assertEqual(len(ts), 1)
+        self.assertTrue(ground and nowcast)
+        self.assertGreater(points[0], max(ground + nowcast),
+                           "points must be swapped in AFTER ground/nowcast are attached")
+        self.assertGreater(ts[0], max(ground + nowcast),
+                           "a fresh ts must not be stamped on a snapshot still being built")
+
+    def test_ground_carries_its_own_timestamp(self):
+        fn = _main_fn("run_cycle")
+        self.assertTrue(self._assign_lines(fn, "ground_ts", "pt"),
+                        "ground_ts must be served next to ground so its age is visible")
+
+
+class TestTawesTimestamp(unittest.TestCase):
+    """v2.45.0: the gauge reading's own observation time, parsed from TAWES `timestamps`."""
+
+    def setUp(self):
+        self.f = NS["_tawes_obs_ts"]
+
+    def test_offset_form(self):
+        self.assertEqual(self.f({"timestamps": ["2026-09-24T09:40+00:00"]}), 1790242800)
+
+    def test_z_and_naive_are_utc(self):
+        self.assertEqual(self.f({"timestamps": ["2026-09-24T09:40:00Z"]}), 1790242800)
+        self.assertEqual(self.f({"timestamps": ["2026-09-24T09:40"]}), 1790242800)
+
+    def test_takes_latest_when_several(self):
+        self.assertEqual(self.f({"timestamps": ["2026-09-24T09:30+00:00",
+                                                "2026-09-24T09:40+00:00"]}), 1790242800)
+
+    def test_missing_or_garbage_is_none(self):
+        for payload in ({}, {"timestamps": []}, {"timestamps": None},
+                        {"timestamps": ["not a date"]}, None, "x"):
+            self.assertIsNone(self.f(payload), payload)
 
 
 class TestNowcastGrid(unittest.TestCase):

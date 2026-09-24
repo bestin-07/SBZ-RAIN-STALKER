@@ -89,6 +89,8 @@ export const translations = {
     // no first person, no brand voice; that stays on the big headline / user's banner).
     n_dry:        'Trocken',
     n_light:      'Leichter Niesel',
+    n_barely:     'Kaum Niesel',
+    n_barely_here:'gerade ein Hauch Niesel',
     n_raining:    'Regen',
     n_clear_hours:'die nächsten Stunden trocken',
     n_rain_soon:  'bald Regen',
@@ -238,6 +240,7 @@ export const translations = {
     tab_days:  'KOMMENDE TAGE',
     today_short: 'HEUTE',
     lane_ground: 'Boden {mm} mm',
+    lane_ground_age: 'Boden {mm} mm · vor {min} Min.',
     lane_ground_none: 'Boden —',
     lane_radar: 'Radar {mm} mm',
     lane_radar_clear: 'Radar frei',
@@ -456,6 +459,8 @@ export const translations = {
     // no first person, no brand voice; that stays on the big headline / user's banner).
     n_dry:        'Dry',
     n_light:      'Light drizzle',
+    n_barely:     'Barely a drizzle',
+    n_barely_here:'a touch of drizzle right now',
     n_raining:    'Raining',
     n_clear_hours:'clear for the next few hours',
     n_rain_soon:  'rain arriving soon',
@@ -594,6 +599,7 @@ export const translations = {
     tab_days:  'COMING DAYS',
     today_short: 'TODAY',
     lane_ground: 'ground {mm} mm',
+    lane_ground_age: 'ground {mm} mm · {min} min ago',
     lane_ground_none: 'ground —',
     lane_radar: 'radar {mm} mm',
     lane_radar_clear: 'radar clear',

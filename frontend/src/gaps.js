@@ -895,8 +895,11 @@ function breakSub(firstGap, nowSec, t) {
 // voice (GEMMA RAUS / "bed is better"), which stays on the big headline + the user's own
 // banner. Same underlying facts, calmer register. Attached to every status as `notice`
 // so the popup renderer can pick it while the banner keeps headline/sub.
-function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
-  const head = type === 'go' ? t('n_dry') : type === 'light' ? t('n_light') : t('n_raining')
+// `barely`: the GO state reached via the 0.1–0.2 band (v2.20.0) — the gauge is
+// measuring drizzle. The banner already says so; the popup must not say "Dry".
+function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t, barely = false) {
+  const head = type === 'go' ? t(barely ? 'n_barely' : 'n_dry')
+    : type === 'light' ? t('n_light') : t('n_raining')
   let sub
   if ((type === 'go' || type === 'light') && trend.downpourSoonMin != null) {
     sub = t('n_downpour_soon', { min: trend.downpourSoonMin })
@@ -933,7 +936,7 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t) {
           : min < RAIN_SHOW_MIN ? t('n_rain_soon')
           : t('n_rain_in', { min: Math.round(min / 5) * 5 })
     } else {
-      sub = t('n_dry_now')
+      sub = t(barely ? 'n_barely_here' : 'n_dry_now')
     }
   } else if (type === 'light') {
     if (firstGap) {
@@ -1172,10 +1175,11 @@ export function getStatus(
     // rain right now". Reported from Nonntal with the gauge at exactly 0.1: "now it
     // says no rain at my spot and gemma raus whyyyy". Dry-enough to go is a fair
     // verdict; "no rain" is not a fair description of 0.1 mm falling on you.
-    const sub = currentPrecip >= DRY_THRESHOLD
+    const barely = currentPrecip >= DRY_THRESHOLD
+    const sub = barely
       ? t('s_barely_drizzle')
       : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t, barely) }
   }
 
   // ---- Light drizzle (0.2–0.5 mm): "you could still go" ----

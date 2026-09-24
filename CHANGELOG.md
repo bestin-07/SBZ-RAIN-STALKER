@@ -12,6 +12,26 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.45.0] - 2026-09-24 - Gemma Raus just got better: no more half-finished answers, and the rain gauge tells you how old it is ⏱️
+
+*A report from Itzling: "it's dry now and it says wait 17 min?" You were right to be puzzled, and it led us to three things worth fixing.*
+
+**What happened**
+
+Every five minutes our server collects fresh weather for the whole city. For a few seconds in each round it was handing out a half-finished answer: the forecast, but no rain gauge and no radar yet. A phone that asked at exactly that moment had to fetch those itself, and if that failed it fell back on an hour-old estimate, which can say "it's raining" long after the rain has gone.
+
+The same afternoon showed two smaller things. The map pin for your location said "Dry" while the main screen, correctly, said "a touch of drizzle". And the rain gauge reading on screen looked like it was from right now, when it's often 10–20 minutes old.
+
+**What's new for you**
+
+- **The server only ever hands out complete answers now.** No more moments where your phone has to guess.
+- **The map pin agrees with the main screen.** In a light drizzle both now say so.
+- **The gauge reading shows its age** ("ground 0.6 mm · 14 min ago"), so when the sky doesn't match the number, you can see why.
+
+One honest note: the city has only two rain gauges, both south-west of the centre, so a shower over them can still make it look wetter in the north than it is. That one needs more care, and we're working on it.
+
+---
+
 ## [2.44.3] - 2026-09-24 - Gemma Raus just got better: the numbers on screen now agree with the color 🔵
 
 *A live report: "i felt it should be blue now and go anyways, because its not dry per see you know still a good drizzle" — and checking the real data, the drizzle was real. The number was the problem, not the verdict.*
