@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, ambientDaily, AREAS } from './api'
-import { detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, radarZoneEnd, easesToGoableMin, settleStuckHold, blockedActivities, rvNowValue, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
+import { detectGaps, getStatus, firstDownpourMin, blendNow, drizzleOnlyMin, easeFollowsRain, holdReadings, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, radarZoneEnd, easesToGoableMin, settleStuckHold, blockedActivities, rvNowValue, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
 import Header from './components/Header'
 import GapBanner from './components/GapBanner'
@@ -614,20 +614,17 @@ export default function App() {
     // the nowcast's model-blend trace noise (see gaps.tracePhantom).
     const phantomTrace = tracePhantom(data?.current?.weather_code, rv)
     const traceAheadM = (!phantomTrace && nowcast) ? traceAheadMin(nowcast.times, nowcast.precips, nowSec) : null
-    // Same surfacing rule as loadData (v1.1 + clear-sky clutter guard, v1.1.5) so a
-    // town dot matches your live verdict: gauge dry but radar sees a LIGHT drizzle →
-    // GO ANYWAY (capped, never STUCK) — unless the only witness is the raw RainViewer
-    // pixel under a sunny sky (ground clutter).
-    let effectivePrecip, drizzleSurfaced = false
-    if (cp === null) {
-      effectivePrecip = null
-    } else if (stationData !== null) {
-      effectivePrecip = groundPrecip
-      const surfaced = surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, data?.current?.weather_code, rv?.rvSolid ?? false)
-      if (surfaced !== null) { effectivePrecip = surfaced; drizzleSurfaced = true }
-    } else {
-      effectivePrecip = Math.max(cp, groundPrecip, rvPrecip)
-    }
+    // Same NOW rule as loadData — one function (gaps.blendNow, v2.48.0), so a town dot
+    // cannot diverge from your live verdict: the ground owns the magnitude when a gauge is
+    // in reach, the radar decides when none is, and a RainViewer-only claim is
+    // corroborated either way (clear-sky veto, v2.2.1 trace, v2.4.1 solid field).
+    const { value: effectivePrecip, surfaced: drizzleSurfaced } = blendNow({
+      cp, gaugePresent: stationData !== null, groundPrecip, rawNowSlot, rvPrecip,
+      code: data?.current?.weather_code, rvSolid: rv?.rvSolid ?? false,
+    })
+    // v2.48.0: an afternoon of drizzle the whole way is GO ANYWAY weather, not "no window".
+    const usableWindow = hasUsableWindow(gapTimeline.times, gapPrecips, nowSec)
+    const drizzleDay = usableWindow ? null : drizzleOnlyMin(gapTimeline.times, gapPrecips, nowSec)
     let maxSoon = null
     if (nowcast) {
       const lim = nowSec + 45 * 60
@@ -651,7 +648,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, downpourSoonWideMin: firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW), windowWetMm: windowWetMm(nowcast, nowSec, GO_MIN_WINDOW), noUsableWindow: !hasUsableWindow(gapTimeline.times, gapPrecips, nowSec), easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, downpourSoonWideMin: firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW), windowWetMm: windowWetMm(nowcast, nowSec, GO_MIN_WINDOW), noUsableWindow: !usableWindow && drizzleDay == null, drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -778,7 +775,6 @@ export default function App() {
         // is falling right now is not a trailing-edge leftover — it passes uncapped.
         const omForNow = modelNowValue(measured, stationData !== null, stationPrecip,
           Math.max(rawNowSlot, rvPrecip))
-        const nowPrecip = Math.max(omForNow, stationPrecip, rvPrecip)
         // Ground truth = physical stations + model current (no radar). When these
         // are available and read dry they are authoritative for "is it raining on
         // me right now": the radar nowcast can over-read echo that never reaches the
@@ -800,7 +796,10 @@ export default function App() {
         // routes to GO (trust the model) — the intended "clearing" behaviour.
         const gapTimeline = nowcast
           ? { times: nowcast.times, precips: nowcast.precips }
-          : { times: [nowSec, ...omTimes], precips: [nowPrecip, ...omPrecips] }
+          // No nowcast: the ground/model reading leads the model tail. RainViewer is not
+          // folded in here any more (v2.48.0) — it enters through blendNow below, where
+          // its corroboration rules apply, exactly as in computeStatusAt.
+          : { times: [nowSec, ...omTimes], precips: [groundPrecip, ...omPrecips] }
 
         // When the ground says dry, correct only the nowcast's *current* slot to
         // dry before gap detection. The radar nowcast can over-read a light echo
@@ -834,18 +833,13 @@ export default function App() {
         // caution, a jacket beats a soaking (v1.1). Only light echo (0.1–0.5) surfaces,
         // bumped into the light band (not the GEMMA-RAUS trace zone) and capped so it can
         // NEVER become a false STUCK; a genuine heavier cell keeps the ground's dry call.
-        let effectivePrecip, drizzleSurfaced = false
-        if (cp === null) {
-          effectivePrecip = null
-        } else if (stationData !== null) {
-          effectivePrecip = groundPrecip
-          // v1.1 surfacing + v1.1.5 clear-sky clutter guard + v2.4.1 solid-field
-          // self-corroboration (see gaps.surfaceDrizzle)
-          const surfaced = surfaceDrizzle(groundPrecip, rawNowSlot, rvPrecip, data?.current?.weather_code, rv?.rvSolid ?? false)
-          if (surfaced !== null) { effectivePrecip = surfaced; drizzleSurfaced = true }
-        } else {
-          effectivePrecip = Math.max(cp, nowPrecip)
-        }
+        // v2.48.0: one function for both call sites (gaps.blendNow) — see there for the
+        // no-gauge path, which gauge locality turned from "TAWES is down" into the normal
+        // case for half the city.
+        const { value: effectivePrecip, surfaced: drizzleSurfaced } = blendNow({
+          cp, gaugePresent: stationData !== null, groundPrecip, rawNowSlot, rvPrecip,
+          code: data?.current?.weather_code, rvSolid: rv?.rvSolid ?? false,
+        })
         // Peak nowcast intensity over the next 45 min — lets getStatus offer the
         // "light rain, go anyway" nuance only when no real downpour is imminent.
         let maxSoon = null
@@ -991,8 +985,16 @@ export default function App() {
         // we cannot ask that question — and an unavailable witness must never be read as
         // evidence to keep suppressing (the v2.8.0 rule), so the gate stands down to the
         // reading alone rather than jamming shut.
-        const easing = groundPrecip < LIGHT_MIN
-        const releaseOk = easing && (!nowcast || dryWindowOpen(nowcast, nowSec))
+        // v2.48.0 (gaps.holdReadings): the reading is the gauge when one is in reach and
+        // the radar-decided NOW value when none is; a drizzle-all-the-way afternoon counts
+        // as eased, so the valve can start (it could not, and "confirming" sat there all
+        // afternoon — live, 2026-09-24).
+        const usableWindow = hasUsableWindow(gapTimeline.times, gapPrecips, nowSec)
+        const drizzleDay = usableWindow ? null : drizzleOnlyMin(gapTimeline.times, gapPrecips, nowSec)
+        const { calm, easing } = holdReadings({
+          gaugePresent: stationData !== null, groundPrecip, nowPrecip: displayPrecip, drizzleDay,
+        })
+        const releaseOk = calm && (!nowcast || dryWindowOpen(nowcast, nowSec))
         const settledHold = settleStuckHold(holdRec, { releaseOk, easing, nowMs })
 
         const weatherNow = {
@@ -1000,7 +1002,7 @@ export default function App() {
           wind: data?.current?.wind_speed_10m ?? null,
           code: data?.current?.weather_code ?? null,
         }
-        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !hasUsableWindow(gapTimeline.times, gapPrecips, nowSec), easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, wetGround: lastWetAt > 0 && (nowMs - lastWetAt) < WET_GROUND_MS, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
+        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !usableWindow && drizzleDay == null, drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, wetGround: lastWetAt > 0 && (nowMs - lastWetAt) < WET_GROUND_MS, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
 
         // Resolve the verdict here (not in render) purely so we know whether to keep
         // carrying the hold. getStatus is pure, so the render below recomputes the

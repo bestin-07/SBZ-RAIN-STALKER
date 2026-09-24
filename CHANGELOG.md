@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.48.0] - 2026-09-24 - Gemma Raus just got better: your spot, not the city's 📍
+
+*"It's dry and it says wait 17 minutes." "It still says confirming." "It says it gets lighter in 5 minutes, but it's already drizzle." All three were fair, and all three are fixed.*
+
+**What happened**
+
+Salzburg has two rain gauges, both south-west of the centre, and we treated them as if they stood everywhere. A shower over one of them could tell someone in Itzling, five kilometres away, that it was raining on them. Our radar forecast was also read at the nearest of eleven points in the city rather than at your spot. And on a grey afternoon of steady drizzle, never heavy but never quite stopping, we kept you inside for hours, told you the rain would get lighter when it already was as light as it gets, and kept saying "confirming" underneath.
+
+**What's new for you**
+
+- **A gauge only speaks for its own neighbourhood:** within about 2½ km of a gauge, it decides whether you're getting wet. Further away, the radar right above you does.
+- **Your own square kilometre:** the forecast is now read for the 1 km square you're standing in, not the nearest city district.
+- **Drizzle days are "go anyway" days:** if the next few hours are only drizzle, never heavier, we say so ("drizzle for at least 2½ h, nothing heavier") instead of keeping you in. Rain that's building up still keeps you inside.
+- **No more false "it'll get lighter":** we only say that when there's heavier rain before it eases.
+
+---
+
 ## [2.47.1] - 2026-09-24 - Gemma Raus just got better: past and future on the map finally speak the same language 🗺️🎨
 
 *You slid the map from radar into the forecast and it looked like a different map: a half-built rectangle in different colours. It was exactly that.*

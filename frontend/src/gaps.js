@@ -150,8 +150,91 @@ export function modelNowValue(measured, stationPresent, stationPrecip, radarNow 
   // 0.10-rounding guard (unchanged): a 0-reading gauge needs the model to be
   // STRICTLY above 0.1 before it may claim any wetness at all.
   if (stationPresent && stationPrecip === 0 && measured <= 0.1) return 0
+  // v2.48.0: the same guard with no gauge in reach, the radar at your spot standing in
+  // for it. Gauge locality makes "no gauge" the normal case for half the city, and
+  // Open-Meteo's rounding 0.1 would otherwise print "a touch of drizzle" over a dry
+  // radar there. GO either way — this only ever changes the sentence.
+  if (!stationPresent && measured <= DRY_THRESHOLD && (radarNow ?? 0) < DRY_THRESHOLD) return 0
   if (measured >= MODEL_HEAVY_PASS && (radarNow ?? 0) >= DRY_THRESHOLD) return measured
   return Math.min(measured, MODEL_NOW_CAP)
+}
+
+// Equirectangular km — plenty at city scale, and cheap enough to scan ~1000 cells.
+function kmBetween(aLat, aLon, bLat, bLon) {
+  const kx = 111.2 * Math.cos((aLat + bLat) / 2 * Math.PI / 180)
+  return Math.hypot((bLat - aLat) * 111.2, (bLon - aLon) * kx)
+}
+
+// ---- Gauge locality (v2.48.0) ------------------------------------------------------
+// Live report (2026-09-24, Itzling): "it's dry and it says WAIT 17 MIN". The city has two
+// gauges, Freisaal and the Airport, both south-west of the centre — and their MAX was
+// applied to every address: a shower over Freisaal read 0.6 mm/10 min "at" Itzling,
+// 4–5 km away, where the radar had already gone light and then dry. A gauge is the best
+// witness of "am I wet" only near it; further out, the radar pixel at your own spot is
+// the closer evidence. 2.5 km ≈ two radar cells: inside it the bucket beats a 1 km
+// extrapolated slot, beyond it it doesn't. Returns the wettest gauge in reach
+// ({ precip, ts, km, id }, RR as served: mm per 10 min) or null — no gauge speaks here.
+export const GAUGE_OWN_KM = 2.5
+export function localGauge(gauges, lat, lon, radiusKm = GAUGE_OWN_KM) {
+  if (!Array.isArray(gauges)) return null
+  let best = null
+  for (const g of gauges) {
+    if (!g || typeof g.rr !== 'number' || !Number.isFinite(g.rr)
+        || !Number.isFinite(g.lat) || !Number.isFinite(g.lon)) continue
+    const km = kmBetween(lat, lon, g.lat, g.lon)
+    if (km > radiusKm) continue
+    if (!best || g.rr > best.precip) best = { precip: g.rr, ts: typeof g.ts === 'number' ? g.ts : null, km, id: g.id ?? null }
+  }
+  return best
+}
+
+// ---- The NOW value — one rule for both call sites (v2.48.0) -------------------------
+// With a gauge in reach, the ground owns the magnitude and drizzle surfacing covers what
+// it misses (v1.1 onwards, unchanged). Without one, the radar decides — and the
+// RainViewer pixel now passes the SAME corroboration there (clear-sky veto, v2.2.1
+// radar trace or v2.4.1 solid field). That branch used to take an unguarded max(radar,
+// model, RainViewer); harmless while "no gauge" meant TAWES was down, but locality makes
+// it the normal path for half the city, and a lone clutter pixel under a sunny sky would
+// have brought back "sunny but PASST SCHON" (v1.1.5) there. Surfacing stays capped at the
+// light band. A HEAVY RainViewer echo (already dual-keyed by rvNowValue: intensity AND
+// extent, never under a clear sky) now also beats a gauge that has only just started to
+// tip — the v2.29.0 release covered a gauge at exactly zero, not one at 0.15.
+export function blendNow({ cp, gaugePresent, groundPrecip, rawNowSlot, rvPrecip, code, rvSolid = false }) {
+  if (cp === null || cp === undefined) return { value: null, surfaced: false }
+  let value = gaugePresent ? groundPrecip : Math.max(cp, groundPrecip)
+  // No gauge: the only question is whether the RainViewer claim is corroborated — an
+  // hour-old model value must not switch that check off, so it is asked against zero.
+  const s = surfaceDrizzle(gaugePresent ? groundPrecip : 0, rawNowSlot, rvPrecip, code, rvSolid)
+  if (s !== null) value = Math.max(value, s)
+  if ((rvPrecip ?? 0) >= RV_HEAVY_MM) value = Math.max(value, rvPrecip)
+  return { value, surfaced: s !== null }
+}
+
+// ---- Your own 1 km cell (v2.48.0) ---------------------------------------------------
+// The verdict used the nearest of 11 city points — up to ~2 km away, a different cell
+// with different rain on a showery day. The backend now serves the whole city grid,
+// virga-filtered per cell exactly as each point is (nearest point's probability), and the
+// browser picks its own cell: GPS still never leaves the device. At a point's own
+// location this is the same cell, so nothing changes there. { times, precips } or null
+// (no grid, too far from any cell, or no data at this cell) → nearest point instead.
+export function nearestCellSeries(cells, lat, lon, maxKm = 1.5) {
+  if (!cells || !Array.isArray(cells.times) || !Array.isArray(cells.lat)
+      || !Array.isArray(cells.lon) || !Array.isArray(cells.v)) return null
+  const n = cells.lat.length
+  if (!n || cells.lon.length !== n || !cells.times.length || cells.v.length !== cells.times.length) return null
+  let bi = -1, bd = Infinity
+  for (let i = 0; i < n; i++) {
+    const d = kmBetween(lat, lon, cells.lat[i], cells.lon[i])
+    if (d < bd) { bd = d; bi = i }
+  }
+  if (bi < 0 || bd > maxKm) return null
+  const precips = []
+  for (const step of cells.v) {
+    const x = Array.isArray(step) ? step[bi] : undefined
+    if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) return null
+    precips.push(x / 100)
+  }
+  return { times: cells.times.slice(), precips }
 }
 
 // The radar's own reading at this moment — nearest nowcast slot to `nowSec`.
@@ -603,6 +686,50 @@ export function goWindowTooShort(type, downpourMin, wetMm = 0, wetNow = false, n
   return !!wetNow && (wetMm ?? 0) >= WINDOW_WET_MM
 }
 
+// ---- Drizzle all the way (v2.48.0) ------------------------------------------------
+// Live (2026-09-24, 14:06): every city point read 0.15–0.35 mm/15min for the next 2½ h —
+// never heavier than drizzle, never dry for 15 minutes. v2.24.0's rule ("no usable dry
+// window in the look-ahead → BLEIB DRIN") said STUCK INSIDE for the whole afternoon, with
+// the gauge at 0.0 and the airport reporting no rain. v2.26.0 had flagged exactly this
+// case as a separate call; the maintainer made it: a look-ahead that is drizzle the whole
+// way is GO ANYWAY weather — every minute of it is the band we ourselves call "you could
+// still go out". Returns the minutes of look-ahead that are drizzle-or-dry (a "for at
+// least" figure), or null as soon as any slot reaches real rain (LIGHT_MAX). So rain
+// that BUILDS still escalates: v2.24.0's own case climbed to 0.78 and stays BLEIB DRIN.
+// The steady arm (≥ WINDOW_WET_MM in the next 45 min while wet) is untouched.
+export function drizzleOnlyMin(times, precips, nowSec) {
+  if (!times?.length) return null
+  let last = null
+  for (let i = 0; i < times.length; i++) {
+    const t = times[i]
+    if (t < nowSec - 900 || t > nowSec + LOOK_AHEAD) continue
+    if ((precips?.[i] ?? 0) >= LIGHT_MAX) return null
+    last = t
+  }
+  return last == null ? null : Math.max(0, Math.round((last - nowSec) / 60))
+}
+
+// "It gets much lighter in X" is only true if something heavier comes first. Live
+// (2026-09-24): already drizzling, drizzle all afternoon, and the escalation branch said
+// "wet right now, but it gets much lighter in about 5 min" — the easing run started at
+// the current slot and 5 was just the rounding floor. True when the first run that
+// easesToGoableMin would report is preceded by a real-rain slot (≥ LIGHT_MAX).
+export function easeFollowsRain(times, precips, nowSec) {
+  if (!times?.length) return false
+  const slots = times
+    .map((t, i) => ({ t, p: precips?.[i] ?? 0 }))
+    .filter(s => s.t >= nowSec - 900 && s.t <= nowSec + LOOK_AHEAD)
+  let heavier = false, i = 0
+  while (i < slots.length) {
+    if (slots[i].p >= LIGHT_MAX) { heavier = true; i++; continue }
+    let run = 1
+    while (i + run < slots.length && slots[i + run].p < LIGHT_MAX) run++
+    if (run >= GO_MIN_SLOTS) return heavier
+    i += run
+  }
+  return false
+}
+
 // ---- Leaving BLEIB DRIN is a promise, not a reading (v2.22.0) ---------------------
 // Live incident (2026-08-18): "a sudden unreliable jump from stuck inside, no break
 // for three hours, to go anyways, to back to stuck inside". Every refresh recomputed
@@ -639,6 +766,20 @@ export const HOLD_MAX_MS   = 20 * 60 * 1000   // hard ceiling: however jammed th
 // Accumulation AND peak, because they fail differently: three slots of 0.09 average out
 // dry but are a continuous drizzle, and one 0.4 spike inside an otherwise dry window is
 // a shower crossing your route. A usable window has neither.
+// What the hold's two clocks read (v2.48.0). `calm` — the NOW reading is below the light
+// band — gates the fast, evidence-backed release, unchanged in meaning. `easing` — what
+// starts the HOLD_MAX_MS valve — additionally counts an afternoon that is drizzle the
+// whole way (drizzleOnlyMin): that is GO ANYWAY weather now, and without it the valve
+// could never start while the drizzle lasted, so the hold sat on "confirming" all
+// afternoon (live, 2026-09-24). The reading is the gauge when one is in reach, and the
+// radar-decided NOW value when none is (gauge locality) — not the model-only ground value.
+export function holdReadings({ gaugePresent, groundPrecip, nowPrecip, drizzleDay }) {
+  const now = typeof nowPrecip === 'number' ? nowPrecip : Infinity
+  const reading = gaugePresent ? groundPrecip : now
+  const calm = reading < LIGHT_MIN
+  return { calm, easing: calm || (drizzleDay != null && now < LIGHT_MAX) }
+}
+
 export function dryWindowOpen(nowcast, nowSec, windowMin = GO_MIN_WINDOW) {
   if (!nowcast?.times?.length) return false   // no radar → absence cannot be corroborated
   const lim = nowSec + windowMin * 60
@@ -996,7 +1137,8 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t, barely = fal
         : min >= GAP_FIRM_MIN ? t('n_break_likely', { min })
         : t('n_break_in', { min })
   } else {
-    if (trend.easeSoonMin != null) {
+    // Same honesty rule as the banner (v2.48.0): "easing" only after something heavier.
+    if (trend.easeSoonMin != null && (currentPrecip >= LIGHT_MAX || trend.easeAfterRain !== false)) {
       sub = t('n_stuck_easing', { min: Math.max(5, Math.round(trend.easeSoonMin / 5) * 5) })
     } else if (trend.modelEaseAt) {
       const m = Math.max(0, Math.round((trend.modelEaseAt - nowSec) / 60))
@@ -1084,7 +1226,11 @@ export function getStatus(
     // one of those slots inside the band we ourselves call "go anyway" — and the app
     // had nothing to say about it. The STATE is untouched (v2.24.0's decision stands,
     // the conservative direction); only the sentence gets the timing it already knew.
-    const easeMin = trend.easeSoonMin != null
+    // v2.48.0: the NOW reading here is already go/light, so "it gets much lighter" is only
+    // true when heavier radar rain comes before the easing (easeFollowsRain). Without that
+    // it read "wet right now, but it gets much lighter in about 5 min" over drizzle that
+    // was already as light as it would get.
+    const easeMin = trend.easeSoonMin != null && trend.easeAfterRain !== false
       ? Math.max(5, Math.round(trend.easeSoonMin / 5) * 5) : null
     return {
       type: 'stuck',
@@ -1244,6 +1390,12 @@ export function getStatus(
       sub = easeMin < RAIN_SHOW_MIN
         ? t('s_light_soon')
         : t('s_light_clearing', { min: Math.round(easeMin / 5) * 5 })
+    } else if (trend.drizzleDayMin != null) {
+      // v2.48.0: drizzle the whole way (see drizzleOnlyMin) — say how long, and that it
+      // stays drizzle; that "nothing heavier" IS the reason this reads GO ANYWAY.
+      const m = trend.drizzleDayMin
+      sub = m >= FAR_RAIN_MIN ? t('s_drizzle_day_far', { h: hoursLabel(m) })
+          : t('s_drizzle_day', { min: Math.max(15, Math.round(m / 15) * 15) })
     } else {
       sub = t('s_light')
     }

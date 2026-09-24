@@ -1,4 +1,4 @@
-import { ringDirection, trackApproach, RV_SOLID_COVERAGE } from './gaps'
+import { ringDirection, trackApproach, RV_SOLID_COVERAGE, localGauge, nearestCellSeries, GAUGE_OWN_KM } from './gaps'
 import { isRaster } from './nowcastMap'
 
 // iOS Safari < 16 has no AbortSignal.timeout — every fetch in this module uses
@@ -76,6 +76,11 @@ export const AREAS = [
 // stays in the browser). Prevents every user hitting Open-Meteo directly (rate
 // limits / shared NAT). Cached ~90s. Returns points[] or null.
 let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null, _ambientAreaWatch = null, _ambientWarnings = [], _ambientDaily = null
+// v2.48.0: each city gauge with its own position ([{id,lat,lon,rr,ts}]; null = an older
+// backend that doesn't serve them), and the whole city nowcast grid, virga-filtered per
+// cell ({times, lat[], lon[], v[step][cell]} in hundredths of a mm). Both are picked
+// from HERE, by the browser's own position — GPS never goes to the server.
+let _ambientGauges = null, _ambientCells = null
 async function fetchAmbient() {
   const now = Date.now()
   if (_ambientPoints && now - _ambientPointsTs < 90 * 1000) return _ambientPoints
@@ -95,6 +100,8 @@ async function fetchAmbient() {
     // Kept from the previous snapshot if a cycle serves none, rather than blanking
     // the strip: a day outlook going missing for one cycle is not news.
     if (j?.daily && Array.isArray(j.daily.time) && j.daily.time.length) _ambientDaily = j.daily
+    _ambientGauges = Array.isArray(j?.gauges) ? j.gauges : null
+    _ambientCells = j?.nowcastCells ?? null
     if (Array.isArray(j?.points) && j.points.length) { _ambientPoints = j.points; _ambientPointsTs = now; return j.points }
     return _ambientPoints   // empty before first cycle → let caller fall back to direct OM
   } catch { return _ambientPoints }
@@ -269,6 +276,15 @@ async function tawesNearestIds(lat, lon, n = 6) {
   return candidates.includes(ANCHOR_STATION_ID) ? candidates : [...candidates, ANCHOR_STATION_ID]
 }
 
+// v2.48.0 — the gauges that speak for this spot (gaps.localGauge): those within `km`.
+// [] when none is in reach, or when the station list can't be loaded (then nothing is
+// known to be in reach, and the radar decides, as it does for a far address).
+async function tawesIdsWithin(lat, lon, km) {
+  await tawesNearestIds(lat, lon, 1)   // loads the station list as a side effect
+  if (!_tawesStations?.length) return []
+  return _tawesStations.filter(s => haversineKm(lat, lon, s.lat, s.lon) <= km).map(s => s.id)
+}
+
 // Returns { precip, temp, ts } — both from actual sensor readings, not model.
 // precip = max RR across nearest stations (mm / 10 min).
 // temp   = average TL across stations that report it (°C), null if none.
@@ -284,6 +300,13 @@ export async function fetchNearbyStationPrecip(lat, lon) {
     const points = await fetchAmbient()
     if (points) {
       const pt = nearestAmbientPoint(points, +lat, +lon)
+      // v2.48.0 — gauge locality: only a gauge within GAUGE_OWN_KM speaks for this spot.
+      // None in reach → null, and the radar at your spot decides (gaps.blendNow). The
+      // city-wide `ground` below is the pre-2.48 fallback for a backend without `gauges`.
+      if (_ambientGauges) {
+        const g = localGauge(_ambientGauges, +lat, +lon)
+        return g ? { precip: g.precip, temp: pt?.temp ?? null, ts: g.ts } : null
+      }
       if (pt && 'ground' in pt) {
         // Backend reachable → authoritative. null = TAWES genuinely down server-side →
         // return null so effectivePrecip uses the radar fallback (unchanged semantics).
@@ -292,8 +315,10 @@ export async function fetchNearbyStationPrecip(lat, lon) {
       }
     }
   } catch { /* fall through to the direct call */ }
-  return cachedOrNull(`tawes:${(+lat).toFixed(3)},${(+lon).toFixed(3)}`, async () => {
-    const ids = await tawesNearestIds(lat, lon, 6)
+  // Direct fallback (backend unreachable): the same locality — only gauges in reach.
+  const ids = await tawesIdsWithin(+lat, +lon, GAUGE_OWN_KM)
+  if (!ids.length) return null
+  return cachedOrNull(`tawes:${ids.join(',')}`, async () => {
     const r = await fetch(
       `${GEOSPHERE_TAWES}?parameters=RR,TL&station_ids=${ids.join(',')}`,
       { signal: AbortSignal.timeout(6000) }
@@ -331,6 +356,10 @@ export async function fetchNowcastTimeline(lat, lon) {
   try {
     const points = await fetchAmbient()
     if (points) {
+      // v2.48.0 — your own 1 km cell first (gaps.nearestCellSeries); the nearest of the
+      // 11 city points only when the grid isn't served or you're off its edge.
+      const own = nearestCellSeries(_ambientCells, +lat, +lon)
+      if (own) return own
       const pt = nearestAmbientPoint(points, +lat, +lon)
       const nc = pt?.nowcast
       if (nc && Array.isArray(nc.times) && nc.times.length && nc.times.length === nc.precips?.length) {

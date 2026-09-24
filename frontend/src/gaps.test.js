@@ -11,6 +11,7 @@ import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot, gaugeSlotValue, GAUGE_SLOT_SCALE,
   aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
+  localGauge, GAUGE_OWN_KM, blendNow, nearestCellSeries, drizzleOnlyMin, easeFollowsRain, holdReadings,
   goWindowTooShort, GO_MIN_WINDOW, windowWetMm, WINDOW_WET_MM,
   dryWindowOpen, settleStuckHold, CALM_DWELL_MS, HOLD_STALE_MS, HOLD_MAX_MS,
   hasUsableWindow, GO_MIN_SLOTS, easesToGoableMin,
@@ -1059,8 +1060,22 @@ describe('modelNowValue — trailing-edge lag guard (the bogus "WAIT 50 in the s
     expect(modelNowValue(3.0, false, 0, 0.2)).toBe(3.0)
     expect(modelNowValue(3.0, false, 0, 0)).toBe(MODEL_NOW_CAP)   // radar dry → trailing edge
   })
-  it('no gauge → the 0-gauge rounding guard does not apply (there is no gauge reading)', () => {
-    expect(modelNowValue(0.1, false, 0)).toBe(0.1)
+  // INTENT CHANGE (v2.48.0): gauge locality makes "no gauge" the normal case for half the
+  // city, so the rounding guard now also applies there — with the radar at your spot
+  // standing in for the dry gauge. It only ever turns "a touch of drizzle" into "dry"
+  // wording under a GO; a radar that sees echo keeps the model's 0.1.
+  it('no gauge, radar dry → the rounding guard applies (the radar stands in for the gauge)', () => {
+    expect(modelNowValue(0.1, false, 0)).toBe(0)
+    expect(modelNowValue(0.1, false, 0, 0.05)).toBe(0)
+  })
+
+  it('no gauge, radar sees echo → the model 0.1 stands', () => {
+    expect(modelNowValue(0.1, false, 0, 0.2)).toBe(0.1)
+  })
+
+  it('no gauge → above the rounding band, the v2.47.0 cap still applies as before', () => {
+    expect(modelNowValue(0.3, false, 0, 0)).toBe(0.3)
+    expect(modelNowValue(0.7, false, 0, 0)).toBe(0.4)
   })
 })
 
@@ -2485,5 +2500,237 @@ describe('trackApproach — approach ETA from past frames (v2.47.0)', () => {
     expect(trackApproach([], NOW)).toBeNull()
     expect(trackApproach(frames({ n: [9] }, 1), NOW)).toBeNull()
     expect(trackApproach([{ time: T0 }, { time: T0 + 600 }], NOW)).toBeNull()
+  })
+})
+
+// ---- v2.48.0: gauge locality, your own cell, drizzle days --------------------------
+
+const FREISAAL = { id: '11350', lat: 47.7869, lon: 13.0569 }
+const AIRPORT  = { id: '11150', lat: 47.7933, lon: 13.0036 }
+const ITZLING  = [47.8268, 13.0436]    // the user's spot in the 2026-09-24 reports
+const NONNTAL  = [47.7883, 13.0553]
+
+describe('localGauge — a gauge speaks for its neighbourhood, not the city (v2.48.0)', () => {
+  const wet = [{ ...FREISAAL, rr: 0.6, ts: 100 }, { ...AIRPORT, rr: 0.0, ts: 100 }]
+
+  it('pins the radius', () => { expect(GAUGE_OWN_KM).toBe(2.5) })
+
+  it('THE ITZLING REPORT: Freisaal wet 4½ km away no longer speaks for Itzling', () => {
+    expect(localGauge(wet, ...ITZLING)).toBeNull()
+  })
+
+  it('…but still speaks for Nonntal, right next to it', () => {
+    expect(localGauge(wet, ...NONNTAL)).toMatchObject({ precip: 0.6, ts: 100, id: '11350' })
+  })
+
+  it('two gauges in reach → the wetter one', () => {
+    const mid = [(FREISAAL.lat + AIRPORT.lat) / 2, (FREISAAL.lon + AIRPORT.lon) / 2]
+    expect(localGauge([{ ...FREISAAL, rr: 0.1 }, { ...AIRPORT, rr: 0.4 }], ...mid).precip).toBe(0.4)
+  })
+
+  it('a gauge with no reading, or garbage, is skipped', () => {
+    expect(localGauge([{ ...FREISAAL, rr: null }], ...NONNTAL)).toBeNull()
+    expect(localGauge(null, ...NONNTAL)).toBeNull()
+    expect(localGauge([null, { rr: 0.5 }], ...NONNTAL)).toBeNull()
+  })
+})
+
+describe('blendNow — one NOW rule for both call sites (v2.48.0)', () => {
+  const base = { cp: 0, gaugePresent: true, groundPrecip: 0, rawNowSlot: 0, rvPrecip: 0, code: 3, rvSolid: false }
+
+  it('gauge path is unchanged: the ground owns the magnitude', () => {
+    expect(blendNow({ ...base, cp: 0.9, groundPrecip: 0.45 })).toEqual({ value: 0.45, surfaced: false })
+  })
+
+  it('gauge path is unchanged: dry gauge + light radar echo surfaces GO ANYWAY', () => {
+    const r = blendNow({ ...base, cp: 0.3, rawNowSlot: 0.3, rvPrecip: 0.3 })
+    expect(r.surfaced).toBe(true)
+    expect(r.value).toBeGreaterThanOrEqual(LIGHT_MIN)
+    expect(r.value).toBeLessThan(LIGHT_MAX)
+  })
+
+  it('THE ITZLING REPORT: no gauge in reach → the radar at your spot, not the far gauge (WAIT → GO ANYWAY)', () => {
+    const old = blendNow({ ...base, cp: 0.13, rawNowSlot: 0.13, groundPrecip: gaugeSlotValue(0.6) })
+    const now = blendNow({ ...base, gaugePresent: false, cp: 0.13, rawNowSlot: 0.13 })
+    expect(old.value).toBeCloseTo(0.9)   // 0.6 mm/10 min at Freisaal, 4½ km away
+    // The radar's own light echo at Itzling, surfaced exactly as under a dry gauge (v1.1).
+    expect(now).toEqual({ value: LIGHT_MIN, surfaced: true })
+    expect(getStatus(now.value, [], {}, k => k, NOON, {}).type).toBe('light')
+  })
+
+  it('no gauge: a lone RainViewer pixel under a CLEAR sky stays clutter (v1.1.5 must stay dead)', () => {
+    for (const rvSolid of [false, true]) {
+      const r = blendNow({ ...base, gaugePresent: false, rvPrecip: 0.3, code: 1, rvSolid })
+      expect(r).toEqual({ value: 0, surfaced: false })
+    }
+  })
+
+  it('no gauge: overcast + flat-zero radar + lone pixel → nothing (v2.2.1); a solid field → drizzle (v2.4.1)', () => {
+    expect(blendNow({ ...base, gaugePresent: false, rvPrecip: 0.3 }).value).toBe(0)
+    expect(blendNow({ ...base, gaugePresent: false, rvPrecip: 0.3, rvSolid: true }).surfaced).toBe(true)
+  })
+
+  it('no gauge: an hour-old model value does not switch off the RainViewer corroboration', () => {
+    const r = blendNow({ ...base, gaugePresent: false, cp: 0.05, rawNowSlot: 0.05, groundPrecip: 0.15, rvPrecip: 0.3 })
+    expect(r.value).toBeGreaterThanOrEqual(0.3)
+  })
+
+  it('no gauge: radar rain counts in full, RainViewer can never lower it', () => {
+    expect(blendNow({ ...base, gaugePresent: false, cp: 0.9, rawNowSlot: 0.9, rvPrecip: 0.3 }).value).toBe(0.9)
+  })
+
+  it('a HEAVY RainViewer echo beats a gauge that has only just started to tip', () => {
+    expect(blendNow({ ...base, groundPrecip: 0.15, rvPrecip: RV_HEAVY_MM, rvSolid: true }).value).toBe(RV_HEAVY_MM)
+  })
+
+  it('…but never under a clear sky (rvNowValue keeps the binary value there)', () => {
+    const rv = rvNowValue(0.3, true, true, 1)
+    expect(blendNow({ ...base, groundPrecip: 0.15, rvPrecip: rv, code: 1, rvSolid: true }).value).toBe(0.15)
+  })
+
+  it('raise-only against the old gauge path across a matrix', () => {
+    for (const g of [0, 0.05, 0.15, 0.3, 0.6]) {
+      for (const rv of [0, 0.3, RV_HEAVY_MM]) {
+        for (const raw of [0, 0.05, 0.3]) {
+          const r = blendNow({ ...base, cp: raw, rawNowSlot: raw, groundPrecip: g, rvPrecip: rv, rvSolid: true })
+          const s = surfaceDrizzle(g, raw, rv, 3, true)
+          expect(r.value).toBeGreaterThanOrEqual(s ?? g)
+        }
+      }
+    }
+  })
+
+  it('no timeline → no NOW value', () => {
+    expect(blendNow({ ...base, cp: null })).toEqual({ value: null, surfaced: false })
+  })
+})
+
+describe('nearestCellSeries — your own 1 km cell (v2.48.0)', () => {
+  const cells = {
+    times: [100, 1000],
+    lat: [47.8268, 47.8000], lon: [13.0436, 13.0450],
+    v: [[48, 5], [29, -1]],
+  }
+
+  it('picks the nearest cell and converts hundredths back to mm', () => {
+    expect(nearestCellSeries(cells, 47.8270, 13.0440)).toEqual({ times: [100, 1000], precips: [0.48, 0.29] })
+  })
+
+  it('too far from any cell → null (the nearest point is used instead)', () => {
+    expect(nearestCellSeries(cells, 47.90, 13.04)).toBeNull()
+  })
+
+  it('no data at the chosen cell → null, never read as dry', () => {
+    expect(nearestCellSeries(cells, 47.8001, 13.0451)).toBeNull()
+  })
+
+  it('malformed → null', () => {
+    for (const c of [null, {}, { ...cells, v: [[1, 2]] }, { ...cells, lon: [13] }, { ...cells, times: [] }]) {
+      expect(nearestCellSeries(c, 47.8268, 13.0436)).toBeNull()
+    }
+  })
+})
+
+describe('drizzle all the way is GO ANYWAY, not BLEIB DRIN (v2.48.0)', () => {
+  // Itzling, 2026-09-24 14:06 — every slot 0.15–0.35 for 2½ h, never heavier, never dry.
+  const LIVE = [0.29, 0.24, 0.17, 0.17, 0.18, 0.22, 0.24, 0.25, 0.25, 0.24, 0.24]
+
+  it('THE LIVE CASE: no usable window, but drizzle the whole way → a "for at least" figure', () => {
+    const { times, precips } = timeline(NOON, LIVE)
+    expect(hasUsableWindow(times, precips, NOON)).toBe(false)
+    expect(drizzleOnlyMin(times, precips, NOON)).toBe(150)
+  })
+
+  it('THE LIVE CASE: reads GO ANYWAY with how long, and that it stays drizzle', () => {
+    const t = makeT()
+    const s = getStatus(0.3, [], {}, t, NOON, { noUsableWindow: false, drizzleDayMin: 150 })
+    expect(s.type).toBe('light')
+    expect(s.sub).toBe('s_drizzle_day_far')
+    expect(t.varsFor('s_drizzle_day_far')).toEqual({ h: hoursLabel(150) })
+  })
+
+  it('under 90 min: minutes, rounded to the quarter hour', () => {
+    const t = makeT()
+    getStatus(0.3, [], {}, t, NOON, { noUsableWindow: false, drizzleDayMin: 50 })
+    expect(t.varsFor('s_drizzle_day')).toEqual({ min: 45 })
+  })
+
+  it('v2.24.0 stays pinned: rain that BUILDS to real rain is not a drizzle day', () => {
+    const { times, precips } = timeline(NOON, [0.05, 0.19, 0.3, 0.45, 0.6, 0.78, 0.7, 0.5, 0.4])
+    expect(drizzleOnlyMin(times, precips, NOON)).toBeNull()
+    expect(getStatus(0.05, [], {}, k => k, NOON, { noUsableWindow: true }).type).toBe('stuck')
+  })
+
+  it('the steady arm is untouched: ≥ WINDOW_WET_MM in 45 min while wet stays BLEIB DRIN', () => {
+    const s = getStatus(0.4, [], {}, k => k, NOON,
+      { noUsableWindow: false, drizzleDayMin: 150, windowWetMm: 1.2 })
+    expect(s.type).toBe('stuck')
+  })
+
+  it('a slot we are already past does not count, one at the horizon does', () => {
+    const times = [NOON - 1800, NOON, NOON + LOOK_AHEAD + 900]
+    expect(drizzleOnlyMin(times, [2.0, 0.2, 3.0], NOON)).toBe(0)
+    expect(drizzleOnlyMin([], [], NOON)).toBeNull()
+  })
+})
+
+describe('"it gets much lighter" only after something heavier (v2.48.0)', () => {
+  it('THE LIVE CASE: already drizzle, drizzle all afternoon → no easing to announce', () => {
+    const { times, precips } = timeline(NOON, [0.29, 0.24, 0.17, 0.17, 0.6, 0.2, 0.2, 0.2])
+    expect(easesToGoableMin(times, precips, NOON)).toBe(0)
+    expect(easeFollowsRain(times, precips, NOON)).toBe(false)
+  })
+
+  it('v2.26.0 stays: a heavy slot first, then drizzle → the easing is real', () => {
+    const { times, precips } = timeline(NOON, [2.12, 0.2, 0.13, 0.17, 0.19])
+    expect(easeFollowsRain(times, precips, NOON)).toBe(true)
+  })
+
+  it('a short light dip between heavy slots still counts as following rain', () => {
+    const { times, precips } = timeline(NOON, [0.3, 0.6, 0.2, 0.2, 0.2])
+    expect(easeFollowsRain(times, precips, NOON)).toBe(true)
+  })
+
+  it('never eases / nothing → false', () => {
+    expect(easeFollowsRain(...Object.values(timeline(NOON, [0.9, 0.9, 0.9])), NOON)).toBe(false)
+    expect(easeFollowsRain([], [], NOON)).toBe(false)
+  })
+
+  it('in the escalation branch the false easing becomes the plain "no dry window" sentence', () => {
+    const t = makeT()
+    const trend = { noUsableWindow: true, easeSoonMin: 0, easeAfterRain: false, windowWetMm: 0.7 }
+    const s = getStatus(0.3, [], {}, t, NOON, trend)
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('window_wet_sub')
+    expect(s.notice.sub).not.toBe('n_stuck_easing')
+  })
+
+  it('…and a real easing keeps its sentence there', () => {
+    const trend = { noUsableWindow: true, easeSoonMin: 20, easeAfterRain: true, windowWetMm: 0.7 }
+    expect(getStatus(0.3, [], {}, k => k, NOON, trend).sub).toBe('s_stuck_easing')
+  })
+})
+
+describe('holdReadings — the hold can release a drizzle day (v2.48.0)', () => {
+  it('THE LIVE CASE: gauge at 0.45 all afternoon, drizzle the whole way → the valve can start', () => {
+    expect(holdReadings({ gaugePresent: true, groundPrecip: 0.45, nowPrecip: 0.45, drizzleDay: 150 }))
+      .toEqual({ calm: false, easing: true })
+  })
+
+  it('the same gauge without a drizzle day → still not easing (real rain ahead)', () => {
+    expect(holdReadings({ gaugePresent: true, groundPrecip: 0.45, nowPrecip: 0.45, drizzleDay: null }))
+      .toEqual({ calm: false, easing: false })
+  })
+
+  it('no gauge in reach → the radar-decided NOW value is the reading, not the model-only ground', () => {
+    expect(holdReadings({ gaugePresent: false, groundPrecip: 0.4, nowPrecip: 0.05, drizzleDay: null }))
+      .toEqual({ calm: true, easing: true })
+    expect(holdReadings({ gaugePresent: false, groundPrecip: 0, nowPrecip: 0.6, drizzleDay: null }))
+      .toEqual({ calm: false, easing: false })
+  })
+
+  it('an unknown NOW value is never calm', () => {
+    expect(holdReadings({ gaugePresent: false, groundPrecip: 0, nowPrecip: null, drizzleDay: 150 }))
+      .toEqual({ calm: false, easing: false })
   })
 })

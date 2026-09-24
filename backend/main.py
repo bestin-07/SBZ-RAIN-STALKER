@@ -443,6 +443,28 @@ def _grid_timeline(grid, lat, lon, max_km=1.5):
     return list(times), list(best["precips"])
 
 
+def _city_cells(grid, points):
+    """The city grid for the browser to pick its OWN 1 km cell from (v2.48.0) — compact:
+    {times, lat[], lon[], v[step][cell]}, hundredths of a mm. Each cell is virga-filtered
+    exactly like a point's served series, with the NEAREST point's hourly probability, so
+    at a point's own location the cell and the point are the same series (pinned in
+    test_logic). GPS stays in the browser: every cell is served, the pick is local."""
+    times = list((grid or {}).get("times") or [])
+    cells = (grid or {}).get("cells") or []
+    if not times or not cells or not points:
+        return None
+    lat, lon, cols = [], [], []
+    for c in cells:
+        k = 0.67  # cos(47.8°): a degree of longitude is ~2/3 of a degree of latitude here
+        pt = min(points, key=lambda p: (p["lat"] - c["lat"]) ** 2 + ((p["lon"] - c["lon"]) * k) ** 2)
+        f = _filter_virga(times, c["precips"], pt.get("ptime"), pt.get("pprob"))
+        lat.append(round(c["lat"], 4))
+        lon.append(round(c["lon"], 4))
+        cols.append([int(round(x * 100)) for x in f])
+    return {"times": times, "lat": lat, "lon": lon,
+            "v": [[col[s] for col in cols] for s in range(len(times))]}
+
+
 async def fetch_nowcast_grid(client: httpx.AsyncClient):
     r = await client.get(
         f"{GEOSPHERE}/grid/forecast/nowcast-v1-15min-1km",
@@ -711,8 +733,36 @@ async def fetch_tawes_precip(client: httpx.AsyncClient, lat: float, lon: float, 
     return (await fetch_tawes_reading(client, lat, lon, n))[0]
 
 
-async def fetch_tawes_reading(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
-    """(max RR across the nearest gauges in mm/10 min, observation unix ts) — either may be None."""
+def _tawes_parse(payload, stations):
+    """({station id: RR mm/10 min}, [every RR value]) from a TAWES station/current response.
+    Each feature is matched to its station by `properties.station` when present, else by
+    the nearest known station to its coordinates (≤ 1 km) — so either response shape
+    works. The flat value list keeps the city max exactly as before even if no feature
+    can be matched to a station."""
+    per, values = {}, []
+    for f in (payload or {}).get("features", []) or []:
+        props = f.get("properties") or {}
+        try:
+            v = props["parameters"]["RR"]["data"][0]
+        except (KeyError, IndexError, TypeError):
+            continue
+        if not isinstance(v, (int, float)):
+            continue
+        values.append(v)
+        sid = props.get("station")
+        if sid is None and stations:
+            coords = (f.get("geometry") or {}).get("coordinates")
+            if coords and len(coords) == 2:
+                lon, lat = coords
+                best = min(stations, key=lambda s: _haversine_km(lat, lon, s[1], s[2]))
+                if _haversine_km(lat, lon, best[1], best[2]) <= 1.0:
+                    sid = best[0]
+        if sid is not None:
+            per[str(sid)] = float(v)
+    return per, values
+
+
+async def _tawes_ids(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
     stations = await _load_tawes_stations(client)
     if stations:
         scored  = sorted(stations, key=lambda s: _haversine_km(lat, lon, s[1], s[2]))
@@ -723,6 +773,12 @@ async def fetch_tawes_reading(client: httpx.AsyncClient, lat: float, lon: float,
         ids = ["11150"]
     if "11150" not in ids:
         ids.append("11150")
+    return ids
+
+
+async def _tawes_fetch(client: httpx.AsyncClient, ids):
+    """(per-station RR dict, all RR values, observation ts) for these stations — one call,
+    cached per station set for _TAWES_TTL."""
     key  = ",".join(sorted(ids))
     nowt = datetime.now(timezone.utc).timestamp()
     hit  = _tawes_cache.get(key)
@@ -735,17 +791,27 @@ async def fetch_tawes_reading(client: httpx.AsyncClient, lat: float, lon: float,
     )
     r.raise_for_status()
     payload = r.json()
-    vals = []
-    for f in payload.get("features", []):
-        try:
-            v = f["properties"]["parameters"]["RR"]["data"][0]
-            if isinstance(v, (int, float)):
-                vals.append(v)
-        except (KeyError, IndexError, TypeError):
-            continue
-    reading = (max(vals) if vals else None, _tawes_obs_ts(payload))
-    _tawes_cache[key] = (nowt, reading)
-    return reading
+    per, vals = _tawes_parse(payload, _tawes_stations or [])
+    res = (per, vals, _tawes_obs_ts(payload))
+    _tawes_cache[key] = (nowt, res)
+    return res
+
+
+async def fetch_tawes_reading(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
+    """(max RR across the nearest gauges in mm/10 min, observation unix ts) — either may be None."""
+    _, vals, ts = await _tawes_fetch(client, await _tawes_ids(client, lat, lon, n))
+    return (max(vals) if vals else None, ts)
+
+
+async def fetch_tawes_gauges(client: httpx.AsyncClient, lat: float, lon: float, n: int = 3):
+    """Each gauge's OWN reading and position (v2.48.0) — [{id, lat, lon, rr, ts}] — from the
+    same (cached) call as fetch_tawes_reading. The browser keeps only the gauges within
+    GAUGE_OWN_KM of the user: a gauge speaks for its neighbourhood, not the whole city."""
+    ids = await _tawes_ids(client, lat, lon, n)
+    per, _, ts = await _tawes_fetch(client, ids)
+    where = {s[0]: (s[1], s[2]) for s in (_tawes_stations or [])}
+    return [{"id": sid, "lat": where[sid][0], "lon": where[sid][1], "rr": per.get(sid), "ts": ts}
+            for sid in ids if sid in where]
 
 
 # ---------------------------------------------------------------------------
@@ -1707,6 +1773,14 @@ async def run_cycle():
         except Exception as e:
             print(f"[ground] {e}")
             city_ground, city_ground_ts = None, None
+        # v2.48.0 — the same gauges, each with its own position, so the browser can keep
+        # only those within GAUGE_OWN_KM of the user. Same cached call: no extra request.
+        # [] on failure = "no gauge anywhere", which the client reads as radar-decides.
+        try:
+            gauges = await fetch_tawes_gauges(client, 47.7985, 13.0469)
+        except Exception as e:
+            print(f"[gauges] {e}")
+            gauges = []
 
         # Official GeoSphere/ZAMG severe-weather warnings — municipality-level, one
         # query for Salzburg city centre covers the whole city (same precedent as
@@ -1755,6 +1829,22 @@ async def run_cycle():
             ar = aromes.get(pt["name"])
             if ar:
                 pt["arome"] = ar
+        # v2.48.0 — the whole city grid, filtered per cell, for the browser's own 1 km
+        # cell. Only from THIS cycle's grid: a stale grid next to fresh points would put
+        # two different "nows" on one snapshot. No grid → the key goes, and the browser
+        # uses the nearest point's series as before.
+        try:
+            cells = _city_cells(grid, new_points) if grid else None
+        except Exception as e:
+            print(f"[cells] {e}")
+            cells = None
+        # Assigned together, with no await in between: the snapshot never serves one
+        # cycle's points next to another cycle's gauges or cells.
+        _ambient["gauges"] = gauges
+        if cells:
+            _ambient["nowcastCells"] = cells
+        else:
+            _ambient.pop("nowcastCells", None)
         _ambient["points"] = new_points   # one swap: never served half-built
         _ambient["ts"] = now_ts
         _ambient["build_s"] = round(time.monotonic() - t0, 1)   # cycle start → swap

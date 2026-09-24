@@ -47,6 +47,7 @@ NS = _extract({
     "CYCLE_S", "CYCLE_MIN_GAP_S", "_NOWCAST_TTL",
     "_grid_to_raster", "MAP_GRID_BBOX", "MAP_GRID_DLAT", "MAP_GRID_DLON", "MAP_GRID_MAX_KM",
     "_grid_error",
+    "_tawes_parse", "_haversine_km", "_city_cells",
 })
 # _extract compiles functions without main.py's imports; _tawes_obs_ts resolves these
 # from its globals (this dict) at call time.
@@ -477,6 +478,94 @@ class TestNowcastGrid(unittest.TestCase):
             del f["geometry"]
         with self.assertRaises(ValueError):
             self.parse(sample)
+
+
+class TestGaugeLocality(unittest.TestCase):
+    """v2.48.0: each gauge is served with its OWN reading and position, so the browser can
+    keep only the gauges near the user. Before, the city max of Freisaal and the Airport
+    was stamped on every address — 0.6 mm at Itzling, 4–5 km away, while it was dry there."""
+
+    STATIONS = [("11350", 47.7869, 13.0569), ("11150", 47.7933, 13.0036)]
+
+    def _feat(self, rr, station=None, coords=None):
+        props = {"parameters": {"RR": {"data": [rr]}}}
+        if station is not None:
+            props["station"] = station
+        f = {"properties": props}
+        if coords is not None:
+            f["geometry"] = {"coordinates": coords}
+        return f
+
+    def test_matched_by_station_id(self):
+        per, vals = NS["_tawes_parse"]({"features": [self._feat(0.6, "11350"), self._feat(0.0, "11150")]}, [])
+        self.assertEqual(per, {"11350": 0.6, "11150": 0.0})
+        self.assertEqual(sorted(vals), [0.0, 0.6])
+
+    def test_matched_by_coordinates_when_no_station_id(self):
+        feats = [self._feat(0.6, coords=[13.0570, 47.7870]), self._feat(0.1, coords=[13.0035, 47.7932])]
+        per, _ = NS["_tawes_parse"]({"features": feats}, self.STATIONS)
+        self.assertEqual(per, {"11350": 0.6, "11150": 0.1})
+
+    def test_unmatched_still_counts_for_the_city_max(self):
+        # A shape we can't map must not lose the reading the old city max relied on.
+        per, vals = NS["_tawes_parse"]({"features": [self._feat(0.4, coords=[14.5, 48.5])]}, self.STATIONS)
+        self.assertEqual(per, {})
+        self.assertEqual(vals, [0.4])
+
+    def test_garbage_is_skipped(self):
+        for payload in (None, {}, {"features": None}, {"features": [{"properties": {}}]},
+                        {"features": [self._feat(None, "11350")]}):
+            self.assertEqual(NS["_tawes_parse"](payload, self.STATIONS), ({}, []), payload)
+
+    def test_gauges_and_cells_join_the_same_swap(self):
+        fn = _main_fn("run_cycle")
+        swap = TestAmbientSnapshot()._assign_lines(fn, "points", "_ambient")[0]
+        for key in ("gauges", "nowcastCells"):
+            lines = TestAmbientSnapshot()._assign_lines(fn, key, "_ambient")
+            self.assertEqual(len(lines), 1, key)
+            self.assertLess(swap - lines[0], 8, f"{key} must be set right next to the points swap")
+            self.assertLess(lines[0], swap)
+
+
+class TestCityCells(unittest.TestCase):
+    """v2.48.0: the browser picks its OWN 1 km cell. Served filtered per cell with the
+    nearest point's probability, so at a point's location the cell IS that point's series."""
+
+    TIMES = [1000, 1900, 2800]
+    POINTS = [
+        {"name": "altstadt", "lat": 47.7985, "lon": 13.0469, "ptime": [1000], "pprob": [20]},   # low prob → virga cap
+        {"name": "itzling", "lat": 47.8180, "lon": 13.0350, "ptime": [1000], "pprob": [90]},
+    ]
+
+    def _grid(self):
+        # 0.6: above the virga cap (0.4), below its heavy pass (0.8) — where the filter acts.
+        return {"times": self.TIMES, "cells": [
+            {"lat": 47.7986, "lon": 13.0470, "precips": [0.6, 0.3, 0.0]},   # at altstadt
+            {"lat": 47.8181, "lon": 13.0351, "precips": [0.6, 0.3, 0.0]},   # at itzling
+        ]}
+
+    def test_cell_at_a_point_equals_that_points_filtered_series(self):
+        out = NS["_city_cells"](self._grid(), self.POINTS)
+        fv = NS["_filter_virga"]
+        for i, pt in enumerate(self.POINTS):
+            want = [int(round(x * 100)) for x in fv(self.TIMES, [0.6, 0.3, 0.0], pt["ptime"], pt["pprob"])]
+            self.assertEqual([step[i] for step in out["v"]], want, pt["name"])
+
+    def test_each_cell_uses_its_nearest_points_probability(self):
+        out = NS["_city_cells"](self._grid(), self.POINTS)
+        self.assertEqual(out["v"][0], [40, 60])   # step 0: capped near altstadt, not near itzling
+
+    def test_compact_shape(self):
+        out = NS["_city_cells"](self._grid(), self.POINTS)
+        self.assertEqual(out["times"], self.TIMES)
+        self.assertEqual(len(out["lat"]), 2)
+        self.assertEqual(len(out["v"]), 3)
+        self.assertTrue(all(isinstance(x, int) for step in out["v"] for x in step))
+
+    def test_nothing_to_serve(self):
+        for grid in (None, {}, {"times": [], "cells": []}, {"times": [1], "cells": []}):
+            self.assertIsNone(NS["_city_cells"](grid, self.POINTS))
+        self.assertIsNone(NS["_city_cells"](self._grid(), []))
 
 
 class TestMapGrid(unittest.TestCase):
