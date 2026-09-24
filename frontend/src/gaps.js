@@ -142,11 +142,14 @@ export function gaugeSlotValue(rr) {
 // so an uncorroborated call behaves exactly as v2.0.1 did.
 export const MODEL_NOW_CAP = 0.4
 export const MODEL_HEAVY_PASS = 1.5
+// v2.47.0: the cap applies with NO gauge too. The model current is the preceding
+// HOUR whether or not a gauge reports; passing it through uncapped when TAWES was down
+// let an hour-old 0.5 produce WAIT in the dry. Radar is then the only NOW witness, and
+// it keeps the same release as above: a heavy model value it confirms still passes.
 export function modelNowValue(measured, stationPresent, stationPrecip, radarNow = 0) {
-  if (!stationPresent) return measured
   // 0.10-rounding guard (unchanged): a 0-reading gauge needs the model to be
   // STRICTLY above 0.1 before it may claim any wetness at all.
-  if (stationPrecip === 0 && measured <= 0.1) return 0
+  if (stationPresent && stationPrecip === 0 && measured <= 0.1) return 0
   if (measured >= MODEL_HEAVY_PASS && (radarNow ?? 0) >= DRY_THRESHOLD) return measured
   return Math.min(measured, MODEL_NOW_CAP)
 }
@@ -352,6 +355,48 @@ export function ringDirection(wetDirs) {
   if (Math.hypot(x, y) < 0.5) return null      // cancelled out → no coherent direction
   const ang = (Math.atan2(x, y) * 180 / Math.PI + 360) % 360
   return SECTOR_ORDER[Math.round(ang / 45) % 8]
+}
+
+// Approach tracker (v2.47.0). The v2.0.0 approach ETA read RainViewer's forecast
+// frames; RainViewer stopped publishing them, so that lead signal silently never fired.
+// This rebuilds it from the real past frames. `frames`, oldest → newest:
+//   [{ time, dist: { n: km|null, ne: …, … } }] — distance to the nearest echo per direction.
+// A direction qualifies when its echo is present in every frame of a run ending at the
+// newest, never moves AWAY, and closes by at least TRACK_MIN_CLOSE_KM; speed must be
+// weather-plausible. ETA counts from NOW (the newest frame is itself 5–17 min old).
+// Returns { min, dir } for the soonest arrival within TRACK_MAX_ETA_MIN, else null.
+export const TRACK_MIN_CLOSE_KM = 2
+export const TRACK_MIN_SPEED_KMH = 5
+export const TRACK_MAX_SPEED_KMH = 90
+export const TRACK_MAX_ETA_MIN = 60
+export function trackApproach(frames, nowSec) {
+  if (!Array.isArray(frames) || frames.length < 2) return null
+  const newest = frames[frames.length - 1]
+  if (!newest?.dist) return null
+  let best = null
+  for (const dir of SECTOR_ORDER) {
+    const run = []
+    for (let i = frames.length - 1; i >= 0; i--) {
+      const d = frames[i]?.dist?.[dir]
+      if (typeof d !== 'number') break
+      run.unshift({ t: frames[i].time, d })
+    }
+    if (run.length < 2) continue
+    if (run.some((s, i) => i > 0 && s.d > run[i - 1].d)) continue   // moved away at some step
+    // Every step must be a plausible speed on its own — a cell popping up near you
+    // (still, still, then "22 km in 10 min") averages out plausible but isn't motion.
+    if (run.some((s, i) => i > 0 && s.t > run[i - 1].t &&
+        (run[i - 1].d - s.d) / ((s.t - run[i - 1].t) / 3600) > TRACK_MAX_SPEED_KMH)) continue
+    const closed = run[0].d - run[run.length - 1].d
+    const dtMin = (run[run.length - 1].t - run[0].t) / 60
+    if (closed < TRACK_MIN_CLOSE_KM || dtMin <= 0) continue
+    const kmh = closed / dtMin * 60
+    if (kmh < TRACK_MIN_SPEED_KMH || kmh > TRACK_MAX_SPEED_KMH) continue
+    const eta = run[run.length - 1].d / (kmh / 60) - (nowSec - run[run.length - 1].t) / 60
+    if (eta > TRACK_MAX_ETA_MIN || eta < -10) continue   // too far out, or long overdue
+    if (!best || eta < best.eta) best = { eta, dir }
+  }
+  return best ? { min: Math.max(1, Math.round(best.eta)), dir: best.dir } : null
 }
 
 // Trace-echo acknowledgment (v2.3.0). DRY_THRESHOLD (0.1mm/15min) is a REPORTING

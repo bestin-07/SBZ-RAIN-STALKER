@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.47.0] - 2026-09-24 - Gemma Raus just got better: "rain on its way" works again 🌧️➡️
+
+*While digging through today's reports we found a warning that had quietly stopped working, plus two smaller things that could make Gemma Raus say "raining now" when it wasn't.*
+
+**What happened**
+
+"Rain approaching from the west in about 20 minutes" relied on a short-term radar forecast from one of our radar sources. That source stopped publishing it, so the warning simply never appeared, and nothing looked wrong. Separately, if that radar feed ever froze, we kept treating an old image as "now". And when the rain gauges weren't reporting, an hour-old model reading could still tell you it was raining.
+
+**What's new for you**
+
+- **"Rain on its way" is back, and it's now our own:** Gemma Raus watches the last few radar images, spots rain that is steadily closing in on you, and works out when it will arrive and from which direction.
+- **Old radar pictures no longer count as "now"**: if the feed stalls, we stop listening to it until it's fresh again.
+- **No more "wait" in the dry when the gauges are offline**: an hour-old model reading can no longer decide on its own that it's raining on you.
+
+---
+
 ## [2.46.1] - 2026-09-24 - Gemma Raus just got better: the forecast on the map finally shows up, and the data is fresher 🗺️
 
 *"When I slide the radar into nowcast, nothing is visible." You were right, and it had never worked. We'd blamed dry weather twice.*

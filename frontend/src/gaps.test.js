@@ -17,7 +17,7 @@ import {
   blockedActivities, ACTIVITIES, WET_GROUND_MS,
   showGhost, GHOST_MIN_FACTOR, hoursLabel,
   modelEaseAt, MODEL_EASE_MIN_DRY, hasTraceEcho, traceAheadMin, tracePhantom,
-  ringDirection, combineModelSeries,
+  ringDirection, trackApproach, TRACK_MAX_ETA_MIN, combineModelSeries,
   DRY_THRESHOLD, LIGHT_MIN, LIGHT_MAX, DOWNPOUR_MM, DOWNPOUR_WINDOW_MIN,
   UNSETTLED_CAPE, UNSETTLED_PROB, RV_SOLID_COVERAGE,
   rvNowValue, RV_HEAVY_MM,
@@ -1048,8 +1048,19 @@ describe('modelNowValue — trailing-edge lag guard (the bogus "WAIT 50 in the s
   it('gauge wet + model higher → model still capped (gauge owns the magnitude)', () => {
     expect(modelNowValue(2.0, true, 1.2)).toBe(MODEL_NOW_CAP)  // groundPrecip=max(1.2,0.4)=1.2
   })
-  it('no gauge at all → model passes through (radar-max path handles that case)', () => {
-    expect(modelNowValue(0.7, false, 0)).toBe(0.7)
+  // v2.47.0 — INTENT CHANGE: this used to pass the model through uncapped. The model
+  // current is the preceding HOUR with or without a gauge; with TAWES down, an hour-old
+  // 0.7 became a WAIT in the dry (the exact v2.0.1 trailing-edge bug, one branch over).
+  it('no gauge at all → model capped to the light band like with one (v2.47.0)', () => {
+    expect(modelNowValue(0.7, false, 0)).toBe(MODEL_NOW_CAP)
+    expect(modelNowValue(0.3, false, 0)).toBe(0.3)               // below the cap: untouched
+  })
+  it('no gauge → a heavy model value radar confirms still passes (v2.17.0 release kept)', () => {
+    expect(modelNowValue(3.0, false, 0, 0.2)).toBe(3.0)
+    expect(modelNowValue(3.0, false, 0, 0)).toBe(MODEL_NOW_CAP)   // radar dry → trailing edge
+  })
+  it('no gauge → the 0-gauge rounding guard does not apply (there is no gauge reading)', () => {
+    expect(modelNowValue(0.1, false, 0)).toBe(0.1)
   })
 })
 
@@ -2414,5 +2425,65 @@ describe('v2.34 hasRadarZone — "the first 0 h are radar" is not a sentence', (
     // a real zone; a series that has run out is not.
     expect(hasRadarZone(radarZoneEnd(now + 5.66 * 3600, now), now, true)).toBe(true)
     expect(hasRadarZone(radarZoneEnd(now - 60, now), now, true)).toBe(false)
+  })
+})
+
+// ---- trackApproach — the approach ETA rebuilt from real frames (v2.47.0) ----------
+// RainViewer stopped publishing forecast frames, so the v2.0.0 approach ETA (which read
+// only those) silently never fired. Frames here are oldest → newest, 10 min apart, with
+// the distance (km) to the nearest echo per direction.
+describe('trackApproach — approach ETA from past frames (v2.47.0)', () => {
+  const T0 = 1_790_000_000
+  const frames = (byDir, n = 3) => Array.from({ length: n }, (_, i) => ({
+    time: T0 + i * 600,
+    dist: Object.fromEntries(Object.entries(byDir).map(([d, arr]) => [d, arr[i]])),
+  }))
+  const NOW = T0 + 2 * 600 + 7 * 60   // newest frame is 7 min old
+
+  it('THE CASE (v2.28.0 probe): a band closing from the NW at ~24 km/h gets a real ETA', () => {
+    // 23 → 19 → 15 km over 20 min = 24 km/h; 15 km at 24 km/h = 37.5 min from the
+    // newest frame, which is already 7 min old → ~31 min from now.
+    expect(trackApproach(frames({ nw: [23, 19, 15] }), NOW)).toEqual({ min: 31, dir: 'nw' })
+  })
+  it('static echo (terrain clutter) never produces an ETA', () => {
+    expect(trackApproach(frames({ w: [5, 5, 5] }), NOW)).toBeNull()
+  })
+  it('echo moving away never produces an ETA', () => {
+    expect(trackApproach(frames({ e: [9, 11, 13] }), NOW)).toBeNull()
+  })
+  it('a step away anywhere in the run disqualifies it (a cell passing sideways)', () => {
+    expect(trackApproach(frames({ s: [15, 11, 13] }), NOW)).toBeNull()
+  })
+  it('echo that only appears in the newest frame has no motion to measure', () => {
+    expect(trackApproach(frames({ n: [null, null, 9] }), NOW)).toBeNull()
+  })
+  it('a run starting mid-way still counts (echo entered the tracked range)', () => {
+    // 21 → 15 km in 10 min = 36 km/h; 15 km → 25 min from the newest frame, minus 7.
+    expect(trackApproach(frames({ sw: [null, 21, 15] }), NOW)).toEqual({ min: 18, dir: 'sw' })
+  })
+  it('implausible speed (a new cell popping up next to you) is not a track', () => {
+    expect(trackApproach(frames({ w: [25, 25, 3] }), NOW)).toBeNull()   // 22 km in 10 min
+  })
+  it('beyond the horizon: no ETA', () => {
+    // 7 → 5 km in 20 min = 6 km/h → 50 min from the newest frame... within; slow it more:
+    const slow = [{ time: T0, dist: { n: 9 } }, { time: T0 + 3600, dist: { n: 7 } }]
+    expect(trackApproach(slow, T0 + 3600)).toBeNull()   // 2 km/h: under the speed floor
+    expect(trackApproach(frames({ n: [25, 23, 21] }), NOW)).toBeNull()   // 6 km/h, 21 km: 203 min
+  })
+  it('soonest direction wins', () => {
+    const r = trackApproach(frames({ nw: [23, 19, 15], sw: [15, 11, 7] }), NOW)
+    expect(r.dir).toBe('sw')
+    expect(r.min).toBeLessThanOrEqual(TRACK_MAX_ETA_MIN)
+  })
+  it('overdue by a little → "any minute" (1), overdue by a lot → nothing', () => {
+    // 13 → 3 km over 20 min = 30 km/h → 6 min from the newest frame.
+    expect(trackApproach(frames({ w: [13, 7, 3] }), T0 + 1200 + 10 * 60).min).toBe(1)
+    expect(trackApproach(frames({ w: [13, 7, 3] }), T0 + 1200 + 30 * 60)).toBeNull()
+  })
+  it('no frames / one frame / garbage → null', () => {
+    expect(trackApproach(null, NOW)).toBeNull()
+    expect(trackApproach([], NOW)).toBeNull()
+    expect(trackApproach(frames({ n: [9] }, 1), NOW)).toBeNull()
+    expect(trackApproach([{ time: T0 }, { time: T0 + 600 }], NOW)).toBeNull()
   })
 })

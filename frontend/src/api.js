@@ -1,4 +1,4 @@
-import { ringDirection, RV_SOLID_COVERAGE } from './gaps'
+import { ringDirection, trackApproach, RV_SOLID_COVERAGE } from './gaps'
 
 // iOS Safari < 16 has no AbortSignal.timeout — every fetch in this module uses
 // it, so without this shim the whole data layer throws TypeError (blank app,
@@ -460,23 +460,38 @@ const RING_DIRS = [
   { d: 'w',  dx: -18, dy: 0 },   { d: 'nw', dx: -13, dy: -13 },
 ]
 
+// v2.47.0 — a frame older than this is not "now". The newest frame is normally
+// 5–17 min old (10-min cadence + processing); beyond this the feed has stalled and an
+// old echo must not keep surfacing drizzle or blocking a GO. Treated exactly like
+// RainViewer being unavailable (null), the path every consumer already handles.
+const RV_MAX_AGE_MIN = 25
+// Approach tracker sampling (v2.47.0): the last TRACK_FRAMES real frames (~20 min of
+// motion), and along each of 8 directions a 5×5 block every 2 km from 3 to 25 km out.
+// A block counts as echo from TRACK_MIN_PX wet pixels — clutter lights 1–3 (v2.4.1).
+const TRACK_FRAMES = 3
+const TRACK_RADII_KM = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25]
+const TRACK_MIN_PX = 3
+const TRACK_DIRS = [
+  ['n', 0, -1], ['ne', Math.SQRT1_2, -Math.SQRT1_2], ['e', 1, 0], ['se', Math.SQRT1_2, Math.SQRT1_2],
+  ['s', 0, 1], ['sw', -Math.SQRT1_2, Math.SQRT1_2], ['w', -1, 0], ['nw', -Math.SQRT1_2, -Math.SQRT1_2],
+]
+
 // Read RainViewer at the user's exact lat/lon:
-//  • now         — the latest PAST frame (real radar, ~5 min latency: the freshest
+//  • now         — the latest PAST frame (real radar, 5–17 min old: the freshest
 //                  "is echo over me" signal we have; GeoSphere issues 15–25 min behind).
-//  • approachMin — minutes until the FIRST RainViewer forecast frame (10-min steps,
-//                  ~+10/+20/+30, observed echo motion) that shows echo at this pixel,
-//                  or null. ALL frames are sampled (v1.4.1), so an early-arriving cell
-//                  isn't missed and the verdict gets a real ETA ("~10 min"), not a
-//                  generic "~30". The "blue on the map while the app claims dry"
-//                  signal, promoted from the map into the verdict with a countdown.
-// Returns { now, approachMin } or null when RainViewer is unavailable.
+//  • approachMin — minutes until echo closing in on this spot arrives, tracked across
+//                  the last real frames (gaps.trackApproach), or null. It used to read
+//                  RainViewer's forecast frames, which RainViewer no longer publishes —
+//                  so this lead signal had silently stopped firing (v2.47.0).
+// Returns { now, approachMin, fromDir, rvSolid, heavy } or null when unavailable/stale.
 export function fetchRainViewerPrecip(lat, lon) {
   return getRainViewerMaps()
     .then(mapData => {
       if (!mapData) return null
       const past = mapData.radar?.past ?? []
-      const fcst = mapData.radar?.nowcast ?? []
       if (!past.length) return null
+      const newestAgeMin = (Date.now() / 1000 - past[past.length - 1].time) / 60
+      if (newestAgeMin > RV_MAX_AGE_MIN) return null
 
       const rawHost = mapData.host
       const host = typeof rawHost === 'string' && /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}$/.test(rawHost)
@@ -497,14 +512,34 @@ export function fetchRainViewerPrecip(lat, lon) {
       // dry centre = rain nearby to the west — the lead signal users see as "blue on
       // the map" before anything reaches their pixel.
       const ringBlocks = [{ px, py }, ...RING_DIRS.map(r => ({ px: px + r.dx, py: py + r.dy }))]
-      const nowP = sampleRvFrameBlocks(host, past[past.length - 1].path, z, tileX, tileY, ringBlocks)
-      // Sample EVERY forecast frame at the centre (usually 2–3; same tile x/y, so
-      // the browser caches per frame path — dots and the live location share them).
-      const soonPs = fcst.map(f =>
-        sampleRvFrameBlocks(host, f.path, z, tileX, tileY, [{ px, py }])
-          .then(v => ({ time: f.time, v: v === null ? null : v[0].wet })))
-      return Promise.all([nowP, Promise.all(soonPs)]).then(([nowArr, soons]) => {
-        if (nowArr === null && soons.every(s => s.v === null)) return null
+      // Real Web-Mercator scale here (~0.82 km/px at 47.8°N, see RING_DIRS).
+      const kmPerPx = 156543.03 * Math.cos(latRad) / n / 1000
+      const trackBlocks = TRACK_DIRS.flatMap(([, ux, uy]) => TRACK_RADII_KM.map(km => ({
+        px: Math.round(px + ux * km / kmPerPx), py: Math.round(py + uy * km / kmPerPx),
+      })))
+      const trackFrames = past.slice(-TRACK_FRAMES)
+      const framePs = trackFrames.map((f, i) => {
+        const isNewest = i === trackFrames.length - 1
+        return sampleRvFrameBlocks(host, f.path, z, tileX, tileY,
+          isNewest ? [...ringBlocks, ...trackBlocks] : trackBlocks)
+          .then(v => ({ time: f.time, isNewest, v }))
+      })
+      return Promise.all(framePs).then(sampled => {
+        const newest = sampled[sampled.length - 1]
+        const nowArr = newest.v === null ? null : newest.v.slice(0, ringBlocks.length)
+        if (nowArr === null) return null
+        // Per frame and direction: distance to the nearest block carrying echo.
+        const tracked = sampled.map(s => {
+          if (s.v === null) return { time: s.time, dist: null }
+          const blocks = s.isNewest ? s.v.slice(ringBlocks.length) : s.v
+          const dist = {}
+          TRACK_DIRS.forEach(([d], di) => {
+            const k = TRACK_RADII_KM.findIndex((_, ri) =>
+              blocks[di * TRACK_RADII_KM.length + ri].wet >= TRACK_MIN_PX)
+            dist[d] = k === -1 ? null : TRACK_RADII_KM[k]
+          })
+          return { time: s.time, dist }
+        }).filter(f => f.dist !== null)
         // Blocks resolve as { wet, heavy } counts (0–25). Centre wet count → binary
         // echo value (compat with the mm-ish contract) + coverage fraction for the
         // solid check; centre heavy count → the intensity key.
@@ -517,18 +552,12 @@ export function fetchRainViewerPrecip(lat, lon) {
         // v2.4.1: wide echo across the ~6×6 km centre block = a FIELD, not a stuck
         // clutter pixel — lets RainViewer corroborate itself in gaps.surfaceDrizzle.
         const rvSolid = nowCount !== null && nowCount / 25 >= RV_SOLID_COVERAGE
-        const wetDirs = nowArr === null ? [] :
-          RING_DIRS.filter((r, i) => nowArr[i + 1].wet > 0).map(r => r.d)
-        const nowSec = Date.now() / 1000
-        let approachMin = null
-        for (const s of soons) {                    // frames are chronological
-          if (s.v !== null && s.v >= 1) {            // ≥1 wet px in the block
-            approachMin = Math.max(1, Math.round((s.time - nowSec) / 60))
-            break                                    // first arrival = the ETA
-          }
-        }
-        // Direction only means "approach/nearby" when the centre itself is dry.
-        const fromDir = (now !== null && now < 0.1) ? ringDirection(wetDirs) : null
+        const wetDirs = RING_DIRS.filter((r, i) => nowArr[i + 1].wet > 0).map(r => r.d)
+        // Approach/direction only mean something while the centre itself is dry.
+        const centreDry = now !== null && now < 0.1
+        const approach = centreDry ? trackApproach(tracked, Date.now() / 1000) : null
+        const approachMin = approach ? approach.min : null
+        const fromDir = approach ? approach.dir : centreDry ? ringDirection(wetDirs) : null
         return { now, approachMin, fromDir, rvSolid, heavy }
       })
     })
