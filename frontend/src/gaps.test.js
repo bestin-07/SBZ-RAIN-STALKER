@@ -11,7 +11,7 @@ import {
   detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot, gaugeSlotValue, GAUGE_SLOT_SCALE,
   aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
-  localGauge, GAUGE_OWN_KM, blendNow, nearestCellSeries, drizzleOnlyMin, easeFollowsRain, holdReadings,
+  localGauge, GAUGE_OWN_KM, gaugeFresh, GAUGE_MAX_AGE_MIN, blendNow, nearestCellSeries, drizzleOnlyMin, easeFollowsRain, holdReadings,
   goWindowTooShort, GO_MIN_WINDOW, windowWetMm, WINDOW_WET_MM,
   dryWindowOpen, settleStuckHold, CALM_DWELL_MS, HOLD_STALE_MS, HOLD_MAX_MS,
   hasUsableWindow, GO_MIN_SLOTS, easesToGoableMin,
@@ -2741,6 +2741,68 @@ describe('holdReadings — a hold can outlast the real rain by at most HOLD_MAX_
       .toEqual({ calm: false, easing: false })
   })
 
+  it('a held BLEIB DRIN popup does not say "Raining" over a calm reading (v2.48.2)', () => {
+    const s = getStatus(0.05, [], {}, k => k, NOON, { heldStuck: true })
+    expect(s.notice.head).toBe('n_easing')
+  })
+})
+
+// ---- v2.48.3 logic audit ------------------------------------------------------------
+
+describe('audit: a lagging model value cannot hide the radar\'s drizzle (v2.48.3)', () => {
+  const base = { cp: 0.45, gaugePresent: true, rawNowSlot: 0.45, rvPrecip: 0.3, code: 3, rvSolid: false }
+
+  it('THE HOLE: gauge 0, model still 0.15 for the preceding hour, radar 0.45 overhead → GO ANYWAY, not GEMMA RAUS', () => {
+    const r = blendNow({ ...base, groundPrecip: 0.15, gaugePrecip: 0 })
+    expect(r.surfaced).toBe(true)
+    expect(r.value).toBeCloseTo(0.45)
+    expect(getStatus(r.value, [], {}, k => k, NOON, {}).type).toBe('light')
+  })
+
+  it('a WET gauge still owns the magnitude — surfacing only covers a dry gauge', () => {
+    expect(blendNow({ ...base, groundPrecip: 0.15, gaugePrecip: 0.15 }).value).toBe(0.15)
+  })
+
+  it('surfacing stays capped at the light band: a heavier radar cell never manufactures WAIT here', () => {
+    expect(blendNow({ ...base, cp: 0.9, rawNowSlot: 0.9, groundPrecip: 0.15, gaugePrecip: 0 }).value).toBe(0.15)
+  })
+})
+
+describe('audit: a stale gauge reading is not "now" (v2.48.3)', () => {
+  const NOW_S = 1_800_000_000
+  it('normal ages (10–20 min) and the boundary count; a stalled feed does not', () => {
+    expect(GAUGE_MAX_AGE_MIN).toBe(40)
+    expect(gaugeFresh(NOW_S - 15 * 60, NOW_S)).toBe(true)
+    expect(gaugeFresh(NOW_S - 40 * 60, NOW_S)).toBe(true)
+    expect(gaugeFresh(NOW_S - 41 * 60, NOW_S)).toBe(false)
+    expect(gaugeFresh(NOW_S - 6 * 3600, NOW_S)).toBe(false)
+  })
+  it('unknown age is kept (no evidence it is stale)', () => {
+    expect(gaugeFresh(null, NOW_S)).toBe(true)
+    expect(gaugeFresh(undefined, NOW_S)).toBe(true)
+  })
+})
+
+describe('audit: SOFT SPOT ① closed — a fresh gap vs a still-wet gauge (v2.48.3)', () => {
+  const gap = (startsAt) => [{ startsAt, durationMinutes: 60, opensEnded: false }]
+
+  it('THE SYMPTOM: radar says the gap began 5 min ago, gauge still wet → not GEMMA RAUS yet', () => {
+    const s = getStatus(0.6, gap(NOON - 300), {}, k => k, NOON, { gaugeWet: true })
+    expect(s.type).not.toBe('go')
+  })
+
+  it('once the gap is a slot old, it counts even with the gauge lagging wet', () => {
+    const s = getStatus(0.6, gap(NOON - 960), {}, k => k, NOON, { gaugeWet: true })
+    expect(s.type).toBe('go')
+  })
+
+  it('a dry gauge (or none) is unchanged: a started gap is GO at once', () => {
+    expect(getStatus(0.6, gap(NOON - 300), {}, k => k, NOON, { gaugeWet: false }).type).toBe('go')
+    expect(getStatus(0.6, gap(NOON - 300), {}, k => k, NOON, {}).type).toBe('go')
+  })
+})
+
+describe('holdReadings — popup wording pin', () => {
   it('a held BLEIB DRIN popup does not say "Raining" over a calm reading', () => {
     const s = getStatus(0.05, [], {}, k => k, NOON, { heldStuck: true })
     expect(s.type).toBe('stuck')

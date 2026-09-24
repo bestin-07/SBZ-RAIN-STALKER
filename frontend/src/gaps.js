@@ -175,6 +175,15 @@ function kmBetween(aLat, aLon, bLat, bLon) {
 // extrapolated slot, beyond it it doesn't. Returns the wettest gauge in reach
 // ({ precip, ts, km, id }, RR as served: mm per 10 min) or null — no gauge speaks here.
 export const GAUGE_OWN_KM = 2.5
+
+// v2.48.3 (audit): a gauge reading this old is not "now". Normal age at the screen is
+// 10–20 min (a 10-min sum, published late, held for a 5-min cycle), so 40 never toggles
+// on a healthy feed; it only drops a reading from a stalled feed — where a stale DRY
+// gauge would otherwise keep vetoing real rain on the radar. Unknown age → kept.
+export const GAUGE_MAX_AGE_MIN = 40
+export function gaugeFresh(ts, nowSec) {
+  return typeof ts !== 'number' || nowSec - ts <= GAUGE_MAX_AGE_MIN * 60
+}
 export function localGauge(gauges, lat, lon, radiusKm = GAUGE_OWN_KM) {
   if (!Array.isArray(gauges)) return null
   let best = null
@@ -199,12 +208,16 @@ export function localGauge(gauges, lat, lon, radiusKm = GAUGE_OWN_KM) {
 // light band. A HEAVY RainViewer echo (already dual-keyed by rvNowValue: intensity AND
 // extent, never under a clear sky) now also beats a gauge that has only just started to
 // tip — the v2.29.0 release covered a gauge at exactly zero, not one at 0.15.
-export function blendNow({ cp, gaugePresent, groundPrecip, rawNowSlot, rvPrecip, code, rvSolid = false }) {
+// v2.48.3 (audit): surfacing asks whether the GAUGE is dry, not the ground value — which
+// also carries the hour-lagged model current. With the gauge at 0 and Open-Meteo still
+// reporting 0.15 for the preceding hour, a 0.45 radar drizzle right overhead was ignored
+// and the verdict read GEMMA RAUS (the "two caps, one lagging input" failure again).
+export function blendNow({ cp, gaugePresent, groundPrecip, gaugePrecip = groundPrecip, rawNowSlot, rvPrecip, code, rvSolid = false }) {
   if (cp === null || cp === undefined) return { value: null, surfaced: false }
   let value = gaugePresent ? groundPrecip : Math.max(cp, groundPrecip)
   // No gauge: the only question is whether the RainViewer claim is corroborated — an
   // hour-old model value must not switch that check off, so it is asked against zero.
-  const s = surfaceDrizzle(gaugePresent ? groundPrecip : 0, rawNowSlot, rvPrecip, code, rvSolid)
+  const s = surfaceDrizzle(gaugePresent ? gaugePrecip : 0, rawNowSlot, rvPrecip, code, rvSolid)
   if (s !== null) value = Math.max(value, s)
   if ((rvPrecip ?? 0) >= RV_HEAVY_MM) value = Math.max(value, rvPrecip)
   return { value, surfaced: s !== null }
@@ -1182,7 +1195,13 @@ export function getStatus(
   // Exception: if RainViewer radar directly observes active rain at the user's
   // pixel, the nowcast is blind to this cell; suppress the override so we
   // don't flash GO while radar confirms rain overhead.
-  const gapNow = firstGap && firstGap.startsAt <= nowSec && !trend?.rvRainActive
+  // v2.48.3 — SOFT SPOT ① closed with its documented shelf fix: while the gauge is still
+  // WET, a gap only counts once it is at least one slot (15 min) old. The gauge's RR lags
+  // the end of rain by ~10 min, so this costs at most one slot of "almost out" — and it
+  // stops a radar that declares the gap a few minutes early (with RainViewer unreadable)
+  // from saying GEMMA RAUS to someone who is still getting wet.
+  const gapFresh = !!firstGap && !!trend?.gaugeWet && nowSec - firstGap.startsAt < 900
+  const gapNow = firstGap && firstGap.startsAt <= nowSec && !trend?.rvRainActive && !gapFresh
   // "Go" covers both a started gap and a trace reading below LIGHT_MIN (see the
   // early-return below) — computed once here so the moto glance matches exactly
   // what will actually be returned as type 'go'.

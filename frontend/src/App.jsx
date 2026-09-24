@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchForecast, fetchAccuracy, fetchAreaPrecip, fetchNearbyStationPrecip, fetchNowcastTimeline, fetchRainViewerPrecip, ambientFormingTs, ambientAreaWatch, ambientWarnings, ambientMaxCape, ambientDaily, AREAS } from './api'
 import { detectGaps, getStatus, firstDownpourMin, blendNow, drizzleOnlyMin, easeFollowsRain, holdReadings, isUnsettled, modelNextRainAt, modelNowValue, gaugeSlotValue, nowcastNowSlot, modelEaseAt, hasTraceEcho, traceAheadMin, tracePhantom, combineModelSeries, aromeSlotSeries, modelsAgree, probAt, GO_MIN_WINDOW, windowWetMm, dryWindowOpen, hasUsableWindow, radarZoneEnd, easesToGoableMin, settleStuckHold, blockedActivities, rvNowValue, WET_GROUND_MS, DRY_THRESHOLD, LIGHT_MIN, UNSETTLED_CAPE } from './gaps'
 import { useI18n } from './i18n'
@@ -621,7 +621,7 @@ export default function App() {
     // in reach, the radar decides when none is, and a RainViewer-only claim is
     // corroborated either way (clear-sky veto, v2.2.1 trace, v2.4.1 solid field).
     const { value: effectivePrecip, surfaced: drizzleSurfaced } = blendNow({
-      cp, gaugePresent: stationData !== null, groundPrecip, rawNowSlot, rvPrecip,
+      cp, gaugePresent: stationData !== null, groundPrecip, gaugePrecip: stationPrecip, rawNowSlot, rvPrecip,
       code: data?.current?.weather_code, rvSolid: rv?.rvSolid ?? false,
     })
     // v2.48.0: an afternoon of drizzle the whole way is GO ANYWAY weather, not "no window".
@@ -650,7 +650,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, downpourSoonWideMin: firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW), windowWetMm: windowWetMm(nowcast, nowSec, GO_MIN_WINDOW), noUsableWindow: !usableWindow && drizzleDay == null, drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, downpourSoonWideMin: firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW), windowWetMm: windowWetMm(nowcast, nowSec, GO_MIN_WINDOW), noUsableWindow: !usableWindow && drizzleDay == null, gaugeWet: stationData !== null && stationPrecip >= DRY_THRESHOLD, drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -839,7 +839,7 @@ export default function App() {
         // no-gauge path, which gauge locality turned from "TAWES is down" into the normal
         // case for half the city.
         const { value: effectivePrecip, surfaced: drizzleSurfaced } = blendNow({
-          cp, gaugePresent: stationData !== null, groundPrecip, rawNowSlot, rvPrecip,
+          cp, gaugePresent: stationData !== null, groundPrecip, gaugePrecip: stationPrecip, rawNowSlot, rvPrecip,
           code: data?.current?.weather_code, rvSolid: rv?.rvSolid ?? false,
         })
         // Peak nowcast intensity over the next 45 min — lets getStatus offer the
@@ -1014,7 +1014,7 @@ export default function App() {
           wind: data?.current?.wind_speed_10m ?? null,
           code: data?.current?.weather_code ?? null,
         }
-        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !usableWindow && drizzleDay == null, drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, wetGround: lastWetAt > 0 && (nowMs - lastWetAt) < WET_GROUND_MS, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
+        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !usableWindow && drizzleDay == null, gaugeWet: stationData !== null && stationPrecip >= DRY_THRESHOLD, drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, wetGround: lastWetAt > 0 && (nowMs - lastWetAt) < WET_GROUND_MS, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
 
         // Resolve the verdict here (not in render) purely so we know whether to keep
         // carrying the hold. getStatus is pure, so the render below recomputes the
@@ -1045,10 +1045,11 @@ export default function App() {
         // `ground` is null when no gauge reported at all — that lane then says so
         // rather than borrowing the radar's number and implying a measurement.
         setSignals({
-          ground: stationData !== null ? groundPrecip : null,
-          // The gauge's own measurement time — only when the printed ground number IS
-          // the gauge's (groundPrecip is max(model, gauge); a model value has no such age).
-          groundAt: stationData !== null && stationPrecip >= omForNow ? (stationData.ts ?? null) : null,
+          // v2.48.3 (audit): the GAUGE's own reading — it used to print groundPrecip,
+          // max(model, gauge), so "ground 0.3 mm" could be Open-Meteo's preceding hour
+          // while the gauge read 0. The line names instruments; the model isn't one here.
+          ground: stationData !== null ? stationPrecip : null,
+          groundAt: stationData !== null ? (stationData.ts ?? null) : null,
           radar: typeof rawNowSlot === 'number' ? rawNowSlot : null,
           // The RainViewer pixel at your GPS (v2.29 class value, not mm). Often the
           // ONLY witness behind a GO ANYWAY — without it the line showed a dry gauge

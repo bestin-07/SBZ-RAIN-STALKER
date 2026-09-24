@@ -1,4 +1,4 @@
-import { ringDirection, trackApproach, RV_SOLID_COVERAGE, localGauge, nearestCellSeries, GAUGE_OWN_KM } from './gaps'
+import { ringDirection, trackApproach, RV_SOLID_COVERAGE, localGauge, nearestCellSeries, GAUGE_OWN_KM, gaugeFresh } from './gaps'
 import { isRaster } from './nowcastMap'
 
 // iOS Safari < 16 has no AbortSignal.timeout — every fetch in this module uses
@@ -290,7 +290,14 @@ async function tawesIdsWithin(lat, lon, km) {
 // temp   = average TL across stations that report it (°C), null if none.
 // ts     = when the gauges measured it (unix s), null if unknown — can be well
 //          behind "now", so the source line shows its age.
+// v2.48.3 (audit): one freshness rule for every path below (backend gauges, legacy
+// city ground, direct TAWES) — a reading older than GAUGE_MAX_AGE_MIN is not "now".
 export async function fetchNearbyStationPrecip(lat, lon) {
+  const r = await nearbyStationRaw(lat, lon)
+  return r && gaugeFresh(r.ts, Date.now() / 1000) ? r : null
+}
+
+async function nearbyStationRaw(lat, lon) {
   // Prefer the backend's shared ground reading. A per-IP direct TAWES call flip-flops
   // under rate limits, and when it drops the app falls back to the spiky radar current
   // slot → the GO ANYWAY<->STUCK instability. The backend value is one stable shared

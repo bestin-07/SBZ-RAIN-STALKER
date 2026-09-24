@@ -12,6 +12,19 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.48.3] - 2026-09-24 - Gemma Raus just got better: three blind spots closed 🔍
+
+*We went through every step from "what the instruments read" to "what the headline says", looking for anything that could tell you it's dry when it isn't.*
+
+**What's new for you**
+
+- **Drizzle overhead is never hidden by old data:** if the radar sees light drizzle right above you, an hour-old forecast reading can no longer overrule it.
+- **Old gauge readings don't count as "now":** if the rain gauges stop reporting, we stop trusting their last reading after 40 minutes and let the live radar decide.
+- **No early "go" while the gauge is still wet:** when the radar says the rain has just stopped but the gauge is still catching drops, we wait one more quarter hour before saying "go".
+- **The "i" readings show the gauge itself**, not a forecast value dressed up as a measurement.
+
+---
+
 ## [2.48.2] - 2026-09-24 - Gemma Raus just got better: "stay inside" knows when to let go 🚪
 
 *"Is this stay inside gonna last forever?" It shouldn't have lasted as long as it did.*
