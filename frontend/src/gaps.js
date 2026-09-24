@@ -1,4 +1,4 @@
-﻿export const DRY_THRESHOLD = 0.1
+export const DRY_THRESHOLD = 0.1
 const MIN_GAP_SLOTS = 2
 // Exported since v2.33: App.jsx caps the ribbon's RADAR zone to this same horizon,
 // so "how far ahead radar is trusted" has exactly one definition in the codebase.
@@ -1381,7 +1381,9 @@ export function getStatus(
         ? t('s_rain_eased')
         : t(night ? 's_night_dry' : evening ? 's_evening_dry' : 's_dry_generic')
     }
-    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t) }
+    // v2.49.2: `showersMentioned` lets App drop the "Showers in the region" banner when
+    // this sentence already says it — one fact, one voice.
+    return { type: 'go', headline: t('GO_NOW'), sub, weather: weatherNote, moto: motoSafe, notice: noticeFor('go', currentPrecip, firstGap, trend, nowSec, t), showersMentioned: sub === t('s_dry_showers') }
   }
 
   // Trace drizzle (< 0.2 mm) → still GO. A 0.1 mm tip must not flip GEMMA RAUS ↔
@@ -1431,7 +1433,7 @@ export function getStatus(
     } else {
       sub = t('s_light')
     }
-    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, moto: false, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, moto: false, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t), showersMentioned: sub === t('s_light_showers') }
   }
 
   // ---- A shower the forecast did not see (v2.49.1) ----
@@ -1448,6 +1450,7 @@ export function getStatus(
       sub: t(night ? 's_night_raining' : 's_shower_unforeseen'),
       weather: weatherNote, moto: false,
       notice: { head: t('n_raining'), sub: t('n_shower_unforeseen') },
+      showersMentioned: true,
     }
   }
 
@@ -1461,7 +1464,7 @@ export function getStatus(
     const showerSoon = soon && trend.showersAround
     const headline = showerSoon ? t('WAIT_SHOWER') : soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
     const sub = night ? t('s_night_raining') : showerSoon ? t('s_shower_passing') : breakSub(firstGap, nowSec, t)
-    return { type: 'wait', headline, sub, weather: weatherNote, moto: false, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
+    return { type: 'wait', headline, sub, weather: weatherNote, moto: false, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t), showersMentioned: showerSoon }
   }
 
   const isThunder = (weather?.code ?? -1) >= 95 && (weather?.code ?? -1) <= 99

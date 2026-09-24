@@ -15,10 +15,19 @@ import { useEffect } from 'react'
 // resize→refit→resize loop through ResizeObserver. `availableWidth` is a
 // function rather than a number so callers can account for a sibling (the
 // header's icon row) rather than assuming the whole parent is free.
-export function useFitText(ref, availableWidth, deps) {
+// v2.49.2 — `enabled` false = a SENTENCE, not a headline word: it may wrap, and is
+// never shrunk (the GO state's promoted tagline was being scaled to a few px tall to
+// stay on one line — "the one liner is really small", live report).
+export function useFitText(ref, availableWidth, deps, enabled = true) {
   useEffect(() => {
     const el = ref.current
     if (!el) return
+    if (!enabled) {
+      el.style.display = ''
+      el.style.whiteSpace = ''
+      el.style.transform = 'none'
+      return
+    }
     el.style.display = 'inline-block'
     el.style.whiteSpace = 'nowrap'
     const fit = () => {

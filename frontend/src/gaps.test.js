@@ -2857,6 +2857,15 @@ describe('showers in the region: no confident timing claims (v2.49.1)', () => {
     expect(getStatus(0.9, later, {}, k => k, NOON, { showersAround: true }).headline).toBe('WAIT_MIN')
   })
 
+  it('v2.49.2: the status says when its sentence already mentions showers (the banner then steps aside)', () => {
+    expect(getStatus(0.3, gapSoon, {}, k => k, NOON, { showersAround: true }).showersMentioned).toBe(true)
+    expect(getStatus(0.9, gapSoon, {}, k => k, NOON, { showersAround: true }).showersMentioned).toBe(true)
+    expect(getStatus(0, [], {}, k => k, NOON, { showersAround: true }).showersMentioned).toBe(true)
+    expect(getStatus(0.3, gapSoon, {}, k => k, NOON, {}).showersMentioned).toBe(false)
+    // a downpour warning owns the sentence → the banner stays
+    expect(getStatus(0.3, [], {}, k => k, NOON, { showersAround: true, downpourSoonMin: 20 }).showersMentioned).not.toBe(true)
+  })
+
   it('dry: no plain all-clear under showers — but a real rain countdown still wins', () => {
     expect(getStatus(0, [], {}, k => k, NOON, { showersAround: true }).sub).toBe('s_dry_showers')
     expect(getStatus(0, [], {}, k => k, NOON, { showersAround: true, dryEndsOpen: true }).sub).not.toBe('s_dry_showers')

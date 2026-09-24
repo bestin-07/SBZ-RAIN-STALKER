@@ -144,7 +144,7 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
     let siblings = 0
     for (const c of p.children) if (c !== el) siblings += c.offsetWidth + 8
     return p.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - siblings
-  }, [headlineText])
+  }, [headlineText, isGo], !isGo)
 
   if (!status) return null
 
@@ -187,14 +187,16 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
           // min-w-0: a transform-scaled headline still occupies its UNSCALED width in
           // the layout, which pushed the phone sky glance off the edge; letting the box
           // shrink keeps the row inside the screen (the fit scale keeps the text whole).
+          // v2.49.2 — the GO sentence wraps (useFitText disabled for it) at text-lg
+          // instead of being shrunk onto one line; its "i" follows the last word.
           className={isGo
-            ? 'min-w-0 font-mono font-bold text-base leading-snug tracking-tight'
+            ? 'min-w-0 flex-1 font-mono font-bold text-lg leading-snug tracking-tight'
             : 'min-w-0 font-display font-bold text-4xl leading-none tracking-tight'}
           style={{ color: `var(--c-${status.type}, ${fallback})` }}
         >
           {headlineText}
+          {isGo && signals && <InfoToggle open={showWhy} onClick={() => setShowWhy(v => !v)} t={t} />}
         </div>
-        {isGo && signals && <InfoToggle open={showWhy} onClick={() => setShowWhy(v => !v)} t={t} />}
         {/* Phones only — the header carries it from `sm` up (see Header.SkyGlance). */}
         <SkyGlance weather={weather} compact className="flex sm:hidden ml-auto pl-3 shrink-0" />
       </div>

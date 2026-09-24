@@ -12,6 +12,19 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.49.2] - 2026-09-24 - Gemma Raus just got better: say it once 🧹
+
+*One last look at the screen for anything said twice.*
+
+**What's new for you**
+
+- **"Showers" once, not twice:** when the sentence under the headline already mentions showers, the separate showers banner steps aside.
+- **Cleaner rain chart:** each time slot carries at most one small mark, and "back to now" appears in the same spot every time.
+- **Your map stays yours:** the "your location" bubble opens by itself only the very first time; after that, tap your own dot whenever you want it.
+- **Readable when it's dry:** the sentence that takes the headline's place on a dry day is no longer shrunk to fit one line; it wraps at a comfortable size instead.
+
+---
+
 ## [2.49.1] - 2026-09-24 - Gemma Raus just got better: honest in shower weather 🌦️
 
 *Twice this afternoon a short shower burst over Salzburg while we said "almost out". Sorry about that.*

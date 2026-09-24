@@ -258,7 +258,9 @@ function Tile({ tier, variant, solid, mismatch, mist, timeLabel }) {
             <TileIcon tier={tier} variant={variant} />
           </span>
         </div>
-        {mismatch && (
+        {/* v2.49.2 — at most one mark per tile: where the drizzle dot is shown the
+            ring steps back (both on almost every tile read as noise, live screenshot). */}
+        {mismatch && !mist && (
           <span aria-hidden="true"
                 className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
                 style={{ background: 'var(--c-panel)', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }} />
@@ -560,16 +562,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
             <div className="flex items-baseline gap-2 min-w-0">
               <span className="font-display font-bold text-xl">{fmtSlotTime(scrubT)}</span>
               <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
-              {/* v2.48.2 — "back to now" lives in this always-present row: its own
-                  row appearing under the chart was the other half of the jump. */}
+            </div>
+            <span className="flex items-center gap-1 shrink-0">
+              {/* v2.49.2 — "back to now" sits in a fixed spot, just before the
+                  Radar/Forecast label (maintainer: "fixed for the user"), instead of
+                  trailing the time text, where it moved with every label width. */}
               {scrubIdx > 0 && (
                 <button type="button" onClick={backToNow}
-                        className="self-center shrink-0 font-mono text-[10px] tracking-normal border border-border rounded-full px-2 py-0.5 text-primary hover:border-primary transition-colors">
+                        className="mr-2 shrink-0 font-mono text-[10px] tracking-normal border border-border rounded-full px-2 py-0.5 text-primary hover:border-primary transition-colors">
                   {t('ro_back_now')}
                 </button>
               )}
-            </div>
-            <span className="flex items-center gap-1 shrink-0">
               <SourceIcon inRadar={scrubInRadar} />
               <span className="font-mono text-xs text-primary">
                 {t(slotSourceKey(scrubInRadar))}

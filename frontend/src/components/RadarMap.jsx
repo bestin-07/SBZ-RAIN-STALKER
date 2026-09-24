@@ -577,7 +577,12 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
       className: '',
     })
     if (markerRef.current) markerRef.current.remove()
-    markerRef.current = L.marker([location.lat, location.lon], { icon }).addTo(mapRef.current)
+    // zIndexOffset: above the town dots, whose 60×36 label boxes can overlap the pin.
+    markerRef.current = L.marker([location.lat, location.lon], { icon, zIndexOffset: 1000 })
+      // v2.49.2 — your own pin opens your popup on tap (it no longer auto-opens after
+      // the first visit). Read through a ref: this effect only re-runs on location.
+      .on('click', () => openUserPopupRef.current?.())
+      .addTo(mapRef.current)
     mapRef.current.setView(centerAboveMarker(location.lat, location.lon, ZOOM), ZOOM)
   }, [location])
 
@@ -639,11 +644,26 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // tap the other dots — so they land on a worked example and learn it's tappable.
   // Uses the real headline status (matches the banner). If they're on the default
   // Salzburg centre (GPS denied), it naturally shows Salzburg's glance.
+  const openUserPopupRef = useRef(null)
+  openUserPopupRef.current = () => {
+    if (!location || !userStatus || userStatus.type === 'loading') return
+    const isDefault = Math.abs(location.lat - SALZBURG_CENTER[0]) < 0.001 &&
+                      Math.abs(location.lon - SALZBURG_CENTER[1]) < 0.001
+    openStatusPopup(location.lat, location.lon, isDefault ? 'Salzburg' : (t ? t('your_location') : 'your location'),
+      userStatus, { isUser: true })
+  }
+
+  // v2.49.2 — only on a device's FIRST visit (maintainer: "too much on screen"). After
+  // that the popup repeated the headline over half the map on every open; it still
+  // opens on a tap of your own dot.
   const autoOpenedRef = useRef(false)
   useEffect(() => {
     if (autoOpenedRef.current || !mapRef.current || !location) return
     if (!userStatus || userStatus.type === 'loading') return
     autoOpenedRef.current = true
+    let seen = false
+    try { seen = localStorage.getItem('map_popup_seen') === '1'; localStorage.setItem('map_popup_seen', '1') } catch {}
+    if (seen) return
     const isDefault = Math.abs(location.lat - SALZBURG_CENTER[0]) < 0.001 &&
                       Math.abs(location.lon - SALZBURG_CENTER[1]) < 0.001
     const name = isDefault ? 'Salzburg' : (t ? t('your_location') : 'your location')

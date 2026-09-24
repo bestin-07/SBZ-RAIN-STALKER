@@ -266,7 +266,9 @@ export default function App() {
   // Location / app-state rows (outside Salzburg, stale fix, poor accuracy) stay out
   // of here: they carry their own actions and they are not hazards.
   const alerts = []
-  if (regionalThunder) alerts.push({
+  // v2.49.2: plain showers (not thunder) drop their banner when the headline sentence
+  // already says "showers around" — the same fact twice on one screen.
+  if (regionalThunder && (regionalFullStorm || !status?.showersMentioned)) alerts.push({
     id: 'thunder', sev: regionalFullStorm ? 74 : 56, icon: '⚡', color: 'var(--c-alert)',
     text: regionalFullStorm ? t('thunder_regional') : t('showers_regional'),
   })
