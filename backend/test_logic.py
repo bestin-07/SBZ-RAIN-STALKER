@@ -45,6 +45,8 @@ NS = _extract({
     "_tawes_obs_ts",
     "_grid_timeline", "_restore_ambient", "RESTORE_FRESH_S", "_TIME_SENSITIVE",
     "CYCLE_S", "CYCLE_MIN_GAP_S", "_NOWCAST_TTL",
+    "_grid_to_raster", "MAP_GRID_BBOX", "MAP_GRID_DLAT", "MAP_GRID_DLON", "MAP_GRID_MAX_KM",
+    "_grid_error",
 })
 # _extract compiles functions without main.py's imports; _tawes_obs_ts resolves these
 # from its globals (this dict) at call time.
@@ -475,6 +477,133 @@ class TestNowcastGrid(unittest.TestCase):
             del f["geometry"]
         with self.assertRaises(ValueError):
             self.parse(sample)
+
+
+class TestMapGrid(unittest.TestCase):
+    """v2.47.1: the expanded map's forecast frames come from a WIDE grid resampled onto a
+    regular lat/lon raster. Live report 2026-09-24: over a radar frame covering the whole
+    window, the city-sized grid drew as a small rectangle. The source lattice is tilted in
+    lat/lon (Lambert), and more so the further from its central meridian — at this width
+    the lat/lon banding gridLattice relied on no longer holds, so every pixel takes its
+    nearest source cell instead."""
+
+    KY = 111.2
+
+    def _lattice(self, south, west, n_east, n_north, tilt_deg=0.8, step_km=1.0, value=None):
+        """A synthetic tilted ~1 km lattice (tilt above the live west-edge worst of ~0.72°).
+        Each cell's value encodes its own index, so a pixel's pick can be traced back."""
+        import math
+        kx = self.KY * math.cos(math.radians(47.8))
+        th = math.radians(tilt_deg)
+        feats, cells = [], []
+        for ix in range(n_east):
+            for iy in range(n_north):
+                e, n = ix * step_km, iy * step_km
+                x, y = e * math.cos(th) - n * math.sin(th), e * math.sin(th) + n * math.cos(th)
+                lat, lon = south + y / self.KY, west + x / kx
+                v = value(ix, iy) if value else (ix * 1000 + iy) / 100
+                cells.append((lat, lon, ix, iy))
+                feats.append({"geometry": {"coordinates": [lon, lat]},
+                              "properties": {"parameters": {"rr": {"data": [v, 0.0]}}}})
+        data = {"timestamps": ["2026-09-24T11:30+00:00", "2026-09-24T11:45+00:00"], "features": feats}
+        return data, cells
+
+    def _raster(self, data, bbox=None):
+        return NS["_grid_to_raster"](data, bbox or NS["MAP_GRID_BBOX"], NS["MAP_GRID_DLAT"],
+                                     NS["MAP_GRID_DLON"], NS["MAP_GRID_MAX_KM"])
+
+    def test_bbox_covers_a_wide_window_and_the_city_grid(self):
+        s, w, n, e = (float(x) for x in NS["MAP_GRID_BBOX"].split(","))
+        cs, cw, cn, ce = (float(x) for x in NS["GRID_BBOX"].split(","))
+        self.assertTrue(s <= cs and w <= cw and n >= cn and e >= ce, "must contain the city grid")
+        # The map can't be panned outside RadarMap's BOUNDS (maxBounds) — all of it covered.
+        self.assertTrue(s <= 47.50 and w <= 12.65 and n >= 48.10 and e >= 13.65,
+                        "must cover the map's whole pan area (RadarMap BOUNDS)")
+        # A window wider than that is centred on it: 1900 px at the default zoom 11 spans
+        # ~1.3° lon × ~0.29° lat around 13.15 E.
+        self.assertGreaterEqual(min(13.15 - w, e - 13.15), 0.65)
+        self.assertGreaterEqual(n - s, 0.6)
+        for lat, lon in ((47.8009, 13.0448),):   # Salzburg centre, well inside on every side
+            self.assertTrue(s + 0.2 < lat < n - 0.2 and w + 0.4 < lon < e - 0.4)
+
+    def test_full_coverage_every_pixel_is_its_nearest_cell_within_reach(self):
+        import math
+        # Lattice origin well SW of the bbox, big enough to cover it after the tilt.
+        data, cells = self._lattice(47.40, 12.22, 146, 92)
+        out = self._raster(data)
+        s, w, n, e = (float(x) for x in NS["MAP_GRID_BBOX"].split(","))
+        rows, cols = out["rows"], out["cols"]
+        self.assertEqual((rows, cols), (round((n - s) / NS["MAP_GRID_DLAT"]), round((e - w) / NS["MAP_GRID_DLON"])))
+        self.assertEqual(len(out["v"]), 2)
+        self.assertTrue(all(len(step) == rows * cols for step in out["v"]))
+        self.assertNotIn(-1, out["v"][0], "a hole inside coverage — the v2.46.1 bug shape")
+        by_idx = {(c[2], c[3]): c for c in cells}
+        kx = self.KY * math.cos(math.radians((s + n) / 2))
+        for r in range(0, rows, 7):
+            for c in range(0, cols, 7):
+                lat = n - (r + 0.5) * NS["MAP_GRID_DLAT"]
+                lon = w + (c + 0.5) * NS["MAP_GRID_DLON"]
+                val = out["v"][0][r * cols + c]
+                src = by_idx[(val // 1000, val % 1000)]
+                d = math.hypot((src[0] - lat) * self.KY, (src[1] - lon) * kx)
+                self.assertLessEqual(d, NS["MAP_GRID_MAX_KM"])
+                nearest = min(math.hypot((cl[0] - lat) * self.KY, (cl[1] - lon) * kx) for cl in cells
+                              if abs(cl[0] - lat) < 0.03 and abs(cl[1] - lon) < 0.04)
+                self.assertAlmostEqual(d, nearest, places=6)
+        self.assertTrue(all(x == 0 for x in out["v"][1]))
+
+    def test_outside_the_source_is_no_data_not_dry(self):
+        # Source covers only the western half: the eastern pixels must read -1 (drawn
+        # transparent), never 0 (which would claim "dry" where we have no forecast).
+        data, _ = self._lattice(47.40, 12.22, 60, 92, value=lambda ix, iy: 0.0)
+        out = self._raster(data)
+        cols = out["cols"]
+        first_row = out["v"][0][:cols]
+        self.assertEqual(first_row[0], 0)
+        self.assertEqual(first_row[-1], -1)
+
+    def test_values_are_hundredths_and_missing_is_no_data(self):
+        data = {"timestamps": ["2026-09-24T11:30+00:00", "2026-09-24T11:45+00:00", "2026-09-24T12:00+00:00"],
+                "features": [{"geometry": {"coordinates": [13.0448, 47.8009]},
+                              "properties": {"parameters": {"RR": {"data": [1.53, None, -999.0]}}}}]}
+        out = self._raster(data)
+        s, w, n, e = (float(x) for x in NS["MAP_GRID_BBOX"].split(","))
+        r = int((n - 47.8009) / NS["MAP_GRID_DLAT"])
+        c = int((13.0448 - w) / NS["MAP_GRID_DLON"])
+        i = r * out["cols"] + c
+        self.assertEqual([out["v"][k][i] for k in range(3)], [153, -1, -1])
+        self.assertEqual(out["times"], [1790249400, 1790250300, 1790251200])
+
+    def test_bounds_frame_the_raster(self):
+        data, _ = self._lattice(47.40, 12.12, 10, 10)
+        out = self._raster(data)
+        (bs, bw), (bn, be) = out["bounds"]
+        self.assertAlmostEqual(bn - bs, out["rows"] * NS["MAP_GRID_DLAT"], places=4)
+        self.assertAlmostEqual(be - bw, out["cols"] * NS["MAP_GRID_DLON"], places=4)
+
+    def test_unusable_response_raises(self):
+        for data in ({"timestamps": [], "features": []},
+                     {"timestamps": ["2026-09-24T11:30+00:00"], "features": [{"geometry": {}}]}):
+            with self.assertRaises(ValueError):
+                self._raster(data)
+
+    def test_error_names_the_http_status(self):
+        class Resp:
+            status_code = 429
+        class E(Exception):
+            response = Resp()
+        self.assertIn("429", NS["_grid_error"](E("Too Many Requests")))
+        self.assertTrue(NS["_grid_error"](ValueError("x")).startswith("ValueError"))
+
+    def test_map_grid_is_fetched_after_the_swap_and_not_served_on_ambient(self):
+        fn = _main_fn("run_cycle")
+        swap = TestAmbientSnapshot()._assign_lines(fn, "points", "_ambient")
+        fetch = _call_lines(fn, "fetch_map_grid")
+        self.assertEqual(len(fetch), 1)
+        self.assertGreater(fetch[0], swap[0],
+                           "the map's large request must never delay the verdict snapshot")
+        self.assertFalse(TestAmbientSnapshot()._assign_lines(fn, "nowcastGrid", "_ambient"),
+                         "the grid is served on /api/nowcast-grid, not on the every-client /api/ambient")
 
 
 class TestPushContract(unittest.TestCase):

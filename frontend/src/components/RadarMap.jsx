@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { formatClock } from '../time'
-import { gridLattice } from '../gridLattice'
+import { fetchNowcastGrid } from '../api'
+import { nowcastRgba, nowcastFrames } from '../nowcastMap'
 
 function fmtClock(unix) {
   return formatClock(new Date(unix * 1000))
@@ -27,6 +28,9 @@ const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
 // HTTP 403 from Austrian networks just like GetFeatureInfo, so RainViewer is now
 // the only radar overlay and must be visible at the default zoom (11).
 const RV_MAX_ZOOM = 14
+// Opacity of a shown radar frame — and, since v2.47.1, of a shown forecast frame too:
+// same ramp, same opacity, so the picture doesn't change character at "now".
+const RV_OPACITY = 0.5
 
 // v2.36.6 — the auto-opened "your location" popup sits ABOVE its marker (Leaflet's
 // default), so centering the map on the marker's exact lat/lon left the popup+pin
@@ -71,27 +75,6 @@ function precipColor(p) {
   if (p < 2)    return '#1BAEE2'  // moderate
   if (p < 5)    return '#0077AA'  // heavy
   return               '#E05C00'  // storm/thunderstorm — matches radar warm core
-}
-
-// v2.44.1 — the future-grid layer was originally ~960 individual L.circle
-// vector layers on a shared L.canvas() renderer. Replaced with a single
-// L.imageOverlay after two live reports the same release: the overlay was
-// essentially invisible (the per-circle opacity WAS working — it's simply
-// dry almost everywhere almost always, and 960 near-transparent 0.12-opacity
-// discs read as "nothing") and the map rendered incorrectly on some iOS
-// browsers (Leaflet's Canvas renderer + several hundred vector layers is
-// real DOM/GPU pressure and a known rough edge on older iOS WebKit — the
-// standing hypothesis, since nothing else about map rendering changed this
-// release). A tiny raster (one pixel per cell) stretched by the BROWSER's
-// own image scaling over the grid's bounds is cheaper, uses only Leaflet's
-// long-proven ImageOverlay (already battle-tested by RainViewer's own tile
-// layers), and its natural bilinear upscaling gives a soft heatmap look for
-// free — see buildGridDataUrl (component body, below) for the actual draw.
-// precipColor() branches all return literal hex strings (never a CSS var),
-// so parsing one back to RGB here is always safe.
-function hexToRgb(hex) {
-  const n = parseInt(hex.slice(1), 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
 // Rough metres between two lat/lon (equirectangular — fine at city scale).
@@ -151,7 +134,7 @@ function areaIcon(name, precip, code, status, dryLabel = 'dry') {
   })
 }
 
-export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, relocating, computeStatusAt, expandAboveRef, nowcastGrid }) {
+export default function RadarMap({ location, areaPrecip, areaStatus, userStatus, theme, t, lang, onRelocate, relocating, computeStatusAt, expandAboveRef }) {
   const containerRef   = useRef(null)
   const wrapRef        = useRef(null)
   const mapRef         = useRef(null)
@@ -170,10 +153,13 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // instead of watching the auto-loop cycle. `scrubIdx` null = auto-loop (collapsed,
   // or expanded before the user has touched the slider); a number = that index into
   // the unified past+future frame list, frozen until the map closes.
-  // v2.44.1 — one L.imageOverlay (a raster, see hexToRgb's comment above) instead
-  // of per-cell vector layers.
+  // v2.44.1 — one L.imageOverlay (a raster, one pixel per ~1 km cell, stretched by the
+  // browser's own smoothing) instead of hundreds of vector layers, which were near-
+  // invisible and heavy on older iOS WebKit. v2.47.1 — the raster arrives ready-made
+  // from /api/nowcast-grid (regular lat/lon, wide area) only when the map is expanded.
+  const [mapGrid, setMapGrid] = useState(null)
   const gridOverlayRef = useRef(null)   // the L.imageOverlay instance
-  const gridMetaRef    = useRef(null)   // { lats:[asc], lons:[asc] } derived from nowcastGrid
+  const gridOutlineRef = useRef(null)   // dashed edge of the forecast area, shown with a forecast frame
   const gridCanvasRef  = useRef(null)   // reused offscreen <canvas> the raster is drawn into
   const scrubIdxRef    = useRef(null)
   const computeRef     = useRef(computeStatusAt)
@@ -460,54 +446,44 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // ---- Expanded-map time-scrubber (v2.44.0/v2.44.1), continued ----
   // getScrubFrames/buildGridDataUrl/applyFrame are plain functions — fresh
   // closure every render, same convention as openMap/closeMapAnimated below —
-  // so they always see the latest `nowcastGrid` prop. applyFrameRef mirrors
-  // the current applyFrame for the mount effect's timer/zoomend handlers
-  // above, whose own closures were fixed at mount and would otherwise keep
-  // seeing the nowcastGrid from the very first render forever.
+  // so they always see the latest `mapGrid`. applyFrameRef mirrors the current
+  // applyFrame for the mount effect's timer/zoomend handlers above, whose own
+  // closures were fixed at mount and would otherwise keep seeing the grid from
+  // the very first render forever.
   const getScrubFrames = () => {
     const past = framesMetaRef.current.map((f, i) => ({ time: f.time, forecast: f.forecast, i }))
-    const future = (nowcastGrid?.times || []).map((t, i) => ({ time: t, forecast: true, i }))
+    // v2.47.1 — only steps after the newest radar frame (the nowcast is issued 15–25 min
+    // behind, so its first step can be older than the radar and the slider ran backwards
+    // across "now"). Each keeps `i`, its index into the raster.
+    const newestPast = framesMetaRef.current.filter(f => !f.forecast).slice(-1)[0]
+    const future = nowcastFrames(mapGrid?.times, newestPast?.time, Date.now() / 1000)
     return { past, future, all: [...past, ...future] }
   }
 
-  // Renders one future frame as a tiny raster — one pixel per grid cell — and
-  // returns a data URL. Leaflet's ImageOverlay then stretches that over the
-  // grid's real bounds with the BROWSER's own image scaling, which is what
-  // gives the soft heatmap look for free; nothing here does interpolation of
-  // its own, so it never implies more spatial precision than an 11×… cell
-  // grid actually has. `gi < 0` draws nothing (fully transparent) — used
-  // when a past RainViewer frame is showing instead. Dry cells are drawn at
-  // low alpha rather than skipped entirely — still honest that data exists
-  // there — but the layer is genuinely faint on a genuinely dry forecast,
-  // which is most of the time; that's a true reading, not a bug.
-  const buildGridDataUrl = (cells, gi) => {
-    const grid = gridMetaRef.current
+  // Renders one forecast step as a tiny raster — one pixel per ~1 km cell — and
+  // returns a data URL. Leaflet's ImageOverlay stretches it over the grid's bounds with
+  // the browser's own smoothing (the soft look RainViewer's smoothed tiles have too).
+  // v2.47.1 — coloured on RainViewer's own ramp (nowcastRgba), and dry is TRANSPARENT,
+  // exactly as in a radar frame: the old faint gold "dry" wash was the same beige a radar
+  // frame uses for faint rain, so the colour flipped meaning at "now". Where there is a
+  // forecast is shown by the dashed outline instead. `gi < 0` draws nothing.
+  const buildGridDataUrl = (grid, gi) => {
     if (!grid || !gridCanvasRef.current) return null
     const canvas = gridCanvasRef.current
     canvas.width = grid.cols
     canvas.height = grid.rows
     const ctx = canvas.getContext('2d')
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    if (gi >= 0 && cells) {
-      for (let i = 0; i < cells.length; i++) {
-        const cell = cells[i]
-        const col = grid.colOf[i]
-        const row = grid.rowOf[i]
-        if (col === undefined || row === undefined) continue
-        const p = cell.precips[gi]
-        const wet = typeof p === 'number' && p >= 0.1
-        const [r, g, b] = hexToRgb(precipColor(p))
-        // v2.44.2 — dry alpha raised 0.08 -> 0.16 (live report: on a genuinely
-        // dry forecast — the common case — the whole layer read as "nothing
-        // rendering" rather than "faint because dry"). Still clearly the
-        // fainter of the two, never confusable with real rain.
-        ctx.fillStyle = `rgba(${r},${g},${b},${wet ? 0.6 : 0.16})`
-        // Canvas rows grow downward; latitude grows upward (north = highest
-        // lat, drawn at the TOP of the image) — flip the row so the raster
-        // reads right-way-up once stretched over `bounds`.
-        ctx.fillRect(col, grid.rows - 1 - row, 1, 1)
+    const img = ctx.createImageData(grid.cols, grid.rows)
+    const vals = gi >= 0 ? grid.v[gi] : null
+    if (vals) {
+      for (let k = 0; k < vals.length; k++) {
+        const rgba = vals[k] > 0 ? nowcastRgba(vals[k] / 100) : null   // hundredths of a mm; -1 = no data
+        if (!rgba) continue
+        img.data[k * 4] = rgba[0]; img.data[k * 4 + 1] = rgba[1]
+        img.data[k * 4 + 2] = rgba[2]; img.data[k * 4 + 3] = rgba[3]
       }
     }
+    ctx.putImageData(img, 0, 0)   // row 0 = north = the top of the image
     return canvas.toDataURL('image/png')
   }
 
@@ -518,54 +494,58 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   // the slider (idx = scrubIdx) — one function, so the two can never disagree
   // about what a given index looks like.
   const applyFrame = (idx) => {
-    const { past, future } = getScrubFrames()
+    const { past, all } = getScrubFrames()
     const inPast = idx < past.length
     const rvVisible = !!mapRef.current && mapRef.current.getZoom() <= RV_MAX_ZOOM
     rvLayersRef.current.forEach((l, i) => {
-      try { l.setOpacity(rvVisible && inPast && i === idx ? 0.5 : 0) } catch {}
+      try { l.setOpacity(rvVisible && inPast && i === idx ? RV_OPACITY : 0) } catch {}
     })
+    const frame = all[idx]
+    const gi = !inPast && frame ? frame.i : -1
     const overlay = gridOverlayRef.current
     if (overlay) {
-      const gi = inPast ? -1 : idx - past.length
-      const url = buildGridDataUrl(nowcastGrid?.cells, gi)
+      const url = buildGridDataUrl(mapGrid, gi)
       // v2.44.2 — setUrl/setOpacity used to share one try/catch: if setUrl ever
       // threw, setOpacity was skipped too and the overlay stayed invisible with
       // no error surfaced. Split so a failure in one can never silently cancel
       // the other.
       if (url) { try { overlay.setUrl(url) } catch {} }
-      try { overlay.setOpacity(gi >= 0 ? 0.85 : 0) } catch {}
+      try { overlay.setOpacity(gi >= 0 ? RV_OPACITY : 0) } catch {}
     }
-    const frame = inPast ? past[idx] : future[idx - past.length]
+    try { gridOutlineRef.current?.setStyle({ opacity: gi >= 0 ? 0.6 : 0 }) } catch {}
     setRadarFrame(frame ? { time: frame.time, forecast: frame.forecast } : null)
   }
 
   const applyFrameRef = useRef(applyFrame)
   useEffect(() => { applyFrameRef.current = applyFrame })
 
-  // Build/refresh the future-grid overlay when a new snapshot arrives. Cell
-  // positions are effectively fixed (same bbox every cycle) but the bounds/
-  // index meta is rebuilt fully rather than diffed — simpler, and cheap at
-  // this size. A background refresh must not blank whatever frame is
-  // currently on screen, so the active index is repainted at the end.
+  // Build/refresh the overlay when a new raster arrives. A background refresh must not
+  // blank whatever frame is on screen, so the active index is repainted at the end.
   useEffect(() => {
     if (!mapRef.current) return
-    const cells = nowcastGrid?.cells
-    if (gridOverlayRef.current) {
-      try { mapRef.current.removeLayer(gridOverlayRef.current) } catch {}
-      gridOverlayRef.current = null
+    for (const ref of [gridOverlayRef, gridOutlineRef]) {
+      if (ref.current) {
+        try { mapRef.current.removeLayer(ref.current) } catch {}
+        ref.current = null
+      }
     }
-    const lattice = gridLattice(cells)
-    if (!lattice) { gridMetaRef.current = null; return }
-    const bounds = L.latLngBounds(lattice.bounds[0], lattice.bounds[1])
-    gridMetaRef.current = lattice
+    if (!mapGrid) return
+    const bounds = L.latLngBounds(mapGrid.bounds[0], mapGrid.bounds[1])
     if (!gridCanvasRef.current) gridCanvasRef.current = document.createElement('canvas')
-    const overlay = L.imageOverlay(buildGridDataUrl(cells, -1) || '', bounds, {
+    const overlay = L.imageOverlay(buildGridDataUrl(mapGrid, -1) || '', bounds, {
       opacity: 0, interactive: false, zIndex: 350,
     })
     overlay.addTo(mapRef.current)
     gridOverlayRef.current = overlay
+    // Where the forecast ends — so an edge reads as "the forecast area stops here", not
+    // as a half-drawn map, on a window wide enough (or zoomed out far enough) to see it.
+    const outline = L.rectangle(bounds, {
+      color: '#8A8578', weight: 1, dashArray: '4 4', fill: false, opacity: 0, interactive: false,
+    })
+    outline.addTo(mapRef.current)
+    gridOutlineRef.current = outline
     applyFrameRef.current?.(scrubIdxRef.current ?? animIdxRef.current)
-  }, [nowcastGrid])
+  }, [mapGrid])
 
   // Swap base tile layer when theme changes
   useEffect(() => {
@@ -792,6 +772,17 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const expandTimerRef = useRef(null)
   useEffect(() => { expandedRef.current = expanded }, [expanded])
   useEffect(() => () => clearTimeout(expandTimerRef.current), [])
+
+  // v2.47.1 — the forecast raster is fetched only while the map is expanded (nothing
+  // else shows it), then every 5 min while it stays open, like the radar frames.
+  useEffect(() => {
+    if (!expanded) return
+    let alive = true
+    const load = () => fetchNowcastGrid().then(g => { if (alive && g) setMapGrid(g) })
+    load()
+    const id = setInterval(load, 5 * 60 * 1000)
+    return () => { alive = false; clearInterval(id) }
+  }, [expanded])
 
   // Measured fresh on every call rather than cached — the banner stack above
   // the tabs can grow or shrink (a new warning, a dismissal) between opens,

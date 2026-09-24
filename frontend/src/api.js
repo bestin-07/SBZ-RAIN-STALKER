@@ -1,4 +1,5 @@
 import { ringDirection, trackApproach, RV_SOLID_COVERAGE } from './gaps'
+import { isRaster } from './nowcastMap'
 
 // iOS Safari < 16 has no AbortSignal.timeout — every fetch in this module uses
 // it, so without this shim the whole data layer throws TypeError (blank app,
@@ -74,7 +75,7 @@ export const AREAS = [
 // One shared server call for the whole grid; clients pick the nearest point (GPS
 // stays in the browser). Prevents every user hitting Open-Meteo directly (rate
 // limits / shared NAT). Cached ~90s. Returns points[] or null.
-let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null, _ambientAreaWatch = null, _ambientWarnings = [], _ambientDaily = null, _ambientNowcastGrid = null
+let _ambientPoints = null, _ambientPointsTs = 0, _ambientFormingTs = null, _ambientAreaWatch = null, _ambientWarnings = [], _ambientDaily = null
 async function fetchAmbient() {
   const now = Date.now()
   if (_ambientPoints && now - _ambientPointsTs < 90 * 1000) return _ambientPoints
@@ -94,13 +95,6 @@ async function fetchAmbient() {
     // Kept from the previous snapshot if a cycle serves none, rather than blanking
     // the strip: a day outlook going missing for one cycle is not news.
     if (j?.daily && Array.isArray(j.daily.time) && j.daily.time.length) _ambientDaily = j.daily
-    // Whole-area future radar grid (v2.44.0) — the expanded map's time-scrubber.
-    // Same shape-check doctrine as daily above: kept from the previous snapshot
-    // if a cycle serves none, rather than blanking the scrubber for one bad cycle.
-    if (j?.nowcastGrid && Array.isArray(j.nowcastGrid.times) && j.nowcastGrid.times.length
-        && Array.isArray(j.nowcastGrid.cells) && j.nowcastGrid.cells.length) {
-      _ambientNowcastGrid = j.nowcastGrid
-    }
     if (Array.isArray(j?.points) && j.points.length) { _ambientPoints = j.points; _ambientPointsTs = now; return j.points }
     return _ambientPoints   // empty before first cycle → let caller fall back to direct OM
   } catch { return _ambientPoints }
@@ -120,12 +114,22 @@ export function ambientAreaWatch() { return _ambientAreaWatch }
 // Official severe-weather warnings seen on /api/ambient — [{id,type,level,start,end}].
 export function ambientWarnings() { return _ambientWarnings }
 
-// Whole-area future radar (v2.44.0) — {times:[unix s], cells:[{lat,lon,precips[]}]},
-// or null before the first cycle. Same GeoSphere nowcast-v1-15min-1km instrument as
-// the per-point `nowcast` on each ambient point, requested as one grid covering the
-// city + surrounding towns instead of 11 separate calls. Powers ONLY the expanded
-// map's time-scrubber (RadarMap.jsx) — never read by the verdict/gap/push pipeline.
-export function ambientNowcastGrid() { return _ambientNowcastGrid }
+// The expanded map's forecast frames (v2.47.1): a ~1 km raster over a wide area
+// (Chiemsee to Traunsee), same GeoSphere nowcast as the verdict's timelines — see
+// isRaster in nowcastMap.js for the shape. Fetched only when the map is expanded (it
+// used to ride on /api/ambient, which every client polls whether or not it ever opens
+// the map). Kept from the previous fetch on a failure; never read by the verdict.
+let _mapGrid = null, _mapGridTs = 0
+export async function fetchNowcastGrid() {
+  if (_mapGrid && Date.now() - _mapGridTs < 60 * 1000) return _mapGrid
+  try {
+    const r = await fetch(`${BACKEND}/api/nowcast-grid`, { signal: AbortSignal.timeout(10000) })
+    if (!r.ok) return _mapGrid
+    const g = (await r.json())?.grid
+    if (isRaster(g)) { _mapGrid = g; _mapGridTs = Date.now() }
+  } catch { /* keep the last one */ }
+  return _mapGrid
+}
 
 // Highest CAPE across all sampled grid points (or null if no snapshot yet).
 // Storm risk is a city-scale signal (cells fire and move within the hour), so the

@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.47.1] - 2026-09-24 - Gemma Raus just got better: past and future on the map finally speak the same language 🗺️🎨
+
+*You slid the map from radar into the forecast and it looked like a different map: a half-built rectangle in different colours. It was exactly that.*
+
+**What happened**
+
+The past frames on the map come from one radar service and the forecast frames from another, and we drew them in two different colour schemes. Worse, the same colour meant opposite things: beige was light rain in a radar frame but "dry" in a forecast frame, and a downpour showed up yellow in one and dark blue in the other. The forecast also only covered a small box around the city, and its first step was sometimes older than the last radar picture, so sliding forward jumped back in time.
+
+**What's new for you**
+
+- **One colour means one thing, all the way along the slider:** the forecast now uses the radar's own colours. Beige is a trace, blue is rain, yellow is a downpour, and dry is simply clear map, on both sides of "now".
+- **The forecast fills the whole map,** not just a box around the city. If you zoom far out you'll see a thin dashed line where it ends.
+- **Time only moves forward:** the slider goes from the last radar picture straight into the next forecast step.
+- **Lighter on your data:** the forecast grid now loads only when you open the big map, instead of riding along with every refresh for everyone.
+
+---
+
 ## [2.47.0] - 2026-09-24 - Gemma Raus just got better: "rain on its way" works again 🌧️➡️
 
 *While digging through today's reports we found a warning that had quietly stopped working, plus two smaller things that could make Gemma Raus say "raining now" when it wasn't.*

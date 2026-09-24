@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -54,6 +54,12 @@ _ambient = {"ts": 0, "points": []}
 # When the five-day outlook currently in _ambient["daily"] was actually fetched
 # from Open-Meteo (not just restored from DB) — gates the TTL in run_cycle.
 _daily_fetched_at = 0
+# Wide-area forecast raster for the expanded map (v2.47.1), served by /api/nowcast-grid —
+# kept out of /api/ambient, which every client polls whether or not it opens the map.
+# `_map_grid_body` is the serialised response, rebuilt once per cycle, not per request.
+_map_grid = None
+_map_grid_body = None
+_grid_status = {"city": None, "map": None}   # last outcome per grid call: {ok, at, err}
 
 VAPID_CONTACT = os.getenv("VAPID_CONTACT", "mailto:gemmaraus@example.com")
 MAX_PUSH_SUBS = 50_000
@@ -445,6 +451,111 @@ async def fetch_nowcast_grid(client: httpx.AsyncClient):
     )
     r.raise_for_status()
     return _parse_grid_response(r.json())
+
+
+# ---- The expanded map's forecast frames (v2.47.1) ----------------------------------
+# GRID_BBOX above is the city (it seeds the verdict and stays small and fast). The map
+# needs far more: a wide desktop window at the default zoom shows ~1.3° of longitude,
+# and GRID_BBOX's 0.32° drew the forecast as a small rectangle in the middle of a radar
+# frame that covers everything (live report 2026-09-24). This is a separate call, made
+# AFTER the snapshot swap, so the map's larger request can never delay or break the
+# verdict. Same dataset, one more GeoSphere call per cycle (~12/h, well inside 240/h).
+# south,west,north,east: the map's whole pan area (RadarMap BOUNDS, 47.50–48.10 N ×
+# 12.65–13.65 E) plus margin, centred on it — a window wider than that area is centred on
+# it by Leaflet, so a 1.7° span covers even a 2400 px wide window at the default zoom.
+MAP_GRID_BBOX = "47.45,12.30,48.15,14.00"
+MAP_GRID_DLAT = 0.009    # ~1 km, the source resolution
+MAP_GRID_DLON = 0.0134   # ~1 km at 47.8° N
+MAP_GRID_MAX_KM = 0.8    # > a cell's half-diagonal (0.71 km): inside coverage there's always a cell
+
+
+def _grid_to_raster(data, bbox, dlat, dlon, max_km):
+    """GeoSphere grid GeoJSON → a regular lat/lon raster the browser stretches straight
+    over the map. The source lattice is Lambert-projected (tilted in lat/lon, every cell
+    has a unique lat and lon — the v2.46.1 lesson), so each raster pixel takes its NEAREST
+    source cell within max_km; none in reach → -1, i.e. no data, drawn transparent and
+    never as dry. Values are hundredths of a mm per 15 min (ints — a third of the JSON).
+    Row 0 = north, col 0 = west. Raises ValueError on an unusable response."""
+    import math  # local imports: keep this extractable standalone by test_logic.py
+    from datetime import datetime
+    ts = data.get("timestamps", [])
+    features = data.get("features", [])
+    if not ts or not features:
+        raise ValueError("unexpected grid response: no timestamps/features")
+    times = [int(datetime.fromisoformat(s).timestamp()) for s in ts]
+    south, west, north, east = (float(x) for x in bbox.split(","))
+    src = []
+    for f in features:
+        coords = (f.get("geometry") or {}).get("coordinates")
+        params = (f.get("properties") or {}).get("parameters") or {}
+        rr = params.get("rr")
+        if rr is None:
+            rr = next((v for k, v in params.items() if isinstance(k, str) and k.lower() == "rr"), None)
+        if not coords or len(coords) != 2 or not isinstance(rr, dict):
+            continue
+        vals = rr.get("data")
+        if not isinstance(vals, list) or len(vals) != len(times):
+            continue
+        src.append((float(coords[1]), float(coords[0]),
+                    [int(round(v * 100)) if isinstance(v, (int, float)) and v >= 0 else -1 for v in vals]))
+    if not src:
+        raise ValueError("no usable grid cells in response")
+    rows = max(1, int(round((north - south) / dlat)))
+    cols = max(1, int(round((east - west) / dlon)))
+    # Bucket the source cells on the target lattice: a cell within max_km (< one step)
+    # of a pixel always sits in that pixel's bucket or one of its 8 neighbours.
+    buckets = {}
+    for i, (la, lo, _) in enumerate(src):
+        buckets.setdefault((math.floor((la - south) / dlat), math.floor((lo - west) / dlon)), []).append(i)
+    ky = 111.2
+    kx = 111.2 * math.cos(math.radians((south + north) / 2))
+    reach = max_km * max_km
+    pick = []
+    for r in range(rows):
+        lat = north - (r + 0.5) * dlat
+        bi = math.floor((lat - south) / dlat)
+        for c in range(cols):
+            lon = west + (c + 0.5) * dlon
+            bj = math.floor((lon - west) / dlon)
+            best, best_d = -1, reach
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    for i in buckets.get((bi + di, bj + dj), ()):
+                        d = ((src[i][0] - lat) * ky) ** 2 + ((src[i][1] - lon) * kx) ** 2
+                        if d < best_d:
+                            best, best_d = i, d
+            pick.append(best)
+    return {
+        "times": times, "rows": rows, "cols": cols,
+        "bounds": [[round(north - rows * dlat, 5), west], [north, round(west + cols * dlon, 5)]],
+        "v": [[src[i][2][k] if i >= 0 else -1 for i in pick] for k in range(len(times))],
+    }
+
+
+async def fetch_map_grid(client: httpx.AsyncClient):
+    r = await client.get(
+        f"{GEOSPHERE}/grid/forecast/nowcast-v1-15min-1km",
+        params={"parameters": "rr", "bbox": MAP_GRID_BBOX, "output_format": "geojson"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return _grid_to_raster(r.json(), MAP_GRID_BBOX, MAP_GRID_DLAT, MAP_GRID_DLON, MAP_GRID_MAX_KM)
+
+
+def _grid_error(e):
+    """Short, loggable description of a failed grid call — served on /api/nowcast-grid so
+    a failure can be diagnosed without server logs (2026-09-24: the city grid failed on
+    every cycle after a deploy and nothing outside the logs said why)."""
+    status = getattr(getattr(e, "response", None), "status_code", None)
+    return f"{type(e).__name__}{f' {status}' if status else ''}: {str(e)[:160]}"
+
+
+def _serialise_map_grid():
+    """Rebuild the /api/nowcast-grid body once (raster + status), plain and gzipped."""
+    import gzip
+    global _map_grid_body
+    raw = json.dumps({"grid": _map_grid, "status": _grid_status}, separators=(",", ":")).encode()
+    _map_grid_body = (raw, gzip.compress(raw, 6))
 
 
 def _deaccumulate(vals):
@@ -976,6 +1087,29 @@ def save_last_good_daily(daily: dict, fetched_at: int):
             " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
             (json.dumps({"daily": daily, "fetched_at": fetched_at}),),
         )
+
+
+def save_last_good_map_grid(raster: dict, fetched_at: int):
+    """The map's forecast raster, so a restart doesn't blank the scrubber's future half
+    until the first grid call succeeds — 2026-09-24 it failed on the first two cycles
+    after a deploy, and nothing else held a copy."""
+    with get_db() as (_, cur):
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES ('last_good_map_grid', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (json.dumps({"raster": raster, "fetched_at": fetched_at}, separators=(",", ":")),),
+        )
+
+
+def load_last_good_map_grid():
+    """Returns (raster, fetched_at) or (None, 0)."""
+    with get_db() as (_, cur):
+        cur.execute("SELECT value FROM settings WHERE key = 'last_good_map_grid'")
+        row = cur.fetchone()
+    if not row:
+        return None, 0
+    wrapper = json.loads(row[0])
+    return wrapper.get("raster"), wrapper.get("fetched_at", 0)
 
 
 def load_last_good_daily():
@@ -1514,13 +1648,16 @@ async def run_cycle():
         # 5-min ticks inside GeoSphere's 240 req/h. A failed grid seeds nothing and the
         # per-point calls below run exactly as before; the previous grid stands for the
         # scrubber rather than blanking it for one bad cycle.
+        # v2.47.1: no longer served on /api/ambient — the map reads its own wider grid from
+        # /api/nowcast-grid (fetched after the swap, below). This one only seeds the verdict.
         try:
             grid = await fetch_nowcast_grid(client)
+            _grid_status["city"] = {"ok": True, "at": now_ts}
         except Exception as e:
             print(f"[nowcast-grid] {e}")
+            _grid_status["city"] = {"ok": False, "at": now_ts, "err": _grid_error(e)}
             grid = None
         if grid:
-            _ambient["nowcastGrid"] = grid
             seeded_at = datetime.now(timezone.utc).timestamp()
             for point in POINTS:
                 tl = _grid_timeline(grid, point["lat"], point["lon"])
@@ -1626,6 +1763,23 @@ async def run_cycle():
                 save_last_good_ambient(new_points, now_ts)
             except Exception as e:
                 print(f"[ambient] save_last_good failed: {e}")
+
+        # The expanded map's forecast frames (v2.47.1) — AFTER the swap on purpose: this is
+        # the largest request in the cycle and nothing in the verdict reads it. On failure
+        # the previous raster stands (the client drops steps that have become the past).
+        global _map_grid
+        try:
+            raster = await fetch_map_grid(client)
+            _map_grid = raster
+            _grid_status["map"] = {"ok": True, "at": now_ts}
+            try:
+                save_last_good_map_grid(raster, now_ts)
+            except Exception as e:
+                print(f"[map-grid] save_last_good failed: {e}")
+        except Exception as e:
+            print(f"[map-grid] {e}")
+            _grid_status["map"] = {"ok": False, "at": now_ts, "err": _grid_error(e)}
+        _serialise_map_grid()
 
         # Convective-initiation watch: compare each point's "wet around now" against
         # last cycle. Several dry→wet flips + real CAPE = cells forming over the basin
@@ -1759,6 +1913,17 @@ async def lifespan(app: FastAPI):
             print(f"[daily] restored last-good outlook from DB (fetched {int(datetime.now(timezone.utc).timestamp()) - restored_daily_ts}s ago)")
     except Exception as e:
         print(f"[daily] restore failed: {e}")
+    try:
+        global _map_grid
+        raster, fetched_at = load_last_good_map_grid()
+        # Same freshness rule as the snapshot; the client also drops any step that is
+        # already in the past, so an older-but-fresh raster just shows fewer frames.
+        if raster and int(datetime.now(timezone.utc).timestamp()) - fetched_at <= RESTORE_FRESH_S:
+            _map_grid = raster
+            print(f"[map-grid] restored last-good raster from DB (fetched {int(datetime.now(timezone.utc).timestamp()) - fetched_at}s ago)")
+    except Exception as e:
+        print(f"[map-grid] restore failed: {e}")
+    _serialise_map_grid()
     try:
         init_vapid()
     except Exception as e:
@@ -1948,6 +2113,24 @@ def get_ambient(request: Request):
     response so browsers/proxies serve repeats without hitting us. The payload is
     already-computed cached data, so a hit is cheap; the rate limit caps scraping."""
     return JSONResponse(_ambient, headers={"Cache-Control": "public, max-age=60"})
+
+
+@app.get("/api/nowcast-grid")
+@limiter.limit("30/minute")
+def get_nowcast_grid(request: Request):
+    """The expanded map's forecast frames (v2.47.1): a regular ~1 km raster over
+    MAP_GRID_BBOX, one value array per 15-min step, plus the last outcome of each grid
+    call. Fetched by the browser only when the map is expanded. Pre-serialised once per
+    cycle; gzipped here when accepted (it is mostly zeros — ~10× smaller)."""
+    body = _map_grid_body
+    if body is None:
+        return JSONResponse({"grid": None, "status": _grid_status}, headers={"Cache-Control": "no-store"})
+    raw, gz = body
+    headers = {"Cache-Control": "public, max-age=60", "Vary": "Accept-Encoding"}
+    if "gzip" in (request.headers.get("accept-encoding") or "").lower():
+        headers["Content-Encoding"] = "gzip"
+        return Response(content=gz, media_type="application/json", headers=headers)
+    return Response(content=raw, media_type="application/json", headers=headers)
 
 
 @app.get("/api/accuracy")
