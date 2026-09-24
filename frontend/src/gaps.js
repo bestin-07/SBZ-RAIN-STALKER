@@ -1373,6 +1373,9 @@ export function getStatus(
           sub = t(trend.recentRain ? 's_rain_back' : 's_rain_soon', { min: about })
         }
       }
+    } else if (trend.showersAround && !night) {
+      // v2.49.1: dry here, but showers pop up nearby — say so instead of a plain all-clear.
+      sub = t('s_dry_showers')
     } else {
       sub = (trend.recentRain && !night && !evening)
         ? t('s_rain_eased')
@@ -1409,6 +1412,11 @@ export function getStatus(
       sub = t('s_downpour_soon', { min: trend.downpourSoonMin })
     } else if (night) {
       sub = t('s_night_drizzle')   // drizzle wording — never "raining" under GO ANYWAY
+    } else if (trend.showersAround) {
+      // v2.49.1: showers in the region (a surrounding town's code is 80–82+) — cells
+      // pop up and burst for minutes without any forecast seeing them (live, twice on
+      // 2026-09-24). "easing any minute" is exactly the confident claim that fails then.
+      sub = t('s_light_showers')
     } else if (firstGap) {
       const easeMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
       sub = easeMin < RAIN_SHOW_MIN
@@ -1426,13 +1434,33 @@ export function getStatus(
     return { type: 'light', headline: t('LIGHT_RAIN'), sub, weather: weatherNote, moto: false, notice: noticeFor('light', currentPrecip, firstGap, trend, nowSec, t) }
   }
 
+  // ---- A shower the forecast did not see (v2.49.1) ----
+  // Live (2026-09-24, 15:40): a cell grew over the city in ten minutes — RainViewer 21 →
+  // 42 dBZ across every block, the Freisaal gauge at 0.5 mm/10 min — while the radar
+  // FORECAST read 0.00 for the current slot and dry for an hour. The verdict took that
+  // forecast's "gap starts now" and said GLEICH RAUS / ALMOST OUT into the burst. A
+  // timeline that is wrong about NOW has nothing to say about when the rain ENDS: no
+  // countdown from it (no "almost out", no "no break in 3 h" either). It's WAIT, not
+  // STUCK — a stuck would start the 20-min hold over what is usually a short burst.
+  if (trend.nowcastBlind) {
+    return {
+      type: 'wait', headline: t('WAIT_SHOWER'),
+      sub: t(night ? 's_night_raining' : 's_shower_unforeseen'),
+      weather: weatherNote, moto: false,
+      notice: { head: t('n_raining'), sub: t('n_shower_unforeseen') },
+    }
+  }
+
   // ---- Raining now: narrate the break ahead ----
   if (firstGap) {
     const clearInMin = Math.max(0, Math.round((firstGap.startsAt - nowSec) / 60))
     // Under 5 min the exact minute is noise — drop the number and go soft.
     const soon = clearInMin < SOON_MIN
-    const headline = soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
-    const sub = night ? t('s_night_raining') : breakSub(firstGap, nowSec, t)
+    // v2.49.1: no "ALMOST OUT" while showers are around — it is a promise that the next
+    // pop-up burst breaks (live 2026-09-24: said twice, into two bursts).
+    const showerSoon = soon && trend.showersAround
+    const headline = showerSoon ? t('WAIT_SHOWER') : soon ? t('WAIT_SOON') : t('WAIT_MIN', { min: clearInMin })
+    const sub = night ? t('s_night_raining') : showerSoon ? t('s_shower_passing') : breakSub(firstGap, nowSec, t)
     return { type: 'wait', headline, sub, weather: weatherNote, moto: false, notice: noticeFor('wait', currentPrecip, firstGap, trend, nowSec, t) }
   }
 

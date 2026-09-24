@@ -2802,6 +2802,67 @@ describe('audit: SOFT SPOT ① closed — a fresh gap vs a still-wet gauge (v2.4
   })
 })
 
+describe('a shower the forecast did not see (v2.49.1)', () => {
+  // Live 2026-09-24 15:40: RainViewer 38–42 dBZ over the whole city (heavy, 0.8), the
+  // gauge at 0.5 mm/10 min, the radar forecast 0.00 now and dry for an hour.
+  const gapNowish = [{ startsAt: NOON - 60, durationMinutes: 60, opensEnded: true }]
+
+  it('THE LIVE CASE: it said ALMOST OUT from a forecast that missed the rain — now SHOWER, no countdown', () => {
+    const old = getStatus(RV_HEAVY_MM, gapNowish, {}, k => k, NOON, { rvRainActive: true })
+    expect(old.headline).toBe('WAIT_SOON')
+    const t = makeT()
+    const s = getStatus(RV_HEAVY_MM, gapNowish, {}, t, NOON, { rvRainActive: true, nowcastBlind: true })
+    expect(s.type).toBe('wait')
+    expect(s.headline).toBe('WAIT_SHOWER')
+    expect(s.sub).toBe('s_shower_unforeseen')
+    expect(s.notice.sub).toBe('n_shower_unforeseen')
+  })
+
+  it('not STUCK either: no "no break in 3 h" from a blind forecast, and no hold started', () => {
+    expect(getStatus(RV_HEAVY_MM, [], {}, k => k, NOON, { rvRainActive: true, nowcastBlind: true }).type).toBe('wait')
+  })
+
+  it('only for real rain: drizzle keeps its GO ANYWAY wording', () => {
+    expect(getStatus(0.3, [], {}, k => k, NOON, { nowcastBlind: true }).type).toBe('light')
+  })
+
+  it('escalations still win: a downpour inside the usable window stays BLEIB DRIN', () => {
+    expect(getStatus(0.3, [], {}, k => k, NOON, { nowcastBlind: true, downpourSoonWideMin: 20 }).type).toBe('stuck')
+  })
+})
+
+describe('showers in the region: no confident timing claims (v2.49.1)', () => {
+  // Live 2026-09-24 ~15:57: "light drizzle, easing any minute — hood up and go" under a
+  // "Showers in the region" banner, minutes before a second burst.
+  const gapSoon = [{ startsAt: NOON + 120, durationMinutes: 60, opensEnded: true }]
+
+  it('THE LIVE CASE: GO ANYWAY keeps its state, but the sentence says bursts are possible', () => {
+    const was = getStatus(0.3, gapSoon, {}, k => k, NOON, {})
+    expect(was.sub).toBe('s_light_soon')
+    const s = getStatus(0.3, gapSoon, {}, k => k, NOON, { showersAround: true })
+    expect(s.type).toBe('light')
+    expect(s.sub).toBe('s_light_showers')
+  })
+
+  it('no ALMOST OUT while showers are around', () => {
+    const s = getStatus(0.9, gapSoon, {}, k => k, NOON, { showersAround: true })
+    expect(s.type).toBe('wait')
+    expect(s.headline).toBe('WAIT_SHOWER')
+    expect(s.sub).toBe('s_shower_passing')
+    expect(getStatus(0.9, gapSoon, {}, k => k, NOON, {}).headline).toBe('WAIT_SOON')
+  })
+
+  it('a real countdown is kept (WAIT X MIN), only the "any minute" claim goes', () => {
+    const later = [{ startsAt: NOON + 1800, durationMinutes: 60, opensEnded: false }]
+    expect(getStatus(0.9, later, {}, k => k, NOON, { showersAround: true }).headline).toBe('WAIT_MIN')
+  })
+
+  it('dry: no plain all-clear under showers — but a real rain countdown still wins', () => {
+    expect(getStatus(0, [], {}, k => k, NOON, { showersAround: true }).sub).toBe('s_dry_showers')
+    expect(getStatus(0, [], {}, k => k, NOON, { showersAround: true, dryEndsOpen: true }).sub).not.toBe('s_dry_showers')
+  })
+})
+
 describe('holdReadings — popup wording pin', () => {
   it('a held BLEIB DRIN popup does not say "Raining" over a calm reading', () => {
     const s = getStatus(0.05, [], {}, k => k, NOON, { heldStuck: true })

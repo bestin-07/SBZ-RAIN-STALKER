@@ -12,6 +12,22 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.49.1] - 2026-09-24 - Gemma Raus just got better: honest in shower weather 🌦️
+
+*Twice this afternoon a short shower burst over Salzburg while we said "almost out". Sorry about that.*
+
+**What happened**
+
+Showers can pop up and pour for a minute or two faster than any radar or forecast can see them. We can't predict those bursts, but we were speaking as if we could: "almost out", "easing any minute", straight from a forecast that hadn't even noticed the rain.
+
+**What's new for you**
+
+- **"SHOWER" instead of "almost out"** when it's raining on you but the forecast hasn't caught up: no made-up countdown, just "usually passes quickly, check again in a few minutes".
+- **Shower days get shower wording:** when showers are around Salzburg, we tell you a short burst can pop up any time, instead of promising it'll ease any minute.
+- **Real countdowns stay:** when the radar genuinely sees a break coming, you still get "wait X min".
+
+---
+
 ## [2.49.0] - 2026-09-24 - Gemma Raus just got better: notifications that agree with the app 🔔
 
 *A notification saying "rain" while the app says "go anyway" helps nobody. They now use the same rules.*

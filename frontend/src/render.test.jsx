@@ -219,7 +219,9 @@ for (const lang of ['de', 'en']) {
           modelAgree: times.map((_, i) => i !== 1),
           isNowcast: true, radarUntil: now + 300,
         }} theme="light" t={t} unstable={false} modelRainMin={null} />)
-      expect(html).not.toContain(esc(t('legend_trace')))
+      // Matched as a whole element: the (hidden) readout row may say "Faint drizzle
+      // possible", which contains the legend's words.
+      expect(html).not.toContain('>' + esc(t('legend_trace')) + '<')
       for (const k of ['legend_unsure', 'legend_bleed', 'legend_uncertain', 'lane_held']) {
         expect(translations[lang][k]).toBeUndefined()
       }
