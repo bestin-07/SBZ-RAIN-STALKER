@@ -63,6 +63,29 @@ for (const lang of ['de', 'en']) {
       expect(html).toContain('<svg')
     })
 
+    // v2.46.0 — the sky chip never names rain: that word came from the lagging model
+    // code and contradicted the headline ("Rain" over "a touch of drizzle, nothing
+    // more"). Rain-family codes read as Cloudy; the hazards the verdict never names
+    // (snow, thunder, fog) keep their own word.
+    it('SkyLine shows rain-family codes as Cloudy, keeps snow/thunder/fog', () => {
+      for (const code of [53, 61, 63, 81]) {
+        const html = renderToStaticMarkup(<SkyLine weather={{ code, temp: 14, wind: 8 }} t={t} compact />)
+        expect(html).toContain(esc(t('wx_cloudy')))
+        expect(html).not.toContain(esc(t('wx_rain')))
+        expect(html).not.toContain(esc(t('wx_drizzle')))
+        expect(html).not.toContain(esc(t('wx_showers')))
+      }
+      expect(renderToStaticMarkup(<SkyLine weather={{ code: 95, temp: 20, wind: 8 }} t={t} />)).toContain(esc(t('wx_thunder')))
+      expect(renderToStaticMarkup(<SkyLine weather={{ code: 73, temp: 0, wind: 8 }} t={t} />)).toContain(esc(t('wx_snow')))
+      expect(renderToStaticMarkup(<SkyLine weather={{ code: 45, temp: 5, wind: 2 }} t={t} />)).toContain(esc(t('wx_fog')))
+    })
+
+    // v2.46.0 — one word per rain band across the screen: the ribbon readout and
+    // the map popup used to call the 0.2–0.5 band "Light rain" and "Light drizzle".
+    it('ribbon and popup name the light band the same way', () => {
+      expect(translations[lang].ro_status_light).toBe(translations[lang].n_light)
+    })
+
     it('SkyLine renders nothing when there is nothing to say', () => {
       expect(renderToStaticMarkup(<SkyLine weather={null} t={t} />)).toBe('')
       expect(renderToStaticMarkup(
@@ -190,10 +213,12 @@ for (const lang of ['de', 'en']) {
           isNowcast: true, radarUntil: now + 300,
         }} theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).toContain(esc(t('legend_trace')))
-      expect(html).not.toContain(esc(t('legend_uncertain')))
+      expect(html).not.toContain(esc(t('legend_unsure')))
     })
 
-    it('the disagreement chip appears only when a real agree:false slot exists', () => {
+    // v2.46.0 — "model expects more" and "models disagree" captioned the SAME ring
+    // badge; merged into one chip (legend_unsure). The old keys are gone.
+    it('the unsure chip appears only when a real agree:false slot exists', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
       const html = renderToStaticMarkup(
@@ -202,7 +227,9 @@ for (const lang of ['de', 'en']) {
           modelAgree: times.map((_, i) => i !== 1),
           isNowcast: true, radarUntil: now + 300,
         }} theme="light" t={t} unstable={false} modelRainMin={null} />)
-      expect(html).toContain(esc(t('legend_uncertain')))
+      expect(html).toContain(esc(t('legend_unsure')))
+      expect(translations[lang].legend_bleed).toBeUndefined()
+      expect(translations[lang].legend_uncertain).toBeUndefined()
     })
 
     // v2.38 — the ribbon's own header row ("TODAY · NEXT 12H") is gone for
@@ -264,7 +291,14 @@ for (const lang of ['de', 'en']) {
     // it). The confidence block now also carries a visible "N/5" value
     // (not just the pip bar) and role="img" + one aria-label on the
     // container, so the value reaches assistive tech too.
-    it('the scrub readout reads dry/clear at rest, with full confidence', () => {
+    // v2.46.0 — INTENT CHANGE: at "now" the readout no longer speaks a status or a
+    // confidence. Both restated the headline — in different words ("Light rain"
+    // under "GO ANYWAY · light drizzle") — and radar-zone confidence at now is
+    // always full. The headline owns "now"; the readout names only the time and
+    // the instrument until you scrub (renderToStaticMarkup can't scroll, so these
+    // tests only ever see slot 0 — the scrubbed half is covered by the pure
+    // slotStatusKey/confidencePct contract tests).
+    it('at rest, the readout names the time and instrument only — dry reading', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
       const html = renderToStaticMarkup(
@@ -272,23 +306,22 @@ for (const lang of ['de', 'en']) {
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
       expect(html).not.toContain(esc(t('ro_status_dry')))
       expect(html).toContain(esc(t('ro_src_radar')))
-      expect(html).toContain(esc(t('ro_confidence_label')))
-      expect(html).toContain('5/5')
-      expect(html).toContain('role="img"')
-      expect(html).toContain(esc(t('ro_confidence', { n: 5 })))
+      expect(html).not.toContain(esc(t('ro_confidence_label')))
+      expect(html).not.toContain('5/5')
       expect(html).toContain(esc(t('ro_back_now')))
     })
 
-    // …but a non-dry reading still gets its status word — only the literal
-    // "dry" restatement was the redundancy; rain/light/storm readings are the
-    // one place that scrubbed slot's claim is spoken at all.
-    it('the scrub readout still names a wet reading', () => {
+    it('at rest, the readout names the time and instrument only — wet reading', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
       const html = renderToStaticMarkup(
         <RainRibbon forecast={{ times, precips: times.map((_, i) => (i === 0 ? 0.6 : 0)), isNowcast: true, radarUntil: now + 2.66 * 3600 }}
                     theme="light" t={t} unstable={false} modelRainMin={null} />)
-      expect(html).toContain(esc(t('ro_status_rain')))
+      // Asserted on the status element itself: "Rain"/"Regen" also occurs in the
+      // ribbon's aria-label, so a bare substring check can't tell them apart.
+      expect(html).not.toContain(`<span class="font-mono text-sm">${esc(t('ro_status_rain'))}</span>`)
+      expect(html).not.toContain(esc(t('ro_confidence_label')))
+      expect(html).toContain(esc(t('ro_src_radar')))
     })
 
     // v2.38 — faint drizzle gets a mist marker (`.gr-mist`), never a taller
@@ -389,6 +422,27 @@ for (const lang of ['de', 'en']) {
         <GapBanner status={status} blocked={[]} t={t}
                    signals={{ ground: 0.9, groundAt: null, radar: 0, held: false, updated: Date.now() }} />)
       expect(unknown).toContain(t('lane_ground', { mm: '0.9' }))
+    })
+
+    // v2.46.0 — live screen 2026-09-24 12:54: GO ANYWAY, and the evidence line said
+    // only "ground 0.0 mm". The drizzle call came from the radar IMAGE over the user,
+    // which the line never showed — the one fact printed contradicted the headline.
+    it('source line names the radar image when it is the witness behind the verdict', () => {
+      const status = { type: 'light', headline: 'PASST SCHON', sub: 'x', weather: null }
+      const html = renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} t={t}
+                   signals={{ ground: 0, radar: 0.02, rv: 0.3, held: false, updated: Date.now() }} />)
+      expect(html).toContain(esc(t('lane_radar_rv')))
+      const heavy = renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} t={t}
+                   signals={{ ground: 0, radar: 0, rv: 0.8, held: false, updated: Date.now() }} />)
+      expect(heavy).toContain(esc(t('lane_radar_rv_heavy')))
+      // A wet radar-forecast slot keeps its measured mm; the image isn't mentioned.
+      const both = renderToStaticMarkup(
+        <GapBanner status={status} blocked={[]} t={t}
+                   signals={{ ground: 0, radar: 0.4, rv: 0.3, held: false, updated: Date.now() }} />)
+      expect(both).toContain(t('lane_radar', { mm: '0.4' }))
+      expect(both).not.toContain(esc(t('lane_radar_rv')))
     })
 
     // The GO headline is the promoted tagline (status.sub), not a second

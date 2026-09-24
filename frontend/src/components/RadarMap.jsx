@@ -7,12 +7,13 @@ function fmtClock(unix) {
   return formatClock(new Date(unix * 1000))
 }
 
-// A past radar frame more than this many minutes old is shown as degraded —
-// the animation genuinely cycles through the last ~40 min of history by
-// design, so this fires transiently as the loop passes through its oldest
-// frames (honest: that echo pattern really is that old at that instant) and
-// persistently if RainViewer's own feed has actually gone stale.
-const RADAR_STALE_MIN = 15
+// v2.46.0 — the feed counts as stale when its NEWEST frame is older than this.
+// It used to be judged on whichever frame the loop was replaying, at 15 min: the
+// loop is ~40 min of history (RainViewer no longer serves forecast frames), and
+// the newest frame itself is normally 5–17 min old (10-min cadence + processing),
+// so "stale" showed for most of every loop on a perfectly healthy feed. 25 min =
+// the feed has missed at least one update.
+const RADAR_STALE_MIN = 25
 
 const SALZBURG = [47.802, 13.045]
 const SALZBURG_CENTER = [47.8009, 13.0448]  // city centre — an extra tappable point
@@ -964,7 +965,9 @@ export default function RadarMap({ location, areaPrecip, areaStatus, userStatus,
   const frameAgeMin = radarFrame && !radarFrame.forecast
     ? Math.max(0, Math.round(Date.now() / 60000 - radarFrame.time / 60))
     : null
-  const radarDegraded = radarError || (frameAgeMin !== null && frameAgeMin > RADAR_STALE_MIN)
+  const newestPast = framesMetaRef.current.filter(f => !f.forecast).slice(-1)[0]
+  const newestAgeMin = newestPast ? Math.max(0, Math.round(Date.now() / 60000 - newestPast.time / 60)) : null
+  const radarDegraded = radarError || (newestAgeMin !== null && newestAgeMin > RADAR_STALE_MIN)
 
   // v2.44.0 — the expanded map's scrubber: one shared list of past (RainViewer)
   // and future (GeoSphere grid) frames. Only computed while it can actually be

@@ -560,6 +560,12 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
               </span>
             </span>
           </div>
+          {/* v2.46.0 — at "now" this row said nothing the headline doesn't: its
+              status word restated the verdict in DIFFERENT words ("Light rain"
+              under "GO ANYWAY · light drizzle"), and radar-zone confidence at now
+              is always full. The headline owns "now"; this row speaks only once
+              you scrub to a slot the headline isn't talking about. */}
+          {scrubIdx > 0 && (
           <div className="flex items-center justify-between gap-2 mt-0.5">
             {/* "Trocken" at rest already restates what the (promoted) headline
                 and the dry-window bracket both already say — a live screen
@@ -591,6 +597,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
               <span aria-hidden="true" className="font-mono text-[9px] text-primary">{confPips}/5</span>
             </span>
           </div>
+          )}
         </div>
       )}
 
@@ -714,9 +721,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
 
       {/* Legend + "back to now" — unchanged wording/positions, gated on the
           same predicates as before (a chip only shows for something actually
-          on screen, v2.18.0's own rule). legend_bleed/legend_uncertain keep
-          their existing text; both now describe the SAME visual (the small
-          ring badge on a tile) instead of two different marker shapes. */}
+          on screen, v2.18.0's own rule). */}
       {hasData && (
         // tracking-[0.07em] → [0.05em]: same legibility pass as the readout row above.
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.05em] text-muted">
@@ -726,8 +731,16 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
               {t('legend_trace')}
             </span>
           )}
-          {hasBleed && <span>{t('legend_bleed')}</span>}
-          {hasDisagreement && <span>{t('legend_uncertain')}</span>}
+          {/* v2.46.0 — one caption for the one mark. "model expects more" and
+              "models disagree" both labelled the SAME dashed ring (v3.0 unified
+              the shape), so two chips described one symbol. The ring is drawn
+              here so the caption can be matched to the tile badge at a glance. */}
+          {(hasBleed || hasDisagreement) && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ border: '1.5px dashed var(--c-muted)' }} aria-hidden="true" />
+              {t('legend_unsure')}
+            </span>
+          )}
           <button type="button" onClick={backToNow}
                   className="ml-auto font-mono text-[10px] tracking-normal border border-border rounded-full px-2.5 py-1 text-primary hover:border-primary transition-colors">
             {t('ro_back_now')}

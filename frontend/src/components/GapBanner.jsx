@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import SkyLine from './SkyLine'
 import { useFitText } from '../useFitText'
 import { formatClock } from '../time'
+import { RV_HEAVY_MM } from '../gaps'
 
 const ACTIVITY_EMOJI = {
   swim: '🏊', run: '🏃', bike: '🚴', moto: '🏍️', picnic: '🧺',
@@ -48,9 +49,13 @@ const COLORS = {
 // to a wet radar, which is precisely what this line exists to explain.
 function SourceLine({ signals, t }) {
   if (!signals) return null
-  const { ground, groundAt, radar, held, updated } = signals
+  const { ground, groundAt, radar, rv, held, updated } = signals
   const wet = v => typeof v === 'number' && v >= 0.1
   const dot = v => (v === null || v === undefined ? 'var(--c-muted)' : wet(v) ? 'var(--c-wait)' : 'var(--c-go)')
+  // v2.46.0 — when the radar forecast's own slot is dry but the radar IMAGE over
+  // your spot shows rain, the image is the witness behind the verdict. It's a
+  // class, not a measurement, so it's named in words rather than given a fake mm.
+  const rvOnly = !wet(radar) && wet(rv)
   // Truncate, don't round. Every threshold in gaps.js sits on a 0.1 boundary
   // (0.1/0.2/0.5/1.5) — a plain .toFixed(1) rounds e.g. gaugeSlotValue(0.1)
   // (0.15000...02, genuinely < LIGHT_MIN) up to the printed "0.2", which reads
@@ -73,7 +78,12 @@ function SourceLine({ signals, t }) {
           : groundAge != null ? t('lane_ground_age', { mm: mm(ground), min: groundAge })
           : t('lane_ground', { mm: mm(ground) })}
       </span>
-      {showRadar && (
+      {rvOnly ? (
+        <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(rv) }} />
+          {t(rv >= RV_HEAVY_MM ? 'lane_radar_rv_heavy' : 'lane_radar_rv')}
+        </span>
+      ) : showRadar && (
         <span className="font-mono text-[10px] text-muted flex items-center gap-1.5">
           <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dot(radar) }} />
           {typeof radar !== 'number' ? t('lane_radar_none') : t('lane_radar', { mm: mm(radar) })}

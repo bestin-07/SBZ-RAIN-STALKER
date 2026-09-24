@@ -24,9 +24,20 @@ import { weatherGroup } from '../gaps'
 // above is untouched: the note still carries the advice, this still carries the
 // facts, and getWeatherNote's suppression gates are not altered. Only the
 // container changed.
+// v2.46.0 — rain-family codes are shown as plain "Cloudy". The code is the MODEL's
+// sky (code 61 outlives the rain by an hour or more — see getStatus), and whether it
+// is raining on you is exactly what the headline answers from the gauge and radar.
+// Two answers to one question on one screen ("Rain" over "a touch of drizzle, nothing
+// more", over "Light rain" in the ribbon) was the loudest of the disagreeing voices.
+// Snow, fog and thunder stay named: the verdict never says any of those.
+const PRECIP_GROUPS = new Set(['drizzle', 'rain', 'showers'])
+const CLOUDY_CODE = 3
+
 export default function SkyLine({ weather, t, compact = false }) {
   if (!weather) return null
-  const group = weatherGroup(weather.code)
+  const rawGroup = weatherGroup(weather.code)
+  const group = PRECIP_GROUPS.has(rawGroup) ? 'cloudy' : rawGroup
+  const glyphCode = group === rawGroup ? weather.code : CLOUDY_CODE
   const temp = typeof weather.temp === 'number' ? Math.round(weather.temp) : null
   const wind = typeof weather.wind === 'number' ? Math.round(weather.wind) : null
   // Nothing worth a row: no sky, no temperature, no wind.
@@ -39,7 +50,7 @@ export default function SkyLine({ weather, t, compact = false }) {
       // floating loose above the headline they sit next to.
       ? 'flex items-center gap-2 mb-3 bg-surface border border-border rounded-2xl px-3 py-2 shadow-sm'
       : 'px-4 py-2.5 border-b border-border shrink-0 flex items-center gap-2.5'}>
-      <WeatherGlyph code={weather.code} size={compact ? 18 : 22} />
+      <WeatherGlyph code={glyphCode} size={compact ? 18 : 22} />
       <span className={'font-mono flex-1 min-w-0 truncate '
         + (compact ? 'text-[11px] text-muted' : 'text-xs text-primary')}>
         {group ? t('wx_' + group) : ''}

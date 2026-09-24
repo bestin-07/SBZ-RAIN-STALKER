@@ -12,6 +12,29 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.46.0] - 2026-09-24 - Gemma Raus just got better: one screen, one answer 🎯
+
+*Your screenshot said it best: "Rain" at the top, "light drizzle" in the headline, "Light rain" under the chart, and a rain gauge reading of 0.0 as the only proof. Four ways of saying one thing, and the proof pointed the other way.*
+
+**What happened**
+
+Over time every part of the screen learned to describe the weather in its own words, from its own source. Each was right about something, but together they talked over each other, and on a drizzly day you had to work out which one to believe.
+
+**What's new for you**
+
+- **The headline owns "right now".** Everything else on the screen either adds something the headline can't tell you, or stays quiet.
+- **The weather chip at the top no longer says "Rain".** That word came from a forecast model that's often an hour behind. Whether it's raining on you is the headline's job, and it uses live measurements. The chip now just says what the sky looks like, plus temperature and wind.
+- **The proof line shows what actually decided.** When the radar picture over you is what spotted the drizzle, it now says so ("radar image: rain over you"), instead of showing only a dry rain gauge.
+- **Same words everywhere:** light drizzle is "light drizzle", heavy rain is "heavy rain", on the headline, the chart and the map.
+- **The chart's readout stays quiet at "now"** and speaks up when you slide to a later time.
+- **One caption for the dotted ring** on the chart: "forecast unsure".
+- **"Rain over the southwest of the city" only shows when you're dry**, as a heads-up. When you're already in it, the headline has you covered.
+- **The map no longer calls a healthy radar feed "stale".** It only says so when the feed really has stopped updating.
+
+Nothing about how Gemma Raus decides has changed. This is only about how clearly it tells you.
+
+---
+
 ## [2.45.0] - 2026-09-24 - Gemma Raus just got better: no more half-finished answers, and the rain gauge tells you how old it is ⏱️
 
 *A report from Itzling: "it's dry now and it says wait 17 min?" You were right to be puzzled, and it led us to three things worth fixing.*

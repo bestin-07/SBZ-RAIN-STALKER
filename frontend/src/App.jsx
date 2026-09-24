@@ -286,7 +286,11 @@ export default function App() {
   if (unsettled && !formingActive) alerts.push({
     id: 'unsettled', sev: 16, icon: '🌤', color: 'var(--c-warn)', text: t('unsettled_note'),
   })
-  if (areaWatch && !formingActive) alerts.push({
+  // v2.46.0 — only while it's dry where you stand. Under GO ANYWAY / WAIT / BLEIB
+  // DRIN the headline is already describing the rain you're in; "rain over the
+  // southwest — pulling back" on top of it was a second, city-scale description of
+  // the same event. When you ARE dry it's the one heads-up the headline can't give.
+  if (areaWatch && !formingActive && status?.type === 'go') alerts.push({
     id: 'areawatch', sev: 10, icon: '🌧', color: 'var(--c-muted)',
     text: t('aw_' + areaWatch.trend, { dir: t('dir_' + areaWatch.sector) }),
   })
@@ -1033,6 +1037,10 @@ export default function App() {
           // the gauge's (groundPrecip is max(model, gauge); a model value has no such age).
           groundAt: stationData !== null && stationPrecip >= omForNow ? (stationData.ts ?? null) : null,
           radar: typeof rawNowSlot === 'number' ? rawNowSlot : null,
+          // The RainViewer pixel at your GPS (v2.29 class value, not mm). Often the
+          // ONLY witness behind a GO ANYWAY — without it the line showed a dry gauge
+          // next to a drizzle headline and nothing explaining why.
+          rv: rv ? rvPrecip : null,
           held: settledHold.holding,
           updated: nowMs,
         })
