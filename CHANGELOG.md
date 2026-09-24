@@ -12,6 +12,20 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.48.1] - 2026-09-24 - Gemma Raus just got better: less to read, same answer ✂️
+
+*"Too many writings." Fair. We counted seven bits of text above the map, and three of them said something already on screen.*
+
+**What's new for you**
+
+- **The answer stands on its own:** the headline and one sentence. The "Cloudy" row is gone; the temperature now sits in the header (next to the headline on phones).
+- **The measurements are one tap away:** tap the small "i" after the sentence to see what the gauge and the radar read. "Confirming" is gone for good.
+- **Clearer header time:** it's when the app last updated, so it now says so with a ↻.
+- **A calmer rain chart:** no legend underneath, and the little dashed rings only where the two forecasts would actually show you something different.
+- **No more suns in a rainstorm:** a short dry moment during rain now shows a cloud, not a bright sun.
+
+---
+
 ## [2.48.0] - 2026-09-24 - Gemma Raus just got better: your spot, not the city's 📍
 
 *"It's dry and it says wait 17 minutes." "It still says confirming." "It says it gets lighter in 5 minutes, but it's already drizzle." All three were fair, and all three are fixed.*

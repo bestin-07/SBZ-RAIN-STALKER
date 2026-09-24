@@ -11,10 +11,10 @@
 // node environment as the rest of the suite.
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import SkyLine from './components/SkyLine'
+import Header from './components/Header'
 import DayStrip from './components/DayStrip'
-import GapBanner from './components/GapBanner'
-import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePct, bucketMixed } from './components/RainRibbon'
+import GapBanner, { SourceLine } from './components/GapBanner'
+import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePct, bucketMixed, drySkyVariant } from './components/RainRibbon'
 import InfoPanel from './components/InfoPanel'
 import { translations } from './i18n'
 
@@ -56,28 +56,32 @@ for (const lang of ['de', 'en']) {
   describe(`render check (${lang})`, () => {
     const t = mkT(lang)
 
-    it('SkyLine renders the code, temp and wind', () => {
-      const html = renderToStaticMarkup(<SkyLine weather={{ code: 3, temp: 19.4, wind: 11.2 }} t={t} />)
+    // v2.48.1 — the sky chip row is gone; its glyph, temperature and wind live in the
+    // header. No condition WORD at all: the headline answers "is it raining on me".
+    const header = (weather, lastUpdated = null) => renderToStaticMarkup(
+      <Header weather={weather} lastUpdated={lastUpdated} theme="light" lang={lang}
+              notifyState="unsupported" t={t} onThemeToggle={() => {}} onLangToggle={() => {}} onInfo={() => {}} onLogo={() => {}} />)
+
+    it('the header carries the sky glance: glyph, temperature, wind', () => {
+      const html = header({ code: 3, temp: 19.4, wind: 11.2 })
       expect(html).toContain('19°')
       expect(html).toContain('11 km/h')
       expect(html).toContain('<svg')
     })
 
-    // v2.46.0 — the sky chip never names rain: that word came from the lagging model
-    // code and contradicted the headline ("Rain" over "a touch of drizzle, nothing
-    // more"). Rain-family codes read as Cloudy; the hazards the verdict never names
-    // (snow, thunder, fog) keep their own word.
-    it('SkyLine shows rain-family codes as Cloudy, keeps snow/thunder/fog', () => {
-      for (const code of [53, 61, 63, 81]) {
-        const html = renderToStaticMarkup(<SkyLine weather={{ code, temp: 14, wind: 8 }} t={t} compact />)
-        expect(html).toContain(esc(t('wx_cloudy')))
-        expect(html).not.toContain(esc(t('wx_rain')))
-        expect(html).not.toContain(esc(t('wx_drizzle')))
-        expect(html).not.toContain(esc(t('wx_showers')))
+    it('the header names no weather condition, for any code', () => {
+      for (const code of [0, 3, 45, 53, 61, 73, 81, 95]) {
+        const html = header({ code, temp: 14, wind: 8 })
+        for (const k of ['wx_clear', 'wx_cloudy', 'wx_rain', 'wx_drizzle', 'wx_showers', 'wx_snow', 'wx_thunder', 'wx_fog']) {
+          if (translations[lang][k]) expect(html).not.toContain('>' + esc(t(k)) + '<')
+        }
       }
-      expect(renderToStaticMarkup(<SkyLine weather={{ code: 95, temp: 20, wind: 8 }} t={t} />)).toContain(esc(t('wx_thunder')))
-      expect(renderToStaticMarkup(<SkyLine weather={{ code: 73, temp: 0, wind: 8 }} t={t} />)).toContain(esc(t('wx_snow')))
-      expect(renderToStaticMarkup(<SkyLine weather={{ code: 45, temp: 5, wind: 2 }} t={t} />)).toContain(esc(t('wx_fog')))
+    })
+
+    it('the header time is marked as the LAST UPDATE, not a clock', () => {
+      const html = header(null, new Date('2026-09-24T13:27:00+02:00'))
+      expect(html).toContain('↻')
+      expect(html).toContain(esc(t('updated_at', { time: '' })).trim().slice(0, 8))
     })
 
     // v2.46.0 — one word per rain band across the screen: the ribbon readout and
@@ -86,10 +90,9 @@ for (const lang of ['de', 'en']) {
       expect(translations[lang].ro_status_light).toBe(translations[lang].n_light)
     })
 
-    it('SkyLine renders nothing when there is nothing to say', () => {
-      expect(renderToStaticMarkup(<SkyLine weather={null} t={t} />)).toBe('')
-      expect(renderToStaticMarkup(
-        <SkyLine weather={{ code: null, temp: null, wind: null }} t={t} />)).toBe('')
+    it('no weather → no sky glance in the header', () => {
+      expect(header(null)).not.toContain('°')
+      expect(header({ code: null, temp: null, wind: null })).not.toContain('°')
     })
 
     it('DayStrip renders five rows', () => {
@@ -204,32 +207,53 @@ for (const lang of ['de', 'en']) {
     // reserved for actual disagreement, a plain dim bar needs no chip (the
     // pinned zone row already names the zone). The trace chip is unaffected;
     // the disagreement chip now needs a REAL agree:false slot to earn its spot.
-    it('keeps the trace chip, drops the old blanket "forecast" chip', () => {
+    // INTENT CHANGE (v2.48.1, maintainer: "too many writings"): no legend row under
+    // the ribbon at all — the guide (?) explains the dot and the ring. The old chip
+    // keys are gone; legend_trace stays only because the guide labels its example.
+    it('draws no legend under the ribbon at rest', () => {
       const now = Math.floor(Date.now() / 1000)
       const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
       const html = renderToStaticMarkup(
         <RainRibbon forecast={{
           times, precips: times.map((_, i) => [0.05, 0.3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0][i]),
-          isNowcast: true, radarUntil: now + 300,
-        }} theme="light" t={t} unstable={false} modelRainMin={null} />)
-      expect(html).toContain(esc(t('legend_trace')))
-      expect(html).not.toContain(esc(t('legend_unsure')))
-    })
-
-    // v2.46.0 — "model expects more" and "models disagree" captioned the SAME ring
-    // badge; merged into one chip (legend_unsure). The old keys are gone.
-    it('the unsure chip appears only when a real agree:false slot exists', () => {
-      const now = Math.floor(Date.now() / 1000)
-      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
-      const html = renderToStaticMarkup(
-        <RainRibbon forecast={{
-          times, precips: times.map((_, i) => (i === 1 ? 0.3 : 0)),
           modelAgree: times.map((_, i) => i !== 1),
           isNowcast: true, radarUntil: now + 300,
         }} theme="light" t={t} unstable={false} modelRainMin={null} />)
-      expect(html).toContain(esc(t('legend_unsure')))
-      expect(translations[lang].legend_bleed).toBeUndefined()
-      expect(translations[lang].legend_uncertain).toBeUndefined()
+      expect(html).not.toContain(esc(t('legend_trace')))
+      for (const k of ['legend_unsure', 'legend_bleed', 'legend_uncertain', 'lane_held']) {
+        expect(translations[lang][k]).toBeUndefined()
+      }
+    })
+
+    // v2.48.1 — a ring only where the drier model would draw a DIFFERENT tile. On a
+    // showery day the two models differ by tenths on almost every tile; a ring on
+    // every tile said nothing (live screenshot).
+    // v2.48.1 — live screenshot: a bright gold sun on a dry 15-min gap inside a
+    // rainstorm, while the sky said "Cloudy" for the same code.
+    it('a dry tile draws a sun/moon only under a clear or partly clear code', () => {
+      const noon = Math.floor(new Date('2026-09-24T13:00:00+02:00').getTime() / 1000)
+      for (const code of [0, 1, 2]) expect(drySkyVariant(noon, code, noon - 6 * 3600, noon + 6 * 3600)).toBe('sun')
+      expect(drySkyVariant(noon, 1, noon - 12 * 3600, noon - 1)).toBe('moon')
+      for (const code of [3, 45, 53, 61, 63, 73, 81, 95, null]) {
+        expect(drySkyVariant(noon, code, noon - 6 * 3600, noon + 6 * 3600)).toBe('cloud')
+      }
+    })
+
+    it('rings a forecast tile only when the other model would draw a different tile', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const rings = low => {
+        const html = renderToStaticMarkup(
+          <RainRibbon forecast={{
+            times, precips: times.map((_, i) => (i === 4 ? 0.3 : 0)),
+            modelAgree: times.map((_, i) => i !== 4),
+            modelLow: times.map((_, i) => (i === 4 ? low : null)),
+            isNowcast: true, radarUntil: now + 300,
+          }} theme="light" t={t} unstable={false} modelRainMin={null} />)
+        return (html.match(/-right-1 w-2\.5/g) || []).length
+      }
+      expect(rings(0.25)).toBe(0)   // both models say drizzle: same tile, no ring
+      expect(rings(0.02)).toBe(1)   // the other model says dry: a different tile, ring
     })
 
     // v2.38 — the ribbon's own header row ("TODAY · NEXT 12H") is gone for
@@ -308,7 +332,8 @@ for (const lang of ['de', 'en']) {
       expect(html).toContain(esc(t('ro_src_radar')))
       expect(html).not.toContain(esc(t('ro_confidence_label')))
       expect(html).not.toContain('5/5')
-      expect(html).toContain(esc(t('ro_back_now')))
+      // v2.48.1 — "back to now" only once you've scrolled away from now.
+      expect(html).not.toContain(esc(t('ro_back_now')))
     })
 
     it('at rest, the readout names the time and instrument only — wet reading', () => {
@@ -376,14 +401,12 @@ for (const lang of ['de', 'en']) {
     it('GapBanner source line prints ground always, radar only when wet', () => {
       const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'dry', weather: null }
       const dryHtml = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t}
-                   signals={{ ground: 0, radar: 0, held: false, updated: Date.now() }} />)
+        <SourceLine t={t} signals={{ ground: 0, radar: 0, held: false, updated: Date.now() }} />)
       expect(dryHtml).toContain(t('lane_ground', { mm: '0.0' }))
       expect(dryHtml).not.toContain(t('lane_radar_clear'))
 
       const wetHtml = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t}
-                   signals={{ ground: 0, radar: 0.4, held: false, updated: Date.now() }} />)
+        <SourceLine t={t} signals={{ ground: 0, radar: 0.4, held: false, updated: Date.now() }} />)
       expect(wetHtml).toContain(t('lane_radar', { mm: '0.4' }))
     })
 
@@ -400,8 +423,7 @@ for (const lang of ['de', 'en']) {
     it('source line never rounds a sub-threshold reading up to look like it crossed a boundary', () => {
       const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'a touch of drizzle', weather: null }
       const html = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t}
-                   signals={{ ground: 0.1 * 1.5, radar: 0, held: false, updated: Date.now() }} />)
+        <SourceLine t={t} signals={{ ground: 0.1 * 1.5, radar: 0, held: false, updated: Date.now() }} />)
       expect(html).toContain(t('lane_ground', { mm: '0.1' }))
       expect(html).not.toContain(t('lane_ground', { mm: '0.2' }))
     })
@@ -414,13 +436,11 @@ for (const lang of ['de', 'en']) {
       const status = { type: 'wait', headline: 'NOCH 17 MIN', sub: 'x', weather: null }
       const nowS = Math.floor(Date.now() / 1000)
       const aged = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t}
-                   signals={{ ground: 0.9, groundAt: nowS - 14 * 60, radar: 0, held: false, updated: Date.now() }} />)
+        <SourceLine t={t} signals={{ ground: 0.9, groundAt: nowS - 14 * 60, radar: 0, held: false, updated: Date.now() }} />)
       expect(aged).toContain(t('lane_ground_age', { mm: '0.9', min: 14 }))
 
       const unknown = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t}
-                   signals={{ ground: 0.9, groundAt: null, radar: 0, held: false, updated: Date.now() }} />)
+        <SourceLine t={t} signals={{ ground: 0.9, groundAt: null, radar: 0, held: false, updated: Date.now() }} />)
       expect(unknown).toContain(t('lane_ground', { mm: '0.9' }))
     })
 
@@ -430,17 +450,14 @@ for (const lang of ['de', 'en']) {
     it('source line names the radar image when it is the witness behind the verdict', () => {
       const status = { type: 'light', headline: 'PASST SCHON', sub: 'x', weather: null }
       const html = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t}
-                   signals={{ ground: 0, radar: 0.02, rv: 0.3, held: false, updated: Date.now() }} />)
+        <SourceLine t={t} signals={{ ground: 0, radar: 0.02, rv: 0.3, held: false, updated: Date.now() }} />)
       expect(html).toContain(esc(t('lane_radar_rv')))
       const heavy = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t}
-                   signals={{ ground: 0, radar: 0, rv: 0.8, held: false, updated: Date.now() }} />)
+        <SourceLine t={t} signals={{ ground: 0, radar: 0, rv: 0.8, held: false, updated: Date.now() }} />)
       expect(heavy).toContain(esc(t('lane_radar_rv_heavy')))
       // A wet radar-forecast slot keeps its measured mm; the image isn't mentioned.
       const both = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t}
-                   signals={{ ground: 0, radar: 0.4, rv: 0.3, held: false, updated: Date.now() }} />)
+        <SourceLine t={t} signals={{ ground: 0, radar: 0.4, rv: 0.3, held: false, updated: Date.now() }} />)
       expect(both).toContain(t('lane_radar', { mm: '0.4' }))
       expect(both).not.toContain(esc(t('lane_radar_rv')))
     })
@@ -498,7 +515,8 @@ for (const lang of ['de', 'en']) {
     it('every new block survives being handed nothing at all', () => {
       // Same class of bug, swept across the whole release: the initial state passes
       // null or empty into all of these before the first refresh completes.
-      expect(() => renderToStaticMarkup(<SkyLine weather={null} t={t} />)).not.toThrow()
+      expect(() => header(null)).not.toThrow()
+      expect(() => renderToStaticMarkup(<SourceLine signals={null} t={t} />)).not.toThrow()
       expect(() => renderToStaticMarkup(<DayStrip daily={null} theme="light" t={t} lang={lang} />)).not.toThrow()
       expect(() => renderToStaticMarkup(<DayStrip daily={{}} theme="light" t={t} lang={lang} />)).not.toThrow()
       expect(() => renderToStaticMarkup(
@@ -545,18 +563,24 @@ for (const lang of ['de', 'en']) {
       expect(html).not.toContain(t('lane_radar_clear'))
     })
 
-    // v2.35 — the sky facts render inside the verdict block now. Same four values,
-    // one section fewer; a mis-plumbed prop here would show as nothing at all.
-    it('GapBanner carries the sky facts when given weather', () => {
-      const status = { type: 'go', headline: 'GEMMA RAUS', sub: 'dry', weather: null }
-      const html = renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} weather={{ code: 3, temp: 19.4, wind: 11.2 }} t={t} />)
-      expect(html).toContain(esc(t('wx_cloudy')))
-      expect(html).toContain('19°')
-      expect(html).toContain('11 km/h')
-      // …and nothing breaks when there is no weather yet, which is every first paint.
-      expect(() => renderToStaticMarkup(
-        <GapBanner status={status} blocked={[]} t={t} />)).not.toThrow()
+    // v2.48.1 — INTENT CHANGE: the source line sits behind an "i" next to the
+    // sentence (maintainer: "too many writings"). By default only the toggle renders;
+    // the readings appear on tap. And the banner no longer carries the sky chip.
+    it('GapBanner shows the "i", not the readings, until tapped — and no sky chip', () => {
+      for (const status of [
+        { type: 'go', headline: 'GEMMA RAUS', sub: 'dry' },
+        { type: 'stuck', headline: 'BLEIB DRIN', sub: 'no break in sight' },
+      ]) {
+        const html = renderToStaticMarkup(
+          <GapBanner status={status} blocked={[]} t={t} signals={{ ground: 0.4, radar: 0.3, updated: Date.now() }} />)
+        expect(html).toContain(`aria-label="${esc(t('lane_why'))}"`)
+        expect(html).toContain('aria-expanded="false"')
+        expect(html).not.toContain(esc(t('lane_ground', { mm: '0.4' })))
+        expect(html).not.toContain('°')
+      }
+      // No readings at all → no toggle either.
+      const bare = renderToStaticMarkup(<GapBanner status={{ type: 'go', headline: 'x', sub: 'dry' }} blocked={[]} t={t} />)
+      expect(bare).not.toContain(esc(t('lane_why')))
     })
   })
 }

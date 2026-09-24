@@ -94,9 +94,12 @@ function isNightAt(ts, sunrise, sunset) {
   const h = new Date(ts * 1000).getHours()
   return h < 6 || h >= 21
 }
+// v2.48.1 — sun/moon only under a clear or partly clear code. Every other group used to
+// fall through to the sun, so a 15-min dry gap inside a rainstorm drew a bright gold sun
+// while the sky chip said "Cloudy" for the same code (live screenshot, 2026-09-24).
 export function drySkyVariant(ts, code, sunrise, sunset) {
   const grp = weatherGroup(code)
-  if (grp === 'cloudy' || grp === 'fog') return 'cloud'
+  if (grp !== 'clear' && grp !== 'partly') return 'cloud'
   return isNightAt(ts, sunrise, sunset) ? 'moon' : 'sun'
 }
 // Which STORM glyph a tile draws. WMO already distinguishes these at the
@@ -308,10 +311,10 @@ export function bucketMixed(slots, radarUntil) {
     const size = s.t < radarUntil ? RADAR_BUCKET_S : MODEL_BUCKET_S
     const start = Math.floor(s.t / size) * size
     if (!cur || cur.t !== start || (cur.end - cur.t) !== size) {
-      cur = { t: start, end: start + size, p: s.p, agree: s.agree, prob: s.prob }
+      cur = { t: start, end: start + size, p: s.p, agree: s.agree, prob: s.prob, low: s.low }
       out.push(cur)
     } else if (s.p > cur.p) {
-      cur.p = s.p; cur.agree = s.agree; cur.prob = s.prob
+      cur.p = s.p; cur.agree = s.agree; cur.prob = s.prob; cur.low = s.low
     }
   }
   return out
@@ -471,7 +474,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
   const sunrise = typeof daily?.sunrise?.[0] === 'number' ? daily.sunrise[0] : null
   const sunset  = typeof daily?.sunset?.[0]  === 'number' ? daily.sunset[0]  : null
   const rslots = (forecast?.times || [])
-    .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i], prob: forecast.modelProb?.[i] }))
+    .map((tt, i) => ({ t: tt, p: forecast.precips[i] ?? 0, agree: forecast.modelAgree?.[i], prob: forecast.modelProb?.[i], low: forecast.modelLow?.[i] }))
     .filter(s => s.t >= nowS - 300 && s.t < nowS + HORIZON_S)
     .slice(0, MAX_SLOTS)
   const hasData = rslots.length > 0
@@ -483,14 +486,19 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
 
   const mTimesR   = forecast?.isNowcast !== false ? (forecast?.modelTimes ?? []) : []
   const mPrecipsR = forecast?.modelPrecips ?? []
-  const hasBleed = showRadarZone && rbars.some((b, i) => {
-    if (i >= splitI) return false
-    const mp = modelPeakAt(mTimesR, mPrecipsR, b.t, b.end)
-    return mp != null && showGhost(b.p, mp)
-  })
-  const hasDisagreement = rbars.some((b, i) => i >= splitI && b.p >= DRY_THRESHOLD && b.agree === false)
+  // v2.48.1 — a ring only where the other source would draw a DIFFERENT tile. A ring on
+  // every tile of a showery day (live screenshot) said nothing: the two models disagree
+  // by a few tenths all the time, and most of those never cross a tier.
+  const mismatchAt = (b, i) => {
+    if (i < splitI) {
+      if (!showRadarZone) return false
+      const mp = modelPeakAt(mTimesR, mPrecipsR, b.t, b.end)
+      return mp != null && showGhost(b.p, mp) && tileTierOf(mp) !== tileTierOf(b.p)
+    }
+    return b.p >= DRY_THRESHOLD && b.agree === false
+      && (typeof b.low !== 'number' || tileTierOf(b.low) !== tileTierOf(b.p))
+  }
 
-  const hasTrace = rslots.some(s => s.p > 0 && s.p < DRY_THRESHOLD)
   const allDry  = hasData && rslots.every(s => s.p < DRY_THRESHOLD)
   const dryRun = dryRunIn(rbars, splitI - 1)
   const hasBracket = !!dryRun
@@ -688,9 +696,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
                   const variant = tier === 'dry' ? drySkyVariant(b.t, code, sunrise, sunset)
                                 : tier === 'storm' ? stormVariant(code)
                                 : undefined
-                  const mismatch = inRadar
-                    ? (() => { const mp = modelPeakAt(mTimesR, mPrecipsR, b.t, b.end); return mp != null && showGhost(b.p, mp) })()
-                    : (b.p >= DRY_THRESHOLD && b.agree === false)
+                  const mismatch = mismatchAt(b, i)
                   const d = new Date(b.t * 1000)
                   return (
                     <Tile key={i} tier={tier} variant={variant} solid={inRadar} mismatch={mismatch} mist={trace}
@@ -719,28 +725,11 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
         </div>
       </div>
 
-      {/* Legend + "back to now" — unchanged wording/positions, gated on the
-          same predicates as before (a chip only shows for something actually
-          on screen, v2.18.0's own rule). */}
-      {hasData && (
-        // tracking-[0.07em] → [0.05em]: same legibility pass as the readout row above.
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-2.5 font-mono text-[9px] tracking-[0.05em] text-muted">
-          {hasTrace && (
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--c-light)' }} aria-hidden="true" />
-              {t('legend_trace')}
-            </span>
-          )}
-          {/* v2.46.0 — one caption for the one mark. "model expects more" and
-              "models disagree" both labelled the SAME dashed ring (v3.0 unified
-              the shape), so two chips described one symbol. The ring is drawn
-              here so the caption can be matched to the tile badge at a glance. */}
-          {(hasBleed || hasDisagreement) && (
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ border: '1.5px dashed var(--c-muted)' }} aria-hidden="true" />
-              {t('legend_unsure')}
-            </span>
-          )}
+      {/* v2.48.1 — the legend row is gone (maintainer: "too many writings"); the
+          guide (?) explains the dot and the ring. "Back to now" only appears once
+          you have actually scrolled away from now, so at rest nothing is drawn here. */}
+      {hasData && scrubIdx > 0 && (
+        <div className="flex items-center px-4 pb-2.5">
           <button type="button" onClick={backToNow}
                   className="ml-auto font-mono text-[10px] tracking-normal border border-border rounded-full px-2.5 py-1 text-primary hover:border-primary transition-colors">
             {t('ro_back_now')}

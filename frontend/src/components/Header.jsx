@@ -1,9 +1,34 @@
 import { useRef } from 'react'
 import { useFitText } from '../useFitText'
 import { formatClock } from '../time'
+import WeatherGlyph from './WeatherGlyph'
+import { weatherGroup } from '../gaps'
+
+// v2.48.1 — the sky glance, moved here from its own chip row above the headline (whose
+// condition word only repeated the verdict). Rain-family codes draw as plain cloud, as
+// the chip did since v2.46.0: whether it's raining on you is the headline's job.
+// On a phone the header has no room for it — the extra 50px pushed the guide "?" off
+// screen (checked in Chrome at 390px) — so there it sits at the end of the headline row
+// (GapBanner), and the header shows it from `sm` up. Same component, two places.
+const PRECIP_GROUPS = new Set(['drizzle', 'rain', 'showers'])
+export function SkyGlance({ weather, className = '', compact = false }) {
+  if (!weather) return null
+  const grp = weatherGroup(weather.code)
+  const code = PRECIP_GROUPS.has(grp) ? 3 : weather.code
+  const temp = typeof weather.temp === 'number' ? Math.round(weather.temp) : null
+  const wind = typeof weather.wind === 'number' ? Math.round(weather.wind) : null
+  if (grp == null && temp === null) return null
+  return (
+    <span className={'items-center gap-1 font-mono text-xs text-muted tabular-nums ' + className}>
+      {grp != null && <WeatherGlyph code={code} size={16} />}
+      {temp !== null && <span className="text-primary font-bold">{temp}°</span>}
+      {wind !== null && !compact && <span>· {wind} km/h</span>}
+    </span>
+  )
+}
 
 export default function Header({
-  accuracy, lastUpdated,
+  accuracy, lastUpdated, weather = null,
   theme, onThemeToggle,
   lang, onLangToggle,
   onInfo, onLogo,
@@ -53,9 +78,14 @@ export default function Header({
               {acc30}{t('pct_accurate')}
             </span>
           )}
+          <SkyGlance weather={weather} className="hidden sm:flex mr-1" />
+          {/* The LAST-UPDATED time, not a clock (live read: "I think it's not time
+              but last updated") — so it says so with ↻, not a word. */}
           {lastUpdated && (
-            <span className="hidden sm:inline font-mono text-xs text-muted mr-1">
-              {formatTime(lastUpdated)}
+            <span className="hidden sm:inline font-mono text-xs text-muted mr-1"
+                  title={t('updated_at', { time: formatTime(lastUpdated) })}
+                  aria-label={t('updated_at', { time: formatTime(lastUpdated) })}>
+              ↻ {formatTime(lastUpdated)}
             </span>
           )}
 

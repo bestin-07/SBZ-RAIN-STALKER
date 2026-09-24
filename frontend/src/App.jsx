@@ -916,8 +916,13 @@ export default function App() {
         const aromeSlots = aromeSlotSeries(omTimes, data?.arome?.times, data?.arome?.precips)
         const omRaw = data?.minutely_15?.precipitation ?? []
         const agreeByTime = new Map()
+        // v2.48.1: the DRIER model's value too, so the ribbon rings a tile only when that
+        // model would draw a different tile (the drawn value is the wetter one).
+        const lowByTime = new Map()
         for (let i = 0; i < omTimes.length; i++) {
           agreeByTime.set(omTimes[i], modelsAgree(omRaw[i], aromeSlots[i]))
+          const a = aromeSlots[i], o = omRaw[i]
+          if (typeof o === 'number') lowByTime.set(omTimes[i], typeof a === 'number' ? Math.min(o, a) : o)
         }
         const allTimes = [...ribbonTimeline.times, ...extTimes]
         const hT = data?.hourly?.time ?? [], hP = data?.hourly?.precipitation_probability ?? []
@@ -926,6 +931,7 @@ export default function App() {
           precips: [...ribbonTimeline.precips, ...extPrecips],
           modelAgree: allTimes.map(tt => (tt <= radarUntil && nowcast) ? true : (agreeByTime.get(tt) ?? true)),
           modelProb:  allTimes.map(tt => probAt(hT, hP, tt)),
+          modelLow:   allTimes.map(tt => (tt <= radarUntil && nowcast) ? null : (lowByTime.get(tt) ?? null)),
           isNowcast: !!nowcast,
           radarUntil: nowcast ? radarUntil : nowSec,   // no radar at all → everything is "model"
           // v2.8: both instruments contradict the radar-zone trace carpet → the
@@ -1042,7 +1048,6 @@ export default function App() {
           // ONLY witness behind a GO ANYWAY — without it the line showed a dry gauge
           // next to a drizzle headline and nothing explaining why.
           rv: rv ? rvPrecip : null,
-          held: settledHold.holding,
           updated: nowMs,
         })
         setDaily(ambientDaily())
@@ -1271,6 +1276,9 @@ export default function App() {
     // below only meaningful once we have location data
     accuracy:     location ? accuracy     : null,
     lastUpdated:  location ? lastUpdated  : null,
+    // v2.48.1 — the sky glance (glyph + temperature, wind on wider screens) moved here
+    // from its own chip row above the headline.
+    weather:      location ? currentWeather : null,
     // Header's own refresh button is gone (pull-to-refresh below covers it;
     // handleRefresh/loading are still very much used there) — see Header.jsx.
     notifyState:  location ? notifyState  : 'unsupported',
@@ -1458,7 +1466,7 @@ export default function App() {
             headline: t('STUCK'),
             sub: t('storm_danger_sub'),
             weather: null, weatherEmoji: null, moto: false,
-          } : status} blocked={blocked} signals={signals} weather={currentWeather} t={t} showSky={dayTab === 'now'} />
+          } : status} blocked={blocked} signals={signals} weather={currentWeather} t={t} />
           {/* v2.36 — today (radar ribbon + map) split from the forecast (coming days)
               behind two tabs. Neither panel's data or logic changed: this only
               decides which of the two already-computed blocks is on screen. The map

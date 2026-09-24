@@ -1,6 +1,6 @@
-import { useRef } from 'react'
-import SkyLine from './SkyLine'
+import { useRef, useState } from 'react'
 import { useFitText } from '../useFitText'
+import { SkyGlance } from './Header'
 import { formatClock } from '../time'
 import { RV_HEAVY_MM } from '../gaps'
 
@@ -47,9 +47,9 @@ const COLORS = {
 // flagged ("dry" stated four times on one screen). A wet radar reading still
 // prints (mm value) — that's the genuinely useful case, e.g. a dry gauge next
 // to a wet radar, which is precisely what this line exists to explain.
-function SourceLine({ signals, t }) {
+export function SourceLine({ signals, t }) {
   if (!signals) return null
-  const { ground, groundAt, radar, rv, held, updated } = signals
+  const { ground, groundAt, radar, rv, updated } = signals
   const wet = v => typeof v === 'number' && v >= 0.1
   const dot = v => (v === null || v === undefined ? 'var(--c-muted)' : wet(v) ? 'var(--c-wait)' : 'var(--c-go)')
   // v2.46.0 — when the radar forecast's own slot is dry but the radar IMAGE over
@@ -89,7 +89,10 @@ function SourceLine({ signals, t }) {
           {typeof radar !== 'number' ? t('lane_radar_none') : t('lane_radar', { mm: mm(radar) })}
         </span>
       )}
-      {held && <span className="font-mono text-[10px] text-muted">{t('lane_held')}</span>}
+      {/* v2.48.1 — "confirming" (the v2.22 hold) is gone from this line: it showed
+          whenever a hold record existed, even when the hold wasn't what made it
+          STUCK, and the sentence under the headline already says "just confirming
+          it holds" in the one case where that is actually happening. */}
       {updated && (
         <span className="font-mono text-[10px] text-muted ml-auto">
           {formatClock(updated)}
@@ -99,7 +102,22 @@ function SourceLine({ signals, t }) {
   )
 }
 
-export default function GapBanner({ status, blocked = [], signals = null, weather = null, t, showSky = true }) {
+// v2.48.1 — the source line moved behind this (maintainer: "too many writings"). The
+// facts it shows are for the moment the verdict looks wrong; the rest of the time they
+// were one more line of small print under the headline.
+function InfoToggle({ open, onClick, t }) {
+  return (
+    <button type="button" onClick={onClick} aria-expanded={open}
+            aria-label={t('lane_why')} title={t('lane_why')}
+            className="inline-flex items-center justify-center align-middle w-5 h-5 ml-1.5 rounded-full border border-border
+                       font-mono text-[10px] leading-none text-muted hover:text-primary hover:border-primary transition-colors">
+      i
+    </button>
+  )
+}
+
+export default function GapBanner({ status, blocked = [], signals = null, weather = null, t }) {
+  const [showWhy, setShowWhy] = useState(false)
   // v2.36.7 — must never wrap (see useFitText.js): Archivo's expanded cut is
   // wider than Space Grotesk, and any headline — "GEMMA RAUS", "BLEIB DRIN", a
   // countdown with an arbitrary minute count — can be long enough to wrap at
@@ -118,10 +136,14 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
   const headlineText = capFirst(isGo ? status?.sub : status?.headline)
   const headlineRef = useRef(null)
   useFitText(headlineRef, () => {
-    const p = headlineRef.current?.parentElement
+    const el = headlineRef.current
+    const p = el?.parentElement
     if (!p) return 0
     const cs = getComputedStyle(p)
-    return p.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
+    // v2.48.1 — the row may also hold the ⓘ toggle (GO state): leave it room.
+    let siblings = 0
+    for (const c of p.children) if (c !== el) siblings += c.offsetWidth + 8
+    return p.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - siblings
   }, [headlineText])
 
   if (!status) return null
@@ -147,7 +169,8 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
           to a block that's entirely about later days. The verdict itself
           (headline/sub/source line below) still stays — that's not tied to
           a particular hour the way the sky glance is. */}
-      {showSky && <SkyLine weather={weather} t={t} compact />}
+      {/* v2.48.1 — the sky chip row is gone: its word repeated the headline, and the
+          glyph + temperature now sit in the header (Header.jsx). */}
       {/* v2.38 — capped from text-5xl (48px): a live report showed the
           headline running almost edge-to-edge on an ordinary phone width,
           which read as oversized rather than confident. text-4xl (36px)
@@ -158,18 +181,27 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
           former sub-line size — one step up (text-sm → text-base) rather
           than jumping to the display-sized brand treatment, so removing the
           brand-duplicate headline doesn't turn into a redesign of the block. */}
-      <div
-        ref={headlineRef}
-        className={isGo
-          ? 'font-mono font-bold text-base leading-snug tracking-tight'
-          : 'font-display font-bold text-4xl leading-none tracking-tight'}
-        style={{ color: `var(--c-${status.type}, ${fallback})` }}
-      >
-        {headlineText}
+      <div className="flex items-center min-w-0">
+        <div
+          ref={headlineRef}
+          // min-w-0: a transform-scaled headline still occupies its UNSCALED width in
+          // the layout, which pushed the phone sky glance off the edge; letting the box
+          // shrink keeps the row inside the screen (the fit scale keeps the text whole).
+          className={isGo
+            ? 'min-w-0 font-mono font-bold text-base leading-snug tracking-tight'
+            : 'min-w-0 font-display font-bold text-4xl leading-none tracking-tight'}
+          style={{ color: `var(--c-${status.type}, ${fallback})` }}
+        >
+          {headlineText}
+        </div>
+        {isGo && signals && <InfoToggle open={showWhy} onClick={() => setShowWhy(v => !v)} t={t} />}
+        {/* Phones only — the header carries it from `sm` up (see Header.SkyGlance). */}
+        <SkyGlance weather={weather} compact className="flex sm:hidden ml-auto pl-3 shrink-0" />
       </div>
       {!isGo && (
         <div className="font-mono text-sm text-muted mt-2 leading-snug">
           {status.sub}
+          {signals && <InfoToggle open={showWhy} onClick={() => setShowWhy(v => !v)} t={t} />}
         </div>
       )}
       {/* What the weather has taken off the table. An EMPTY row is the good news —
@@ -196,7 +228,7 @@ export default function GapBanner({ status, blocked = [], signals = null, weathe
           {status.weather}
         </div>
       )}
-      <SourceLine signals={signals} t={t} />
+      {showWhy && <SourceLine signals={signals} t={t} />}
     </div>
   )
 }
