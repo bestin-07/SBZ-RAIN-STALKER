@@ -48,6 +48,10 @@ NS = _extract({
     "_grid_to_raster", "MAP_GRID_BBOX", "MAP_GRID_DLAT", "MAP_GRID_DLON", "MAP_GRID_MAX_KM",
     "_grid_error",
     "_tawes_parse", "_haversine_km", "_city_cells",
+    "_gauge_slot", "_point_now", "_analyze_point", "_push_events", "_may_fire",
+    "LIGHT_MAX", "DOWNPOUR_MM", "GO_MIN_SLOTS", "LOOK_AHEAD_S", "GAUGE_SLOT_SCALE",
+    "PUSH_GAUGE_KM", "PUSH_GAUGE_MAX_AGE_S", "DOWNPOUR_PUSH_MIN", "DOWNPOUR_MIN_POINTS",
+    "DOWNPOUR_COOLDOWN_S", "DRY_RESET_S",
 })
 # _extract compiles functions without main.py's imports; _tawes_obs_ts resolves these
 # from its globals (this dict) at call time.
@@ -699,6 +703,108 @@ class TestPushContract(unittest.TestCase):
     def test_majority_agreement(self):
         # Push notifications need ≥3 of 11 grid points to agree (no single-point alarms).
         self.assertEqual(NS["MIN_PUSH_AGREEMENT"], 3)
+
+
+class TestPushSameRulesAsApp(unittest.TestCase):
+    """v2.49.0: pushes run on the app's rules. The audit found the push path using the
+    city-wide gauge max at all 11 points, raw 10-min gauge sums, the unfiltered radar,
+    30-min gaps and no downpour type."""
+
+    NOW = 1_790_250_000
+    FREISAAL = {"id": "11350", "lat": 47.7911, "lon": 13.0542}
+    AIRPORT  = {"id": "11150", "lat": 47.7894, "lon": 13.0086}
+    NONNTAL_PT = {"name": "nonntal", "lat": 47.7883, "lon": 13.0553}
+    ITZLING_PT = {"name": "itzling", "lat": 47.8268, "lon": 13.0436}
+
+    def series(self, vals, start_off=0):
+        return [self.NOW + start_off + 900 * i for i in range(len(vals))], list(vals)
+
+    def test_thresholds_match_the_frontend(self):
+        # Anti-drift: the push path must use the SAME numbers as gaps.js.
+        import re
+        src = open(os.path.join(HERE, "..", "frontend", "src", "gaps.js"), encoding="utf-8").read()
+        js = {m.group(1): float(m.group(2)) for m in re.finditer(r"export const (\w+)\s*=\s*([\d.]+)\b(?!\s*\*)", src)}
+        self.assertEqual(NS["LIGHT_MAX"], js["LIGHT_MAX"])
+        self.assertEqual(NS["DOWNPOUR_MM"], js["DOWNPOUR_MM"])
+        self.assertEqual(NS["GO_MIN_SLOTS"], js["GO_MIN_SLOTS"])
+        self.assertEqual(NS["GAUGE_SLOT_SCALE"], js["GAUGE_SLOT_SCALE"])
+        self.assertEqual(NS["PUSH_GAUGE_KM"], js["GAUGE_OWN_KM"])
+        self.assertEqual(NS["PUSH_GAUGE_MAX_AGE_S"], js["GAUGE_MAX_AGE_MIN"] * 60)
+        self.assertEqual(NS["DOWNPOUR_PUSH_MIN"], js["GO_MIN_WINDOW"])
+        self.assertEqual(NS["DRY_THRESHOLD"], js["DRY_THRESHOLD"])
+        self.assertIn("export const LOOK_AHEAD = 3 * 3600", src)
+        self.assertEqual(NS["LOOK_AHEAD_S"], 3 * 3600)
+
+    def test_gauge_counts_only_near_it(self):
+        # THE AUDIT CASE: a shower over Freisaal (0.6 mm/10 min) is "raining" at Nonntal,
+        # not at Itzling 4 km away, where the point's own radar reads dry.
+        gauges = [{**self.FREISAAL, "rr": 0.6, "ts": self.NOW - 900}, {**self.AIRPORT, "rr": 0.0, "ts": self.NOW - 900}]
+        t, p = self.series([0.0] * 12)
+        near, from_gauge = NS["_point_now"](self.NONNTAL_PT, gauges, t, p, self.NOW)
+        far, far_gauge = NS["_point_now"](self.ITZLING_PT, gauges, t, p, self.NOW)
+        self.assertAlmostEqual(near, 0.9)   # on the 15-min scale
+        self.assertTrue(from_gauge)
+        self.assertEqual((far, far_gauge), (0.0, False))
+
+    def test_a_stale_gauge_is_ignored(self):
+        gauges = [{**self.FREISAAL, "rr": 0.6, "ts": self.NOW - 3 * 3600}]
+        t, p = self.series([0.0] * 12)
+        self.assertEqual(NS["_point_now"](self.NONNTAL_PT, gauges, t, p, self.NOW), (0.0, False))
+
+    def test_gauge_unit_fix(self):
+        # 0.4 mm/10 min is 0.6 on the slot scale: moderate rain, not "light drizzle".
+        self.assertAlmostEqual(NS["_gauge_slot"](0.4), 0.6)
+        self.assertEqual(NS["_gauge_slot"](0.05), 0.05)   # below the line: untouched
+        t, p = self.series([0.6] * 12)
+        ev = NS["_analyze_point"](t, p, self.NOW, NS["_gauge_slot"](0.4))
+        raining = [e for e in ev if e["type"] == "raining"][0]
+        self.assertGreaterEqual(raining["now"], NS["LIGHT_MAX"])
+
+    def test_drizzle_only_afternoon_is_not_a_rain_push(self):
+        t, p = self.series([0.0, 0.2, 0.3, 0.25, 0.3, 0.2, 0.3, 0.25, 0.3, 0.2, 0.3, 0.2])
+        types = [e["type"] for e in NS["_analyze_point"](t, p, self.NOW, 0.0)]
+        self.assertNotIn("rain_incoming", types)
+
+    def test_rain_that_builds_still_pushes(self):
+        t, p = self.series([0.0, 0.2, 0.3, 0.6, 0.8, 0.7])
+        ev = NS["_analyze_point"](t, p, self.NOW, 0.0)
+        self.assertIn("rain_incoming", [e["type"] for e in ev])
+
+    def test_gap_needs_the_apps_45_minutes(self):
+        two = self.series([0.6, 0.0, 0.0, 0.6, 0.6, 0.6])
+        three = self.series([0.6, 0.0, 0.0, 0.0, 0.6, 0.6])
+        self.assertNotIn("gap", [e["type"] for e in NS["_analyze_point"](*two, self.NOW - 1, 0.6)])
+        self.assertIn("gap", [e["type"] for e in NS["_analyze_point"](*three, self.NOW - 1, 0.6)])
+
+    def test_downpour_within_45_min_wet_or_dry(self):
+        t, p = self.series([0.0, 0.3, 2.0, 0.5])
+        dry = NS["_analyze_point"](t, p, self.NOW, 0.0)
+        wet = NS["_analyze_point"](t, p, self.NOW, 0.6)
+        for ev in (dry, wet):
+            dp = [e for e in ev if e["type"] == "downpour"]
+            self.assertEqual(len(dp), 1)
+            self.assertEqual(dp[0]["in_min"], 30)
+        late = self.series([0.0, 0.0, 0.0, 0.0, 2.0])   # 60 min out
+        self.assertNotIn("downpour", [e["type"] for e in NS["_analyze_point"](*late, self.NOW, 0.0)])
+
+    def test_push_events_votes_per_point(self):
+        pts = []
+        for i in range(4):
+            t, p = self.series([0.0, 0.0, 1.8, 0.4])
+            pts.append({"name": f"p{i}", "lat": 47.80 + i * 0.02, "lon": 13.04, "nowcast": {"times": t, "precips": p}})
+        by_type, any_wet = NS["_push_events"](pts, [], self.NOW)
+        self.assertEqual(len(by_type["downpour"]), 4)
+        self.assertFalse(any_wet)
+
+    def test_once_per_event_not_once_per_day(self):
+        f = NS["_may_fire"]
+        self.assertTrue(f(None, None, True))                          # never fired
+        self.assertFalse(f(1000, None, True))                          # fired today, no dry spell since
+        self.assertTrue(f(1000, 2000, True))                           # a 2-h dry spell since → new event
+        self.assertFalse(f(1000, 500, True))                           # dry spell was BEFORE it fired
+        self.assertTrue(f(1000, None, False))                          # a new day
+        self.assertEqual(NS["DRY_RESET_S"], 2 * 3600)
+        self.assertEqual(NS["DOWNPOUR_COOLDOWN_S"], 3600)
 
 
 class TestFormingDetector(unittest.TestCase):

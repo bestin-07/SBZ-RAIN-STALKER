@@ -1349,61 +1349,161 @@ def _global_gap_ok(now_ts: int) -> bool:
     return (now_ts - last) >= PUSH_MIN_GAP_S
 
 
-def _type_fired_today(push_type: str, now_ts: int) -> bool:
+def _last_push_ts(push_type: str):
     with get_db() as (_, cur):
         cur.execute("SELECT value FROM settings WHERE key = %s", (f"last_{push_type}_push_ts",))
         row = cur.fetchone()
-    if not row:
-        return False
-    return _salzburg_now(float(row[0])).date() == _salzburg_now(now_ts).date()
-
-
-def _analyze_forecast(times, precips, now_ts, now_precip_live: float = 0.0, threshold: float = DRY_THRESHOLD):
-    """Classify the current situation for one grid point. Returns one of:
-      rain_incoming  — dry now, rain arriving within 30 min
-      gap            — raining, a ≥30-min dry window opens ahead
-      rain_clearing  — raining, gap extends to end of forecast (rain looks done)
-    or None if nothing actionable."""
-    slots   = sorted(zip(times, precips), key=lambda s: s[0])
-    current = min(slots, key=lambda s: abs(s[0] - now_ts), default=None)
-    if current is None:
+    try:
+        return float(row[0]) if row else None
+    except (TypeError, ValueError):
         return None
 
-    nowcast_dry = current[1] < threshold
-    is_dry_now  = nowcast_dry and now_precip_live < threshold
 
-    if is_dry_now:
-        # Use the point's calibrated threshold (not the fixed floor) so a point that
-        # chronically over-predicts light rain stops firing false "rain incoming"
-        # pushes once calibration raises its threshold.
-        window = [(t, p) for t, p in slots if now_ts < t <= now_ts + 30 * 60]
-        for rain_t, p in window:
-            if p >= threshold:
-                return {"type": "rain_incoming",
-                        "rain_in_min": max(0, round((rain_t - now_ts) / 60))}
-    else:
-        # Raining now — scan future slots for a ≥30-min dry window
-        future    = [(t, p) for t, p in slots if t > now_ts]
-        gap_start = None
-        gap_count = 0
-        for t, p in future:
-            if p < DRY_THRESHOLD:
-                if gap_start is None:
-                    gap_start = t
-                gap_count += 1
-            else:
-                if gap_count >= 2:
-                    return {"type": "gap",
-                            "gap_in_min": max(0, round((gap_start - now_ts) / 60)),
-                            "gap_min":    gap_count * 15}
-                gap_start = None
-                gap_count = 0
-        # Reached end of forecast still in a gap → open-ended (rain clearing)
-        if gap_count >= 2 and gap_start is not None:
-            return {"type": "rain_clearing",
-                    "clears_in_min": max(0, round((gap_start - now_ts) / 60))}
+def _update_dry_spell(any_wet: bool, now_ts: int):
+    """Track the city-wide dry spell (v2.49.0). Returns the last time a spell of
+    DRY_RESET_S was completed — the moment every push type becomes free to fire again."""
+    def get(key):
+        with get_db() as (_, cur):
+            cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
+            row = cur.fetchone()
+        try:
+            return float(row[0]) if row and row[0] not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
 
-    return None
+    def put(key, value):
+        with get_db() as (_, cur):
+            cur.execute(
+                "INSERT INTO settings (key, value) VALUES (%s, %s)"
+                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                (key, "" if value is None else str(value)),
+            )
+
+    dry_start = get("city_dry_start")
+    if any_wet:
+        put("city_dry_start", None)
+    elif dry_start is None:
+        put("city_dry_start", now_ts)
+    elif now_ts - dry_start >= DRY_RESET_S:
+        put("last_dry_reset", now_ts)
+    return get("last_dry_reset")
+
+
+# ---- v2.49.0: pushes run on the SAME rules as the app ---------------------------------
+# Audit (2026-09-24): the push path had fallen behind the app. It gave all 11 points the
+# same two city gauges (so one shower over Freisaal won the 3-of-11 vote alone), compared
+# a raw 10-min gauge sum against 15-min thresholds, read the UNfiltered radar at 0.1 (so
+# drizzle and virga pushed "rain incoming" on afternoons the app calls GO ANYWAY),
+# promised 30-min gaps the app would not call usable, and had no downpour push at all.
+# These constants mirror frontend/src/gaps.js; test_logic reads that file and fails if
+# any of them drift apart.
+LIGHT_MAX          = 0.5         # gaps.js LIGHT_MAX — "real rain" starts here
+DOWNPOUR_MM        = 1.5         # gaps.js DOWNPOUR_MM
+GO_MIN_SLOTS       = 3           # gaps.js GO_MIN_SLOTS — a usable window is 45 min
+LOOK_AHEAD_S       = 3 * 3600    # gaps.js LOOK_AHEAD
+GAUGE_SLOT_SCALE   = 1.5         # gaps.js GAUGE_SLOT_SCALE — RR is per 10 min, slots per 15
+PUSH_GAUGE_KM      = 2.5         # gaps.js GAUGE_OWN_KM — a gauge speaks for its neighbourhood
+PUSH_GAUGE_MAX_AGE_S = 40 * 60   # gaps.js GAUGE_MAX_AGE_MIN
+DOWNPOUR_PUSH_MIN  = 45          # gaps.js GO_MIN_WINDOW — the usable-window horizon
+DOWNPOUR_MIN_POINTS = 2          # a convective core covers ~2 of the 11 points, not 3
+DOWNPOUR_COOLDOWN_S = 3600       # a downpour push may repeat, but not every cycle
+DRY_RESET_S        = 2 * 3600    # a type may fire again after this long city-wide dry
+
+
+def _gauge_slot(rr):
+    """TAWES RR (mm per 10 min) on the 15-min slot scale — gaps.js gaugeSlotValue:
+    raise-only, and readings below the reporting line pass through unscaled."""
+    v = rr if isinstance(rr, (int, float)) and rr > 0 else 0
+    return v if v < DRY_THRESHOLD else v * GAUGE_SLOT_SCALE
+
+
+def _point_now(point, gauges, times, precips, now_ts):
+    """(NOW value, from_gauge) for one grid point: the wettest FRESH gauge within
+    PUSH_GAUGE_KM, else the point's own radar slot — the app's NOW rule (v2.48)."""
+    near = []
+    for g in gauges or []:
+        if not isinstance(g, dict) or not isinstance(g.get("rr"), (int, float)):
+            continue
+        ts = g.get("ts")
+        if isinstance(ts, (int, float)) and now_ts - ts > PUSH_GAUGE_MAX_AGE_S:
+            continue
+        try:
+            if _haversine_km(point["lat"], point["lon"], g["lat"], g["lon"]) <= PUSH_GAUGE_KM:
+                near.append(g["rr"])
+        except (KeyError, TypeError):
+            continue
+    if near:
+        return _gauge_slot(max(near)), True
+    if not times:
+        return 0.0, False
+    i = min(range(len(times)), key=lambda k: abs(times[k] - now_ts))
+    p = precips[i] if i < len(precips) and isinstance(precips[i], (int, float)) else 0.0
+    return p, False
+
+
+def _analyze_point(times, precips, now_ts, now_val, threshold=DRY_THRESHOLD):
+    """Every push-worthy event at one point (a list; empty if none), on the FILTERED
+    series the app itself reads:
+      downpour       — >= DOWNPOUR_MM within DOWNPOUR_PUSH_MIN, wet or dry now
+      rain_incoming  — dry now, rain >= threshold within 30 min, and real rain
+                       (>= LIGHT_MAX) somewhere in the look-ahead: a drizzle-only
+                       afternoon is GO ANYWAY in the app, so it is not a rain push
+      raining        — wet now (light = below LIGHT_MAX)
+      gap / rain_clearing — wet now, a run of GO_MIN_SLOTS dry slots ahead (the app's
+                       45-min usable window); open-ended to the series end = clearing"""
+    slots = sorted((t, p if isinstance(p, (int, float)) else 0.0) for t, p in zip(times or [], precips or []))
+    future = [(t, p) for t, p in slots if now_ts < t <= now_ts + LOOK_AHEAD_S]
+    events = []
+    dp = next(((t, p) for t, p in future if t <= now_ts + DOWNPOUR_PUSH_MIN * 60 and p >= DOWNPOUR_MM), None)
+    if dp:
+        events.append({"type": "downpour", "in_min": max(0, round((dp[0] - now_ts) / 60))})
+    if now_val < DRY_THRESHOLD:
+        if any(p >= LIGHT_MAX for _, p in future):
+            hit = next(((t, p) for t, p in future if t <= now_ts + 1800 and p >= threshold), None)
+            if hit:
+                events.append({"type": "rain_incoming", "rain_in_min": max(0, round((hit[0] - now_ts) / 60))})
+        return events
+    events.append({"type": "raining", "now": now_val})
+    start, count = None, 0
+    for t, p in future:
+        if p < DRY_THRESHOLD:
+            start = t if start is None else start
+            count += 1
+            continue
+        if count >= GO_MIN_SLOTS:
+            events.append({"type": "gap", "gap_in_min": max(0, round((start - now_ts) / 60)), "gap_min": count * 15})
+            return events
+        start, count = None, 0
+    if count >= GO_MIN_SLOTS:
+        events.append({"type": "rain_clearing", "clears_in_min": max(0, round((start - now_ts) / 60))})
+    return events
+
+
+def _push_events(points, gauges, now_ts, thresholds=None):
+    """({type: [events]}, any_point_wet) across the served snapshot's points."""
+    by_type, any_wet = {}, False
+    for pt in points or []:
+        nc = pt.get("nowcast") or {}
+        times, precips = nc.get("times") or [], nc.get("precips") or []
+        if not times:
+            continue
+        now_val, _ = _point_now(pt, gauges, times, precips, now_ts)
+        any_wet = any_wet or now_val >= DRY_THRESHOLD
+        th = (thresholds or {}).get(pt.get("name"), DRY_THRESHOLD)
+        for ev in _analyze_point(times, precips, now_ts, now_val, th):
+            by_type.setdefault(ev["type"], []).append(ev)
+    return by_type, any_wet
+
+
+def _may_fire(last_ts, last_dry_reset, same_day):
+    """Once per EVENT, not once per calendar day (v2.49.0): a type may fire again after
+    a city-wide dry spell of DRY_RESET_S has passed since it last fired — so the
+    afternoon storm is not silenced by the morning shower — and on a new day."""
+    if last_ts is None:
+        return True
+    if last_dry_reset is not None and last_dry_reset > last_ts:
+        return True
+    return not same_day
 
 
 def _log_push(now_ts: int, push_type: str, body_en: str):
@@ -1424,6 +1524,15 @@ def _build_payload(event: dict) -> dict:
     # NOT the user's exact spot. Body copy makes this explicit so users
     # who open the app and see "no rain here" aren't confused.
     t = event["type"]
+    if t == "downpour":
+        x = int(event["in_min"])
+        soon = x <= 5
+        m = max(5, round(x / 5) * 5)
+        return {"type": "rain",
+                "title_de": "Starkregen über Salzburg — jetzt" if soon else f"Starkregen in ~{m} Min. über Salzburg",
+                "body_de":  "Wenn du draußen bist: such dir einen Unterstand",
+                "title_en": "Heavy rain over Salzburg — now" if soon else f"Heavy rain over Salzburg in ~{m} min",
+                "body_en":  "If you're out: find shelter"}
     if t == "rain_incoming":
         x    = int(event["rain_in_min"])
         low  = max(5, x - 10)
@@ -1496,65 +1605,52 @@ async def check_and_push(client: httpx.AsyncClient, now_ts: int):
         print(f"[push] <{PUSH_MIN_GAP_S // 60} min since last push — skip")
         return
 
-    events = []
-    now_precips = []
-    for point in POINTS:
+    # v2.49.0 — read the snapshot this cycle just served (filtered per-point series +
+    # each gauge's own reading), so a push says what the app says. No new API calls.
+    points = _ambient.get("points") or []
+    gauges = _ambient.get("gauges")
+    thresholds = {}
+    for p in POINTS:
         try:
-            times, precips, _ = await _fetch_timeline_sourced(client, point)
-            now_precip        = await fetch_now_precip(client, point)
-            now_precips.append(now_precip)
-            threshold         = get_threshold(point["name"], 30)
-            ev = _analyze_forecast(
-                list(times), list(precips),
-                now_ts, now_precip_live=now_precip, threshold=threshold,
-            )
-            if ev:
-                events.append(ev)
-        except Exception as e:
-            print(f"[push] {point['name']}: {e}")
-
-    # "Raining now over Salzburg" — the onset step of the story, between "rain
-    # incoming" and "gap/clearing". Verified by GROUND readings: a majority of the
-    # grid must be wet right now. Intensity from the median wet reading → light
-    # drizzle (<0.5 mm) vs rain. A single already-verified synthetic event.
-    wet = [p for p in now_precips if p is not None and p >= DRY_THRESHOLD]
-    if len(wet) >= MIN_PUSH_AGREEMENT:
-        wet_sorted = sorted(wet)
-        median_wet = wet_sorted[len(wet_sorted) // 2]
-        events.append({"type": "raining", "light": median_wet < 0.5})
+            thresholds[p["name"]] = get_threshold(p["name"], 30)
+        except Exception:
+            thresholds[p["name"]] = DRY_THRESHOLD
+    by_type, any_wet = _push_events(points, gauges, now_ts, thresholds)
+    last_dry_reset = _update_dry_spell(any_wet, now_ts)
 
     # Convective initiation detected this cycle (run_cycle stamps _forming_ts) —
     # already radar-verified across ≥FORMING_MIN_POINTS points, no extra vote needed.
     if _forming_ts and now_ts - _forming_ts < 600:
-        events.append({"type": "forming"})
+        by_type["forming"] = [{"type": "forming"}]
 
     total = len(POINTS)
-    by_type = {}
-    for e in events:
-        by_type.setdefault(e["type"], []).append(e)
-
     counts = {k: len(v) for k, v in by_type.items()}
-    print(f"[push] votes: {counts} / {total} (need {MIN_PUSH_AGREEMENT})")
+    print(f"[push] votes: {counts} / {total} (need {MIN_PUSH_AGREEMENT}, downpour {DOWNPOUR_MIN_POINTS})")
 
-    # Story order: forming > raining now > rain incoming > clearing > gap. Daytime-only
-    # + ≥15-min gap (checked above) + once-per-type-per-day → max 5 paced pushes/day.
-    for push_type in ("forming", "raining", "rain_incoming", "rain_clearing", "gap"):
+    # Story order: forming > downpour > raining now > rain incoming > clearing > gap.
+    # Daytime-only + ≥15-min gap (above) + one push per cycle.
+    for push_type in ("forming", "downpour", "raining", "rain_incoming", "rain_clearing", "gap"):
         candidates = by_type.get(push_type, [])
-        if not candidates:
+        need = 1 if push_type == "forming" else DOWNPOUR_MIN_POINTS if push_type == "downpour" else MIN_PUSH_AGREEMENT
+        if len(candidates) < need:
             continue
-        # "raining" and "forming" are single events already verified (wet-count /
-        # multi-point initiation); the forecast types need MIN_PUSH_AGREEMENT points.
-        if push_type not in ("raining", "forming") and len(candidates) < MIN_PUSH_AGREEMENT:
+        last = _last_push_ts(push_type)
+        if push_type == "downpour":
+            # The one urgent type: may repeat within an event, but not every cycle.
+            if last is not None and now_ts - last < DOWNPOUR_COOLDOWN_S:
+                continue
+        elif not _may_fire(last, last_dry_reset,
+                           last is not None and _salzburg_now(last).date() == _salzburg_now(now_ts).date()):
+            print(f"[push] {push_type} already fired this event — skip")
             continue
-        if _type_fired_today(push_type, now_ts):
-            print(f"[push] {push_type} already fired today — skip")
-            continue
-        if push_type in ("raining", "forming"):
+        if push_type == "forming":
             best = candidates[0]
+        elif push_type == "raining":
+            nows = sorted(e["now"] for e in candidates)
+            best = {"type": "raining", "light": nows[len(nows) // 2] < LIGHT_MAX}
         else:
-            # Pick the most imminent event across agreeing points
-            sort_key = "rain_in_min" if push_type == "rain_incoming" else \
-                       "clears_in_min" if push_type == "rain_clearing" else "gap_in_min"
+            sort_key = {"downpour": "in_min", "rain_incoming": "rain_in_min",
+                        "rain_clearing": "clears_in_min", "gap": "gap_in_min"}[push_type]
             best = min(candidates, key=lambda e: e.get(sort_key, 0))
         payload = _build_payload(best)
         await push_to_all(payload)

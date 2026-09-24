@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.49.0] - 2026-09-24 - Gemma Raus just got better: notifications that agree with the app 🔔
+
+*A notification saying "rain" while the app says "go anyway" helps nobody. They now use the same rules.*
+
+**What happened**
+
+Our notifications were still running on older rules than the app. One shower over a single rain gauge could send "rain over Salzburg" to everyone, a light drizzle could be announced as rain, a short 30-minute break was announced as a gap the app itself wouldn't recommend, and after one alert in the morning, the afternoon storm got none.
+
+**What's new for you**
+
+- **A new heavy-rain alert:** when a real downpour is coming in the next 45 minutes, you'll hear about it, so you can find shelter in time.
+- **Same answer as the app:** no more "rain" alerts on a day the app calls drizzle, and breaks are only announced when they're long enough to actually use (45 minutes).
+- **One gauge no longer speaks for the whole city:** a shower over one part of Salzburg isn't reported as rain everywhere.
+- **Each rain spell gets its own alerts:** after a couple of dry hours, a new shower can notify you again, even on the same day.
+
+---
+
 ## [2.48.3] - 2026-09-24 - Gemma Raus just got better: three blind spots closed 🔍
 
 *We went through every step from "what the instruments read" to "what the headline says", looking for anything that could tell you it's dry when it isn't.*
