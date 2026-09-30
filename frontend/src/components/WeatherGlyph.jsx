@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { weatherGroup } from '../gaps'
 import { moonPhase, moonPath } from '../sky'
 
@@ -82,12 +83,25 @@ const SHAPES = {
 // The moon as it actually looks tonight (v2.49.4): the lit part drawn in its real
 // phase — crescent, half, gibbous, full — over a faint full disc, so even a thin
 // crescent or a new moon still reads as "the moon". Shared with the ribbon's dry tiles.
+// v2.49.6 — with a few faint craters (the dark "seas"), clipped to the lit part, so a
+// full moon reads as a moon rather than a plain dot. Positions are fractions of the
+// radius, so they sit in the same place at every size.
+const CRATERS = [[-0.33, -0.28, 0.29], [0.36, 0.15, 0.21], [-0.15, 0.43, 0.15], [0.2, -0.48, 0.1]]
 export function MoonShape({ ts, cx = 12, cy = 12, r = 8, color = 'currentColor' }) {
   const d = moonPath(moonPhase(Number.isFinite(ts) ? ts : Date.now() / 1000), cx, cy, r)
+  const clip = 'moon' + useId().replace(/[^a-zA-Z0-9_-]/g, '')
   return (
     <g>
       <circle cx={cx} cy={cy} r={r} fill={color} fillOpacity="0.16" stroke={color} strokeOpacity="0.45" strokeWidth="0.9" />
       {d && <path d={d} fill={color} stroke="none" />}
+      {d && (
+        <>
+          <clipPath id={clip}><path d={d} /></clipPath>
+          <g clipPath={`url(#${clip})`} fill="#000" fillOpacity="0.22" stroke="none">
+            {CRATERS.map(([x, y, cr], i) => <circle key={i} cx={cx + x * r} cy={cy + y * r} r={cr * r} />)}
+          </g>
+        </>
+      )}
     </g>
   )
 }

@@ -12,6 +12,21 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.49.6] - 2026-09-30 - Gemma Raus just got better: the whole evening at a glance 🖥️
+
+*On a big screen the rain ribbon was a little box you had to drag. Now it uses the room.*
+
+**What's new for you**
+
+- **The whole 12 hours in one row on desktop:** with a mouse, the ribbon stretches across the full width with bigger tiles, no dragging.
+- **Just point:** move the mouse over any time to read it; move away and it goes back to now. Click to hold a time while you look elsewhere. The arrow keys work too.
+- **"Back to now" always in the same place:** right under the time, on phones and on desktop.
+- **A moon that looks like one:** faint craters on the lit part, so even a full moon reads as the moon and not a dot.
+
+Phones and narrow windows keep the swipeable ribbon exactly as it was.
+
+---
+
 ## [2.49.5] - 2026-09-30 - Gemma Raus just got better: one policy, once 📄
 
 *The full privacy policy showed everything twice, German and then English on one long page.*

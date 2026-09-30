@@ -14,7 +14,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import Header from './components/Header'
 import DayStrip from './components/DayStrip'
 import GapBanner, { SourceLine } from './components/GapBanner'
-import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePct, bucketMixed, drySkyVariant } from './components/RainRibbon'
+import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePct, bucketMixed, drySkyVariant, tileBox, wideSlotWidth, hoverIndex } from './components/RainRibbon'
 import InfoPanel from './components/InfoPanel'
 import WeatherGlyph from './components/WeatherGlyph'
 import { translations } from './i18n'
@@ -276,7 +276,9 @@ for (const lang of ['de', 'en']) {
             modelLow: times.map((_, i) => (i === 4 ? low : null)),
             isNowcast: true, radarUntil: now + 300,
           }} theme="light" t={t} unstable={false} modelRainMin={null} />)
-        return (html.match(/-right-1 w-2\.5/g) || []).length
+        // v2.49.6 — badge size/offset are inline now (scaled with the tile): the ring is the
+        // dashed badge in the top-RIGHT corner.
+        return (html.match(/right:-4px;background:var\(--c-panel\);border:1\.5px dashed/g) || []).length
       }
       expect(rings(0.25)).toBe(0)   // both models say drizzle: same tile, no ring
       expect(rings(0.02)).toBe(1)   // the other model says dry: a different tile, ring
@@ -359,7 +361,8 @@ for (const lang of ['de', 'en']) {
       // v2.48.2 — the status/confidence row is always laid out (so the chart never
       // jumps when you start scrolling) but invisible and hidden from screen readers
       // at rest — still says nothing at "now".
-      expect(html).toMatch(/h-5 invisible" aria-hidden="true"><span class="font-mono text-sm">/)
+      // v2.49.6 — the row's left side now also holds the "back to now" slot (under the time)
+      expect(html).toMatch(/h-5 invisible" aria-hidden="true"><span class="flex items-center gap-2 min-w-0"><span class="font-mono text-sm truncate">/)
       // v2.48.1 — "back to now" only once you've scrolled away from now.
       expect(html).not.toContain(esc(t('ro_back_now')))
     })
@@ -374,7 +377,7 @@ for (const lang of ['de', 'en']) {
       // ribbon's aria-label, so a bare substring check can't tell them apart.
       // At rest the status row is laid out but invisible (v2.48.2): its word sits inside
       // the hidden row, never as visible text.
-      expect(html).toContain(`h-5 invisible" aria-hidden="true"><span class="font-mono text-sm">${esc(t('ro_status_rain'))}</span>`)
+      expect(html).toContain(`h-5 invisible" aria-hidden="true"><span class="flex items-center gap-2 min-w-0"><span class="font-mono text-sm truncate">${esc(t('ro_status_rain'))}</span>`)
       expect(html).toContain(esc(t('ro_src_radar')))
     })
 
@@ -712,5 +715,59 @@ describe('bucketMixed (mixed 15/30-min bucketing)', () => {
       const slots = bucketMixed(slots0, radarUntil)
       expect(slots[slots.length - 1].end).toBeGreaterThanOrEqual(lastRawEnd)
     }
+  })
+})
+
+// v2.49.6 — the desktop ribbon (full width, hover selects) and the moon's craters.
+describe('desktop ribbon sizing', () => {
+  it('the phone tile is unchanged: 40×52, radius 10, 20px icon, 10px badges, 9px label', () => {
+    expect(tileBox(46)).toEqual({ bw: 40, bh: 52, radius: 10, icon: 20, badge: 10, inset: 4, label: 9 })
+  })
+  it('a wider slot scales the same tile up', () => {
+    const b = tileBox(62)
+    expect(b.bw).toBe(56)
+    expect(b.bh).toBe(73)
+    expect(b.icon).toBe(28)
+    expect(b.label).toBeLessThanOrEqual(12)
+    expect(tileBox(40).label).toBe(9)          // a narrower desktop tile never gets a smaller label
+  })
+  it('fills the width, caps the tile size, and falls back to scrolling when tiles would be too small', () => {
+    expect(wideSlotWidth(1852, 30)).toBe(61)      // 1908 px window, full 12 h
+    expect(wideSlotWidth(1248, 30)).toBe(41)      // 1280 px window, still fits
+    expect(wideSlotWidth(1100, 30)).toBeNull()    // too narrow → the scrolling strip
+    expect(wideSlotWidth(5000, 30)).toBe(72)      // very wide: tiles stop growing
+    expect(wideSlotWidth(0, 30)).toBeNull()       // not measured yet
+    expect(wideSlotWidth(1852, 0)).toBeNull()     // no data
+  })
+  it('the pointer picks the slot under it, clamped to the row', () => {
+    expect(hoverIndex(0, 60, 30)).toBe(0)
+    expect(hoverIndex(59, 60, 30)).toBe(0)
+    expect(hoverIndex(60, 60, 30)).toBe(1)
+    expect(hoverIndex(-20, 60, 30)).toBe(0)
+    expect(hoverIndex(99999, 60, 30)).toBe(29)
+    expect(hoverIndex(NaN, 60, 30)).toBe(0)
+  })
+})
+
+describe('the moon has craters where it is lit', () => {
+  const at = iso => Math.floor(new Date(iso).getTime() / 1000)
+  const glyph = ts => renderToStaticMarkup(<WeatherGlyph code={0} night ts={ts} />)
+  it('a full moon shows its craters, clipped to the lit disc', () => {
+    const html = glyph(at('2026-10-26T04:12:00Z'))
+    expect(html).toContain('<clipPath')
+    expect((html.match(/fill-opacity="0.22"/g) || []).length).toBe(1)
+    expect((html.match(/<circle/g) || []).length).toBe(1 + 4)   // faint disc + 4 craters
+  })
+  it('a new moon has nothing lit, so no craters', () => {
+    const html = glyph(at('2026-10-10T15:50:00Z'))
+    expect(html).not.toContain('<clipPath')
+    expect((html.match(/<circle/g) || []).length).toBe(1)
+  })
+  it('two moons on one page never share a clip id', () => {
+    const ts = at('2026-10-26T04:12:00Z')
+    const html = renderToStaticMarkup(<div><WeatherGlyph code={0} night ts={ts} /><WeatherGlyph code={0} night ts={ts} /></div>)
+    const ids = [...html.matchAll(/<clipPath id="([^"]+)"/g)].map(m => m[1])
+    expect(ids.length).toBe(2)
+    expect(ids[0]).not.toBe(ids[1])
   })
 })

@@ -229,13 +229,26 @@ function SourceIcon({ inRadar, size = 14 }) {
 // a reader experiences as the same fact, "the sources here don't agree".
 // Maintainer call: one badge, not two, once the chart itself stopped being a
 // continuous line these could ride along.
-function Tile({ tier, variant, solid, mismatch, mist, timeLabel, ts }) {
+// Every size on a tile, from its slot width. At TILE_W (46) this is exactly the phone
+// tile (40×52, radius 10, 20px icon, 10px badges, 9px label); the desktop ribbon
+// (v2.49.6) passes a wider slot and gets the same tile, scaled.
+export function tileBox(w = TILE_W) {
+  const bw = w - 6
+  return {
+    bw, bh: Math.round(bw * 1.3), radius: Math.round(bw / 4), icon: Math.round(bw / 2),
+    badge: Math.round(bw / 4), inset: Math.round(bw / 10), label: Math.max(9, Math.min(12, Math.round(9 * bw / 40))),
+  }
+}
+
+function Tile({ tier, variant, solid, mismatch, mist, timeLabel, ts, w = TILE_W }) {
   const col = tierColorVar(tier, variant)
+  const box = tileBox(w)
+  const badge = { width: box.badge, height: box.badge, top: -box.inset }
   return (
-    <div style={{ width: TILE_W }} className="shrink-0 flex flex-col items-center gap-1">
+    <div style={{ width: w }} className="shrink-0 flex flex-col items-center gap-1">
       <div className="relative">
         <div
-          className="w-10 h-[52px] rounded-[10px] flex items-center justify-center"
+          className="flex items-center justify-center"
           // v3.0.3 (round 2) — the solid dry tile's own outline used
           // `--c-border`, the app's general hairline-border token, tuned
           // subtle everywhere else it's used. On this tile it needed to be a
@@ -244,20 +257,20 @@ function Tile({ tier, variant, solid, mismatch, mist, timeLabel, ts }) {
           // the same tone the dashed/forecast dry tile already used, so a
           // solid dry tile and a dashed dry tile now share one border colour,
           // differing only by line style — one fewer thing to keep in sync.
-          style={solid
+          style={{ width: box.bw, height: box.bh, borderRadius: box.radius, ...(solid
             ? { background: col ?? 'transparent', border: col ? 'none' : '1.3px solid var(--c-muted)' }
-            : { background: 'transparent', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }}
+            : { background: 'transparent', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }) }}
         >
           <span style={{ color: solid ? (col ? '#fff' : 'var(--c-muted)') : (col ?? 'var(--c-muted)') }}>
-            <TileIcon tier={tier} variant={variant} ts={ts} />
+            <TileIcon tier={tier} variant={variant} ts={ts} size={box.icon} />
           </span>
         </div>
         {/* v2.49.2 — at most one mark per tile: where the drizzle dot is shown the
             ring steps back (both on almost every tile read as noise, live screenshot). */}
         {mismatch && !mist && (
           <span aria-hidden="true"
-                className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
-                style={{ background: 'var(--c-panel)', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }} />
+                className="absolute rounded-full"
+                style={{ ...badge, right: -box.inset, background: 'var(--c-panel)', border: `1.5px dashed ${col ?? 'var(--c-muted)'}` }} />
         )}
         {/* v3.0.2 — was a blurred, low-opacity dot floating above the tile's
             centre, which read as a stray artifact rather than something
@@ -268,10 +281,10 @@ function Tile({ tier, variant, solid, mismatch, mist, timeLabel, ts }) {
             mismatch), same size language as that badge, no blur. Keeps its
             `.gr-mist` pulse (index.css, reduced-motion guarded) as the one
             thing that still marks it "unconfirmed" rather than measured. */}
-        {mist && <span aria-hidden="true" className="gr-mist absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full pointer-events-none"
-                       style={{ background: 'var(--c-light)', border: '1.5px solid var(--c-panel)' }} />}
+        {mist && <span aria-hidden="true" className="gr-mist absolute rounded-full pointer-events-none"
+                       style={{ ...badge, left: -box.inset, background: 'var(--c-light)', border: '1.5px solid var(--c-panel)' }} />}
       </div>
-      <span className="font-mono text-[9px] text-muted leading-none">{timeLabel || ' '}</span>
+      <span className="font-mono text-muted leading-none" style={{ fontSize: box.label }}>{timeLabel || ' '}</span>
     </div>
   )
 }
@@ -348,6 +361,28 @@ const CURSOR_X = 96
 // the card can ever be (its own `max-w-[420px]`), so this is always enough
 // room regardless of actual viewport width, never too little.
 const TRAIL_W = 420 - CURSOR_X
+
+// v2.49.6 — the desktop ribbon. With a mouse (a pointer that can hover) and a window
+// wide enough, the whole 12 h is laid out across the full width — no scrolling, bigger
+// tiles — and the pointer IS the cursor: hover to read a slot, leave to return to now,
+// click to hold a slot (then "back to now" releases it). Anything narrower, and every
+// touch screen, keeps the scrolling strip above, unchanged.
+const WIDE_PAD = 12          // inner padding of the desktop card, each side
+const WIDE_MIN_SLOT = 40     // narrower than this and the strip scrolls instead
+const WIDE_MAX_SLOT = 72     // wider tiles stop helping; the row simply ends early
+
+// Slot width for the desktop layout, or null when the tiles wouldn't fit (→ scroll).
+export function wideSlotWidth(avail, n) {
+  if (!(avail > 0) || !(n > 0)) return null
+  const w = Math.min(WIDE_MAX_SLOT, Math.floor(avail / n))
+  return w >= WIDE_MIN_SLOT ? w : null
+}
+
+// Which slot a pointer x (px from the first tile's left edge) is over.
+export function hoverIndex(x, slotW, n) {
+  if (!(slotW > 0) || !(n > 0) || !Number.isFinite(x)) return 0
+  return Math.max(0, Math.min(n - 1, Math.floor(x / slotW)))
+}
 
 // v3.1 (confidence fix) — `prob` is the model's chance of RAIN, but the tile
 // reads "confidence in this tile's own claim". Those are the same number
@@ -442,6 +477,36 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
   const [atEnd, setAtEnd] = useState(false)
   const dragRef = useRef(null)
 
+  // v2.49.6 — desktop layout: a pointer that can hover, and the measured width.
+  const rootRef = useRef(null)
+  const [canHover, setCanHover] = useState(false)
+  const [availW, setAvailW] = useState(0)
+  const [hoverX, setHoverX] = useState(null)   // px over the tiles while the mouse is there
+  const [pinX, setPinX] = useState(null)       // px of a clicked (held) slot
+  useEffect(() => {
+    const mq = window.matchMedia?.('(hover: hover) and (pointer: fine)')
+    if (!mq) return
+    const upd = () => setCanHover(mq.matches)
+    upd()
+    if (mq.addEventListener) { mq.addEventListener('change', upd); return () => mq.removeEventListener('change', upd) }
+    mq.addListener?.(upd)                          // Safari < 14
+    return () => mq.removeListener?.(upd)
+  }, [])
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    // px-4 on the card's row (2×16), the card's border (2×1), the card's inner padding
+    const measure = () => setAvailW(el.clientWidth - 32 - 2 - 2 * WIDE_PAD)
+    measure()
+    if (typeof ResizeObserver !== 'function') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   // v3.0 — the idle auto-drift (v2.38.5) is REMOVED outright, maintainer
   // ask. It existed to teach a first-time viewer the ribbon scrolls, but it
   // fought the reader: it could start moving the track out from under a
@@ -462,6 +527,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
     scrollRef.current?.scrollTo({ left: rest, behavior: reduceMotion ? 'auto' : 'smooth' })
     setScrollX(rest)
     setAtEnd(false)
+    setPinX(null)                 // a held desktop slot is released by new data, same as a scroll
   }, [forecast])
 
   const nowS = Math.floor(Date.now() / 1000)
@@ -500,9 +566,17 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
 
   const contentW = rbars.length * TILE_W
 
-  const scrubIdx = rbars.length
-    ? Math.max(0, Math.min(rbars.length - 1, Math.floor(scrollX / TILE_W)))
-    : 0
+  // Desktop (v2.49.6): the tiles fit the width and the pointer picks the slot.
+  const slotW = canHover ? wideSlotWidth(availW, rbars.length) : null
+  const wide = slotW != null
+  const selX = wide ? (hoverX ?? pinX) : null
+  const restFrac = restScrollX(forecast, nowS) / TILE_W
+  const scrubIdx = !rbars.length ? 0
+    : wide ? (selX == null ? 0 : hoverIndex(selX, slotW, rbars.length))
+    : Math.max(0, Math.min(rbars.length - 1, Math.floor(scrollX / TILE_W)))
+  // "back to now" shows once you've moved off now — on desktop only for a HELD slot:
+  // a plain hover returns to now by itself when the mouse leaves.
+  const showBackNow = scrubIdx > 0 && (!wide || (pinX != null && hoverX == null))
   const scrubBar = rbars[scrubIdx]
   const scrubInRadar = scrubIdx < splitI
   const scrubTrace = !!scrubBar && scrubBar.p > 0 && scrubBar.p < DRY_THRESHOLD
@@ -538,12 +612,69 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
     else if (e.key === 'End') { el.scrollLeft = el.scrollWidth; e.preventDefault() }
   }
   function backToNow() {
+    if (wide) { setPinX(null); setHoverX(null); return }
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     scrollRef.current?.scrollTo({ left: restScrollX(forecast, nowS), behavior: reduceMotion ? 'auto' : 'smooth' })
   }
+  // Desktop pointer + keyboard. x is measured from the first tile's left edge.
+  const xIn = e => e.clientX - e.currentTarget.getBoundingClientRect().left
+  function onWideKeyDown(e) {
+    const n = rbars.length
+    const go = i => { const k = Math.max(0, Math.min(n - 1, i)); setPinX(k === 0 ? null : (k + 0.5) * slotW) }
+    const step = e.shiftKey ? 4 : 1
+    if (e.key === 'ArrowRight') { go(scrubIdx + step); e.preventDefault() }
+    else if (e.key === 'ArrowLeft') { go(scrubIdx - step); e.preventDefault() }
+    else if (e.key === 'Home') { setPinX(null); e.preventDefault() }
+    else if (e.key === 'End') { go(n - 1); e.preventDefault() }
+  }
+
+  const track = (w, lead) => (
+    <>
+              {/* v3.0 — the dry-window bracket moves ABOVE the tile row
+                  (was: a canvas-drawn strip below the skyline). Same
+                  dryRunIn run, same duration text; only where it sits
+                  changed, per the maintainer's own read of the mockup. It
+                  scrolls WITH the tiles it labels — it is a row inside the
+                  same track, not a fixed overlay. */}
+              {/* v3.0.2 — h-5→h-7 and the underline's own margin widened: a
+                  live screenshot showed the gold underline sitting close
+                  enough to the tiles below that it visually clipped into
+                  their top edge. The bracket strip now leaves clear air
+                  between its own rule and the first tile. */}
+              <div className="h-7 relative px-3 pt-2">
+                {dryRun && (() => {
+                  const mins = (rbars[dryRun.b].end - rbars[dryRun.a].t) / 60
+                  const txt = mins < 60 ? t('bracket_dry_min', { min: mins }) : t('bracket_dry_h', { h: hoursLabel(mins) })
+                  return (
+                    <div className="absolute" style={{ left: lead + dryRun.a * w + 3, width: (dryRun.b - dryRun.a + 1) * w - 6 }}>
+                      <div className="font-mono font-bold tracking-normal truncate" style={{ color: 'var(--c-go)', fontSize: tileBox(w).label }}>{txt}</div>
+                      <div className="h-[1.5px] mt-[5px]" style={{ background: 'var(--c-go)', opacity: 0.6 }} />
+                    </div>
+                  )
+                })()}
+              </div>
+              <div className="relative flex items-end pb-2.5 pt-1.5">
+                {lead > 0 && <div style={{ width: lead }} className="shrink-0" aria-hidden="true" />}
+                {rbars.map((b, i) => {
+                  const inRadar = i < splitI
+                  const trace = b.p > 0 && b.p < DRY_THRESHOLD
+                  const tier = tileTierOf(b.p)
+                  const variant = tier === 'dry' ? drySkyVariant(b.t, code)
+                                : tier === 'storm' ? stormVariant(code)
+                                : undefined
+                  const mismatch = mismatchAt(b, i)
+                  const d = new Date(b.t * 1000)
+                  return (
+                    <Tile key={i} w={w} ts={b.t} tier={tier} variant={variant} solid={inRadar} mismatch={mismatch} mist={trace}
+                          timeLabel={d.getMinutes() === 0 ? `${String(d.getHours()).padStart(2, '0')}:00` : ''} />
+                  )
+                })}
+              </div>
+    </>
+  )
 
   return (
-    <div className="border-t border-border shrink-0">
+    <div ref={rootRef} className="border-t border-border shrink-0">
       {/* Scrub readout — UNCHANGED (time/status/source/confidence). The only
           change here is confidencePct's own 5th argument, above. */}
       {hasData && (
@@ -554,15 +685,6 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
               <span className="font-mono text-[11px] text-muted">{relFromNow(t, scrubT, nowS)}</span>
             </div>
             <span className="flex items-center gap-1 shrink-0">
-              {/* v2.49.2 — "back to now" sits in a fixed spot, just before the
-                  Radar/Forecast label (maintainer: "fixed for the user"), instead of
-                  trailing the time text, where it moved with every label width. */}
-              {scrubIdx > 0 && (
-                <button type="button" onClick={backToNow}
-                        className="mr-2 shrink-0 font-mono text-[10px] tracking-normal border border-border rounded-full px-2 py-0.5 text-primary hover:border-primary transition-colors">
-                  {t('ro_back_now')}
-                </button>
-              )}
               <SourceIcon inRadar={scrubInRadar} />
               <span className="font-mono text-xs text-primary">
                 {t(slotSourceKey(scrubInRadar))}
@@ -588,8 +710,18 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
                 specific scrubbed slot's claim is spoken — only the literal
                 dry case is blank here. The row's layout (and the confidence
                 block's position) is unchanged either way. */}
-            <span className="font-mono text-sm">
-              {scrubStatusKey === 'ro_status_dry' ? '' : t(scrubStatusKey)}
+            <span className="flex items-center gap-2 min-w-0">
+              {/* v2.49.6 — "back to now" sits right under the time, always in the same
+                  spot (maintainer), at the start of this fixed-height row. */}
+              {showBackNow && (
+                <button type="button" onClick={backToNow}
+                        className="shrink-0 font-mono text-[10px] tracking-normal border border-border rounded-full px-2 py-0.5 text-primary hover:border-primary transition-colors">
+                  {t('ro_back_now')}
+                </button>
+              )}
+              <span className="font-mono text-sm truncate">
+                {scrubStatusKey === 'ro_status_dry' ? '' : t(scrubStatusKey)}
+              </span>
             </span>
             {/* role="img" + a single aria-label carries the full "confidence
                 N of 5" value to assistive tech; the pip bar alone was
@@ -624,6 +756,39 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
           stays a sibling of the scroll box, positioned against this same
           wrapper — its own logic is completely untouched (see
           restScrollX/CURSOR_X above). */}
+      {/* v2.49.6 — desktop with a mouse: all 12 h across the full width, bigger tiles,
+          and the pointer is the cursor (hover to read, leave → now, click to hold). */}
+      {wide ? (
+        <div className="px-4 pb-2">
+          <div className="relative rounded-xl border border-border bg-[var(--c-panel)]" style={{ padding: `0 ${WIDE_PAD}px` }}>
+            <div className="relative cursor-crosshair select-none outline-none focus-visible:ring-1 focus-visible:ring-[var(--c-muted)] rounded-lg"
+                 style={{ width: rbars.length * slotW }}
+                 tabIndex={hasData ? 0 : -1}
+                 role="group"
+                 aria-label={t('ro_aria')}
+                 onPointerMove={e => setHoverX(xIn(e))}
+                 onPointerLeave={() => setHoverX(null)}
+                 onClick={e => { const x = xIn(e); setPinX(hoverIndex(x, slotW, rbars.length) === 0 ? null : x) }}
+                 onKeyDown={onWideKeyDown}>
+              {track(slotW, 0)}
+              {showDryLabel && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
+                    {traceOnly ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin)}
+                  </span>
+                </div>
+              )}
+            </div>
+            {hasData && (
+              <div className="absolute top-0 bottom-0 w-0.5 pointer-events-none"
+                   style={{ left: WIDE_PAD + (selX == null ? restFrac * slotW : Math.max(0, Math.min(rbars.length * slotW, selX))), background: cursorCol }}
+                   aria-hidden="true">
+                <span className="absolute rounded-full" style={{ top: -4, left: -3, width: 8, height: 8, background: cursorCol }} />
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="px-4 pb-2">
         <div className="relative max-w-[420px] rounded-xl border border-border bg-[var(--c-panel)]">
           <div ref={scrollRef}
@@ -668,46 +833,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
                 sized or positioned relative to it, so it changes nothing
                 about the bracket or the tiles themselves. */}
             <div style={{ width: CURSOR_X + contentW + TRAIL_W }}>
-              {/* v3.0 — the dry-window bracket moves ABOVE the tile row
-                  (was: a canvas-drawn strip below the skyline). Same
-                  dryRunIn run, same duration text; only where it sits
-                  changed, per the maintainer's own read of the mockup. It
-                  scrolls WITH the tiles it labels — it is a row inside the
-                  same track, not a fixed overlay. */}
-              {/* v3.0.2 — h-5→h-7 and the underline's own margin widened: a
-                  live screenshot showed the gold underline sitting close
-                  enough to the tiles below that it visually clipped into
-                  their top edge. The bracket strip now leaves clear air
-                  between its own rule and the first tile. */}
-              <div className="h-7 relative px-3 pt-2">
-                {dryRun && (() => {
-                  const mins = (rbars[dryRun.b].end - rbars[dryRun.a].t) / 60
-                  const txt = mins < 60 ? t('bracket_dry_min', { min: mins }) : t('bracket_dry_h', { h: hoursLabel(mins) })
-                  return (
-                    <div className="absolute" style={{ left: CURSOR_X + dryRun.a * TILE_W + 3, width: (dryRun.b - dryRun.a + 1) * TILE_W - 6 }}>
-                      <div className="font-mono font-bold text-[9px] tracking-normal truncate" style={{ color: 'var(--c-go)' }}>{txt}</div>
-                      <div className="h-[1.5px] mt-[5px]" style={{ background: 'var(--c-go)', opacity: 0.6 }} />
-                    </div>
-                  )
-                })()}
-              </div>
-              <div className="relative flex items-end pb-2.5 pt-1.5">
-                <div style={{ width: CURSOR_X }} className="shrink-0" aria-hidden="true" />
-                {rbars.map((b, i) => {
-                  const inRadar = i < splitI
-                  const trace = b.p > 0 && b.p < DRY_THRESHOLD
-                  const tier = tileTierOf(b.p)
-                  const variant = tier === 'dry' ? drySkyVariant(b.t, code)
-                                : tier === 'storm' ? stormVariant(code)
-                                : undefined
-                  const mismatch = mismatchAt(b, i)
-                  const d = new Date(b.t * 1000)
-                  return (
-                    <Tile key={i} ts={b.t} tier={tier} variant={variant} solid={inRadar} mismatch={mismatch} mist={trace}
-                          timeLabel={d.getMinutes() === 0 ? `${String(d.getHours()).padStart(2, '0')}:00` : ''} />
-                  )
-                })}
-              </div>
+              {track(TILE_W, CURSOR_X)}
             </div>
             {showDryLabel && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -728,6 +854,8 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
           )}
         </div>
       </div>
+
+      )}
 
       {/* v2.48.1 — no legend row (the guide explains the dot and the ring).
           v2.48.2 — "back to now" moved up into the time row, so nothing under the
