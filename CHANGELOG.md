@@ -12,6 +12,16 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.49.5] - 2026-09-30 - Gemma Raus just got better: one policy, once 📄
+
+*The full privacy policy showed everything twice, German and then English on one long page.*
+
+**What's new for you**
+
+- **One language per page:** the full privacy policy now opens in your app's language only, with a link at the top to switch between Deutsch and English.
+
+---
+
 ## [2.49.4] - 2026-09-30 - Gemma Raus just got better: the real moon 🌖
 
 *The moon now looks like the one outside your window, and it rises at the right time.*

@@ -347,7 +347,7 @@ export const translations = {
     privacy_sum_push:      'Benachrichtigungen nur auf Wunsch: Dann speichern wir die Push-Adresse deines Browsers – ohne Namen, E-Mail oder Standort. Glocke aus → sofort gelöscht; App 90 Tage nicht geöffnet → automatisch gelöscht.',
     privacy_sum_rights:    'Auskunft, Löschung, Widerspruch: contact@gemmaraus.at. Beschwerden: Österreichische Datenschutzbehörde (dsb.gv.at).',
     privacy_full_link:     'Vollständige Datenschutzerklärung →',
-    privacy_full_href:     '/privacy/#de',
+    privacy_full_href:     '/privacy/',
     privacy_terms_title:   'Nutzungsbedingungen',
     privacy_terms_body:    'Gemma Raus zeigt Wetterdaten von Drittanbietern (GeoSphere Austria, Open-Meteo, RainViewer) und übernimmt keine Gewähr für deren Richtigkeit oder Verfügbarkeit. Die App dient zur allgemeinen Information — keine sicherheitskritischen Entscheidungen darauf stützen. Nutzung auf eigene Verantwortung. Anwendbares Recht: Österreich.',
 
@@ -714,7 +714,7 @@ export const translations = {
     privacy_sum_push:      "Alerts are opt-in: we then store your browser's push address – no name, no email, no location. Bell off → deleted at once; app not opened for 90 days → deleted automatically.",
     privacy_sum_rights:    'Access, deletion, objection: contact@gemmaraus.at. Complaints: Austrian Data Protection Authority (dsb.gv.at).',
     privacy_full_link:     'Full privacy policy →',
-    privacy_full_href:     '/privacy/#en',
+    privacy_full_href:     '/privacy/en/',
     privacy_terms_title:   'Terms of Use',
     privacy_terms_body:    'Gemma Raus displays third-party weather data (GeoSphere Austria, Open-Meteo, RainViewer) and makes no guarantee of accuracy or availability. The app is for general information only — do not rely on it for safety-critical decisions. Use at your own risk. Governing law: Austria.',
 

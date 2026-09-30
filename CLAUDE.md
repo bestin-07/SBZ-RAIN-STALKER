@@ -986,7 +986,7 @@ git push origin main --tags        # Railway auto-deploys main
 - **No TypeScript** — plain JS + JSX
 - **Styling:** Tailwind CSS with custom design tokens (`bg-bg`, `text-primary`, `text-muted`, `text-wait`, etc. — see `tailwind.config.js`)
 - **Fonts:** `font-display` (bold display), `font-mono` (body/data). **Self-hosted** in `frontend/src/fonts/` (latin + latin-ext woff2, imported by `main.jsx`). Never load fonts, scripts or styles from Google or any other CDN: every such request sends the visitor's IP to that company, which under EU law needs a legal basis we don't have (LG München I 3 O 17493/20; the 2022 Austrian demand-letter wave). The CSP (`backend/main.py`) blocks it anyway.
-- **Privacy policy:** the full text is `frontend/public/privacy/index.html` (DE + EN); the in-app sheet (`PrivacyPanel`, `privacy_sum_*` keys) is the short layer. Any new third-party host, stored key or server-side data must be added to BOTH, or the policy is false.
+- **Privacy policy:** the full text is `frontend/public/privacy/index.html` (German) and `frontend/public/privacy/en/index.html` (English), one language per page (v2.49.5 — one page with both read as the policy twice); the in-app sheet (`PrivacyPanel`, `privacy_sum_*` keys) is the short layer. Any new third-party host, stored key or server-side data must be added to BOTH, or the policy is false.
 - **i18n:** All user-facing strings go through `t(key)` from `useI18n()`. Add keys to both `de` and `en` objects in `i18n.js`.
 - **State:** All in `App.jsx` — no global state library
 - **API errors:** All API functions return `null` on failure, never throw to the caller
