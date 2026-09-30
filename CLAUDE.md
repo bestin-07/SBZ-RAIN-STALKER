@@ -753,7 +753,7 @@ Warning-banner accents (`--c-uv/warn/alert`) and `--c-muted` are likewise darken
 | `backend/main.py` | Push notifications, accuracy tracking, F0.5 calibration, admin API |
 
 ### localStorage keys (all client-side, never sent to us)
-`theme`, `lang`, `phrase_seed` (one-liner rotation), `push_unsub_token`, `ios_hint_dismissed`, `last_location` (`{lat,lon,ts}` — GPS cache), `story` (`{lat,lon,ts,lastWetAt,stuckHold}` — narrative continuity + the v2.22.0 BLEIB DRIN hold), `gr_admin_key` (sessionStorage, admin page only). The privacy copy (`privacy_2`, privacy page) discloses the local location cache.
+`theme`, `lang`, `phrase_seed` (one-liner rotation), `push_unsub_token`, `last_location` (`{lat,lon,ts}` — GPS cache), `story` (`{lat,lon,ts,lastWetAt,stuckHold}` — narrative continuity + the v2.22.0 BLEIB DRIN hold), `dismissed_warnings`, `install_prompt_seen`, `update_note_<date>`, `map_popup_seen`; sessionStorage `gr_reloaded_for` (update watchdog), `gr_debug_log` (only with `?debug=1`), `gr_admin_key` (admin page only). No cookies. **Every key is listed in the privacy policy (`public/privacy/index.html` §6) — add a new key there too, or the policy is wrong.** Storage is exempt from consent as strictly necessary (§ 165 Abs. 3 TKG 2021); anything that is NOT needed for the service the user asked for (analytics, an ID sent to a server) would need a consent banner.
 
 ### JS force-update (deploy → fresh JS without hard-refresh)
 One `DEPLOY_TS` (Dockerfile) stamps **three** things that must move together: the SW cache name, Vite's `__BUILD_ID__` (logged on boot), and `dist/version.json`.
@@ -806,6 +806,15 @@ load-bearing — each line is something that WOULD break, or did.
 ---
 
 ## Known Issues / Technical Debt
+
+### ⚠️ Privacy — PENDING (flagged 2026-09-30, v2.49.3 shipped the rest)
+v2.49.3 self-hosted the fonts and rewrote the policy (`frontend/public/privacy/index.html`, DE + EN). Still open, in priority order:
+1. **RainViewer (Meteolab Inc., USA) receives every visitor's IP with no transfer mechanism** — not on the EU-US Data Privacy Framework list, no SCCs. The policy says so openly (§4), which is honest but not a legal basis. Fix: load `weather-maps.json` and the radar tiles through our own backend (Cloudflare-cached; every Salzburg user shares the same z7 tiles), so RainViewer only sees our server. Then delete the RainViewer "US authorities" paragraph from the policy (both languages) and the `privacy_sum_services` mention.
+2. **Postal address.** The live PayPal donate link may make the app a "Diensteanbieter" under ECG §5, which needs a full postal address (a c/o address is fine). MedienG §25 alone (small website) needs only name + place. Maintainer's call.
+3. **Rate limiter probably sees Railway's proxy, not the user.** `Limiter(key_func=get_remote_address)` + `uvicorn` without trusted forwarded headers → likely one shared 30/min bucket on `/api/ambient` for all users. Every exhausted bucket makes phones fall back to DIRECT GeoSphere/Open-Meteo calls with precise GPS (a privacy leak and a quota burn). Check Railway HTTP logs for 429s on `/api/ambient` first; fix = key on `CF-Connecting-IP`.
+4. **Railway facts to confirm for the policy:** plan (Hobby 7-day / Pro 30-day logs — the policy says "at most 30 days", true for both) and region (if EU/Amsterdam, the policy can say so).
+5. Optional minimisation: round coordinates to 3 decimals (~100 m) in the direct fallback calls — harmless against a 1 km grid.
+
 
 ### DWD `maps.dwd.de` — FULLY REMOVED (WAF-blocked, not CORS)
 **Resolved 2026-06.** Live testing showed **both** DWD WMS request types return **HTTP 403 ("Access Denied", F5/edge WAF signature)** from Austrian user IPs — not CORS, a server-side block that browser headers don't bypass:
@@ -975,7 +984,8 @@ git push origin main --tags        # Railway auto-deploys main
 
 - **No TypeScript** — plain JS + JSX
 - **Styling:** Tailwind CSS with custom design tokens (`bg-bg`, `text-primary`, `text-muted`, `text-wait`, etc. — see `tailwind.config.js`)
-- **Fonts:** `font-display` (bold display), `font-mono` (body/data)
+- **Fonts:** `font-display` (bold display), `font-mono` (body/data). **Self-hosted** in `frontend/src/fonts/` (latin + latin-ext woff2, imported by `main.jsx`). Never load fonts, scripts or styles from Google or any other CDN: every such request sends the visitor's IP to that company, which under EU law needs a legal basis we don't have (LG München I 3 O 17493/20; the 2022 Austrian demand-letter wave). The CSP (`backend/main.py`) blocks it anyway.
+- **Privacy policy:** the full text is `frontend/public/privacy/index.html` (DE + EN); the in-app sheet (`PrivacyPanel`, `privacy_sum_*` keys) is the short layer. Any new third-party host, stored key or server-side data must be added to BOTH, or the policy is false.
 - **i18n:** All user-facing strings go through `t(key)` from `useI18n()`. Add keys to both `de` and `en` objects in `i18n.js`.
 - **State:** All in `App.jsx` — no global state library
 - **API errors:** All API functions return `null` on failure, never throw to the caller
@@ -1085,7 +1095,7 @@ Full security review conducted covering backend API, frontend JS, Docker build, 
 
 **Security headers set by middleware:**
 ```
-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://server.arcgisonline.com https://*.openstreetmap.org https://*.rainviewer.com https://tilecache.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://dataset.api.hub.geosphere.at https://api.rainviewer.com https://tilecache.rainviewer.com; frame-ancestors 'none'
+Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com https://*.rainviewer.com https://tilecache.rainviewer.com; connect-src 'self' https://api.open-meteo.com https://dataset.api.hub.geosphere.at https://api.rainviewer.com https://tilecache.rainviewer.com; frame-ancestors 'none'
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin

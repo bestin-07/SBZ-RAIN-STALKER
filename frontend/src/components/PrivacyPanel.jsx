@@ -1,3 +1,8 @@
+const SUMMARY = [
+  'privacy_sum_location', 'privacy_sum_fallback', 'privacy_sum_services',
+  'privacy_sum_device', 'privacy_sum_push', 'privacy_sum_rights',
+]
+
 export default function PrivacyPanel({ open, onClose, t }) {
   if (!open) return null
 
@@ -27,26 +32,25 @@ export default function PrivacyPanel({ open, onClose, t }) {
             </button>
           </div>
 
-          {/* plain-language lead */}
-          <p className="font-display font-bold text-lg text-primary leading-snug mb-4">
+          {/* The short layer. The full, GDPR-complete policy is the static page at
+              /privacy/ (public/privacy/index.html) — linkable, indexable, readable
+              without the app. Keep the two consistent. */}
+          <p className="font-display font-bold text-lg text-primary leading-snug mb-5">
             {t('privacy_page_lead')}
           </p>
-          <p className="font-mono text-sm text-muted leading-relaxed mb-4">
-            {t('privacy_page_honest')}
-          </p>
-          <p className="font-mono text-sm text-muted leading-relaxed mb-8">
-            {t('privacy_page_auto')}
-          </p>
-
-          <div className="w-full h-px bg-border mb-6" />
-
-          {/* technical fine print */}
-          <div className="font-mono text-xs tracking-[0.12em] uppercase text-muted mb-3">
-            {t('privacy_page_tech')}
-          </div>
-          <p className="font-mono text-xs text-muted leading-relaxed border-l-2 border-border pl-4 mb-8">
-            {t('privacy_page_tech_body')}
-          </p>
+          <ul className="space-y-3 mb-6">
+            {SUMMARY.map(k => (
+              <li key={k} className="font-mono text-sm text-muted leading-relaxed border-l-2 border-border pl-4">
+                {t(k)}
+              </li>
+            ))}
+          </ul>
+          <a
+            href={t('privacy_full_href')}
+            className="inline-block font-mono text-sm text-primary underline underline-offset-4 hover:opacity-70 transition-opacity mb-8"
+          >
+            {t('privacy_full_link')}
+          </a>
 
           <div className="w-full h-px bg-border mb-6" />
 

@@ -2183,12 +2183,13 @@ async def security_headers(request: Request, call_next):
     response.headers["Content-Security-Policy"]   = (
         "default-src 'self'; "
         "script-src 'self' 'wasm-unsafe-eval'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
+        # Fonts are self-hosted (privacy revamp): no Google hosts. OpenStreetMap
+        # tiles are no longer used (the base map is Esri), so they're not allowed.
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self'; "
         "img-src 'self' data: blob: "
         "https://server.arcgisonline.com "
-        "https://tilecache.rainviewer.com https://*.rainviewer.com "
-        "https://*.tile.openstreetmap.org; "
+        "https://tilecache.rainviewer.com https://*.rainviewer.com; "
         "connect-src 'self' "
         "https://api.open-meteo.com "
         "https://dataset.api.hub.geosphere.at "

@@ -1,98 +1,254 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Privacy · Gemma Raus</title>
+  <title>Datenschutz · Gemma Raus</title>
+  <meta name="description" content="Datenschutzerklärung von Gemma Raus: welche Daten verarbeitet werden, von wem und warum. Privacy policy in German and English." />
   <link rel="canonical" href="https://www.gemmaraus.at/privacy/" />
   <link rel="icon" href="/favicon.ico" sizes="any" />
+  <meta name="color-scheme" content="light dark" />
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      --bg: #F2F0EB; --surface: #E8E6E1; --border: #D6D3CB;
+      --text: #0A0A08; --muted: #55524B; --accent: #7A5E00;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0E0F11; --surface: #16181D; --border: #1F2229;
+        --text: #E7EAF0; --muted: #9CA3AF; --accent: #D4A017;
+      }
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; background: #0E0F11; color: #E7EAF0; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; }
-    .wrap { max-width: 680px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
-
-    a       { color: #D4A017; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
-    .logo   { font-family: 'Courier New', monospace; font-weight: 700; letter-spacing: .18em; font-size: .9rem; text-transform: uppercase; color: #D4A017; margin-bottom: 2.5rem; display: block; }
-    h1      { font-size: 1rem; letter-spacing: .15em; text-transform: uppercase; color: #6B7280; margin: 0 0 2rem; font-weight: 400; }
-    h2      { font-size: .75rem; letter-spacing: .13em; text-transform: uppercase; color: #4B5563; margin: 2.5rem 0 .75rem; padding-top: 1.5rem; border-top: 1px solid #1F2229; font-weight: 400; }
-    p       { font-size: .9rem; color: #9CA3AF; line-height: 1.75; margin: 0 0 .85rem; }
-    ul      { margin: 0 0 .85rem; padding-left: 1.4rem; }
-    li      { font-size: .9rem; color: #9CA3AF; line-height: 1.75; margin-bottom: .25rem; }
-    .chip   { display: inline-block; background: #16181D; border: 1px solid #1F2229; border-radius: 5px; padding: .15rem .55rem; font-size: .78rem; color: #6B7280; margin: .1rem; }
-    .back   { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #1F2229; font-size: .82rem; color: #4B5563; }
-    .date   { color: #374151; font-size: .78rem; margin-top: 2rem; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 2.5rem 16px 5rem; }
+    a { color: var(--accent); }
+    .top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 2.5rem; }
+    .logo { font-weight: 700; letter-spacing: .18em; font-size: .85rem; text-transform: uppercase; color: var(--accent); text-decoration: none; }
+    .lang { font-size: .8rem; color: var(--muted); }
+    h1 { font-size: 1.35rem; margin: 0 0 .4rem; line-height: 1.3; }
+    .date { color: var(--muted); font-size: .8rem; margin: 0 0 2rem; }
+    h2 { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+         margin: 2.4rem 0 .8rem; padding-top: 1.4rem; border-top: 1px solid var(--border); font-weight: 700; }
+    h3 { font-size: .92rem; margin: 1.4rem 0 .5rem; }
+    p, li { font-size: .9rem; line-height: 1.7; }
+    p { margin: 0 0 .85rem; }
+    ul { margin: 0 0 .85rem; padding-left: 1.3rem; }
+    li { margin-bottom: .35rem; }
+    .muted { color: var(--muted); }
+    .box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.1rem; margin: 0 0 1rem; }
+    .box ul { margin: 0; }
+    .tbl { width: 100%; overflow-x: auto; margin: 0 0 1rem; }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: .8rem; line-height: 1.5; }
+    th, td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 700; }
+    code { font-size: .8rem; background: var(--surface); padding: 0 .3rem; border-radius: 4px; }
+    .sep { margin: 4rem 0 2rem; border: 0; border-top: 2px solid var(--border); }
+    .back { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-size: .85rem; }
   </style>
 </head>
 <body>
-  <div class="wrap">
+<div class="wrap">
+
+  <div class="top">
     <a class="logo" href="/">← Gemma Raus</a>
-    <h1>Privacy Policy</h1>
-
-    <p>Gemma Raus is a personal project by <strong style="color:#E7EAF0">Bestin Antu</strong>. This page explains what data is processed and why.</p>
-
-    <h2>What we collect</h2>
-    <p>We collect only what's strictly needed to make the app work:</p>
-    <ul>
-      <li><strong style="color:#E7EAF0">Push subscription endpoint</strong> — a browser-generated token used to deliver rain notifications to your device. It contains no name, email, or location. Stored in our database only if you tap the bell icon and allow notifications.</li>
-    </ul>
-    <p>That's it. No account. No cookies. No analytics. No advertising trackers.</p>
-
-    <h2>What we don't collect</h2>
-    <ul>
-      <li>Your GPS location — coordinates go directly from your browser to Open-Meteo (Switzerland). We never see them.</li>
-      <li>Usage data, page views, or behaviour tracking.</li>
-      <li>Device fingerprints, IP logs, or any identifying information beyond the push token.</li>
-    </ul>
-
-    <h2>What's stored in your browser</h2>
-    <p>Two small items in <code style="color:#6B7280">localStorage</code> — no personal data:</p>
-    <ul>
-      <li><span class="chip">phrase_seed</span> a random number that rotates the status messages so they feel personal to you.</li>
-      <li><span class="chip">ios_hint_dismissed</span> remembers that you closed the iOS install hint.</li>
-    </ul>
-    <p>These stay in your browser and never leave it.</p>
-
-    <h2>Push notifications</h2>
-    <p>If you enable notifications, your browser's push service (listed below) generates a unique endpoint URL and two encryption keys. We store this on our server to send you alerts when a dry window opens.</p>
-    <p>Your endpoint passes through one of:</p>
-    <ul>
-      <li>Google FCM (Chrome / Android)</li>
-      <li>Mozilla Push Service (Firefox)</li>
-      <li>Apple APNs (Safari / iOS)</li>
-    </ul>
-    <p>These third parties are involved because push notifications are a browser-level feature — we don't control which service your browser uses.</p>
-
-    <h2>Legal basis (GDPR)</h2>
-    <ul>
-      <li>Weather data lookup: <strong style="color:#E7EAF0">legitimate interest</strong> (Art. 6(1)(f)) — the entire purpose of the app.</li>
-      <li>Push notifications: <strong style="color:#E7EAF0">consent</strong> (Art. 6(1)(a)) — you opted in by tapping the bell. You can withdraw at any time.</li>
-    </ul>
-
-    <h2>How long we keep it</h2>
-    <p>Your push endpoint is kept until you unsubscribe (bell icon → tap again to disable). On unsubscribe it's deleted immediately. Expired or inactive subscriptions are also removed automatically by the push services.</p>
-
-    <h2>Your rights</h2>
-    <ul>
-      <li><strong style="color:#E7EAF0">Withdraw consent</strong> — tap the bell icon to unsubscribe. Your endpoint is deleted immediately.</li>
-      <li><strong style="color:#E7EAF0">Access / erasure</strong> — email <a href="mailto:bestindroid@gmail.com">bestindroid@gmail.com</a> and we'll confirm deletion.</li>
-      <li><strong style="color:#E7EAF0">Complaint</strong> — you can lodge a complaint with the Austrian data protection authority (<a href="https://www.dsb.gv.at" target="_blank" rel="noopener">dsb.gv.at</a>).</li>
-    </ul>
-
-    <h2>Data controller</h2>
-    <p>
-      Bestin Antu<br>
-      Salzburg, Austria<br>
-      <a href="mailto:bestindroid@gmail.com">bestindroid@gmail.com</a>
-    </p>
-
-    <p class="date">Last updated: June 2026</p>
-
-    <div class="back">
-      <a href="/">← Back to Gemma Raus</a>
-    </div>
+    <span class="lang"><a href="#de">Deutsch</a> · <a href="#en">English</a></span>
   </div>
+
+  <!-- ═════════════════════════════ DEUTSCH ═════════════════════════════ -->
+  <section id="de" lang="de">
+    <h1>Datenschutzerklärung</h1>
+    <p class="date">Stand: 30. September 2026</p>
+
+    <div class="box">
+      <strong>Kurz gesagt</strong>
+      <ul>
+        <li>Kein Konto, keine Cookies, keine Analyse, keine Werbung.</li>
+        <li>Dein Standort bleibt auf deinem Gerät. Die App lädt das Wetter für ganz Salzburg und sucht deinen Punkt auf dem Gerät heraus – unser Server bekommt deine Koordinaten nie.</li>
+        <li>Wie jede Website sehen die Dienste, die die App ausliefern (Cloudflare, Railway) und die Karten und Radarbilder liefern (Esri, RainViewer), deine IP-Adresse.</li>
+        <li>Nur wenn du Benachrichtigungen einschaltest, speichern wir die Push-Adresse deines Browsers – ohne Namen, E-Mail oder Standort.</li>
+      </ul>
+    </div>
+
+    <h2>1. Verantwortlicher</h2>
+    <p>Bestin Antu, Salzburg, Österreich<br>
+       E-Mail: <a href="mailto:bestindroid@gmail.com">bestindroid@gmail.com</a></p>
+    <p class="muted">Gemma Raus ist ein privates, nicht-kommerzielles Projekt. Ein Datenschutzbeauftragter ist nicht bestellt (nicht vorgeschrieben).</p>
+
+    <h2>2. Aufruf der App (Hosting und Auslieferung)</h2>
+    <p>Wenn du die App öffnest, verarbeiten technisch zwangsläufig deine IP-Adresse, Datum und Uhrzeit, die aufgerufene Adresse, Browser-Typ und die verweisende Seite. Beteiligt sind:</p>
+    <ul>
+      <li><strong>Cloudflare, Inc.</strong> (San Francisco, USA) – leitet alle Anfragen an unsere App weiter, schützt vor Angriffen und liefert Dateien schneller aus. Schlägt eine Anfrage fehl, kann dein Browser einen technischen Fehlerbericht an Cloudflare senden („Network Error Logging“).</li>
+      <li><strong>Railway Corporation</strong> (San Francisco, USA) – betreibt unseren Server und unsere Datenbank.</li>
+    </ul>
+    <p>Beide handeln als unsere Auftragsverarbeiter (Art. 28 DSGVO). Unser Server begrenzt, wie oft eine IP-Adresse pro Minute anfragen darf (Schutz vor Missbrauch); dieser Zähler liegt nur im Arbeitsspeicher und verfällt nach rund einer Minute. Unsere Datenbank speichert keine IP-Adressen. Die Anfrage-Protokolle bei Railway, die IP-Adressen enthalten können, werden nach höchstens 30 Tagen gelöscht; Cloudflare bewahrt Sicherheits- und Fehlerprotokolle nur kurz auf.</p>
+    <p class="muted">Rechtsgrundlage: berechtigtes Interesse an einer sicheren, funktionierenden Auslieferung der App (Art. 6 Abs. 1 lit. f DSGVO). Drittlandübermittlung: Cloudflare ist unter dem EU-US Data Privacy Framework zertifiziert (Angemessenheitsbeschluss der EU-Kommission); mit Railway gelten die EU-Standardvertragsklauseln (Beschluss 2021/914).</p>
+
+    <h2>3. Dein Standort</h2>
+    <p>Die App fragt deinen Standort erst ab, wenn du auf „Standort ermitteln“ tippst, und nur, wenn du es in deinem Browser erlaubst. Du kannst die App auch ohne Standort nutzen („Stattdessen Salzburg verwenden“).</p>
+    <p>Dein Standort wird <strong>auf deinem Gerät</strong> verarbeitet: Die App lädt von unserem Server die Wetterdaten für ganz Salzburg (dieselben für alle Nutzer) und wählt daraus den Punkt, der dir am nächsten ist. Unser Server erhält deine Koordinaten nicht.</p>
+    <p>Ausnahme: Ist unser Server gerade nicht erreichbar, fragt die App die Wetterdienste direkt – dann erhalten <strong>GeoSphere Austria</strong> (Wien) und <strong>Open-Meteo</strong> (Schweiz) für diese Anfrage deine Koordinaten und deine IP-Adresse (siehe Abschnitt 4).</p>
+    <p>Damit die App beim nächsten Öffnen sofort Wetter zeigt, bleibt dein zuletzt genutzter Standort in deinem Browser gespeichert (Abschnitt 6). Die Standortfreigabe kannst du jederzeit in den Einstellungen deines Browsers bzw. Handys widerrufen.</p>
+    <p class="muted">Rechtsgrundlage: berechtigtes Interesse, dir das Wetter für den Ort zu zeigen, den du selbst abfragst (Art. 6 Abs. 1 lit. f DSGVO).</p>
+
+    <h2>4. Wetter-, Karten- und Radardienste</h2>
+    <p>Einige Daten lädt dein Browser direkt bei diesen Anbietern. Dabei sehen sie – wie bei jedem Website-Aufruf – deine IP-Adresse; bei der Karte zusätzlich, welcher Kartenausschnitt geladen wird (also ungefähr, welche Gegend du ansiehst).</p>
+    <div class="tbl"><table>
+      <tr><th>Anbieter</th><th>Wofür</th><th>Erhält</th><th>Übermittlung</th></tr>
+      <tr><td>Esri (Environmental Systems Research Institute, Inc., USA)</td><td>Hintergrundkarte</td><td>IP-Adresse, Kartenausschnitt</td><td>EU-US Data Privacy Framework</td></tr>
+      <tr><td>RainViewer (Meteolab Inc., USA)</td><td>Radarbilder auf der Karte</td><td>IP-Adresse, Kartenausschnitt</td><td>USA ohne Angemessenheitsbeschluss – siehe unten</td></tr>
+      <tr><td>Open-Meteo (Schweiz)</td><td>Regen in den Nachbarorten; Ersatz, wenn unser Server ausfällt</td><td>IP-Adresse; im Ersatzfall deine Koordinaten</td><td>Schweiz: Angemessenheitsbeschluss</td></tr>
+      <tr><td>GeoSphere Austria (Wien)</td><td>Ersatz, wenn unser Server ausfällt</td><td>IP-Adresse, deine Koordinaten</td><td>EU – keine</td></tr>
+    </table></div>
+    <p>Für RainViewer (Meteolab Inc.) besteht kein Angemessenheitsbeschluss und keine Zertifizierung unter dem Data Privacy Framework. Das bedeutet: US-Behörden könnten auf diese Daten zugreifen, ohne dass dir dieselben Rechtsbehelfe wie in der EU zustehen.</p>
+    <p class="muted">Diese Anbieter entscheiden selbst über ihre Verarbeitung; es gelten ihre eigenen Datenschutzerklärungen. Rechtsgrundlage für die Einbindung: berechtigtes Interesse an Karte, Radar und Wetterdaten (Art. 6 Abs. 1 lit. f DSGVO).</p>
+
+    <h2>5. Push-Benachrichtigungen</h2>
+    <p>Nur wenn du auf die Glocke tippst und in deinem Browser zustimmst. Dann speichern wir in unserer Datenbank (bei Railway):</p>
+    <ul>
+      <li>die Push-Adresse, die dein Browser dafür erzeugt, und zwei Schlüssel zum Verschlüsseln der Nachrichten,</li>
+      <li>eine zufällige Kennung, mit der nur dein Browser das Abo wieder löschen kann,</li>
+      <li>den Zeitpunkt, an dem du die App zuletzt geöffnet hast.</li>
+    </ul>
+    <p>Kein Name, keine E-Mail, kein Standort. Die Hinweise gelten für ganz Salzburg und sind für alle gleich. Die Push-Adresse ist ein pseudonymes Merkmal: Wir können sie keiner Person zuordnen.</p>
+    <p>Zugestellt werden die Nachrichten vom Push-Dienst deines Browsers – Google (Chrome, Android), Mozilla (Firefox) oder Apple (Safari, iPhone), alle mit Sitz in den USA. Den Dienst wählt dein Browser, nicht wir. Der Inhalt ist Ende-zu-Ende verschlüsselt; der Push-Dienst kann ihn nicht lesen. Google und Apple sind unter dem EU-US Data Privacy Framework zertifiziert.</p>
+    <p><strong>Löschung:</strong> sofort, wenn du die Glocke wieder ausschaltest; automatisch, wenn du die App 90 Tage lang nicht öffnest oder der Push-Dienst meldet, dass das Abo nicht mehr gilt.</p>
+    <p class="muted">Rechtsgrundlage: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), jederzeit widerrufbar. In Österreich kannst du ab 14 Jahren selbst einwilligen (§ 4 Abs. 4 DSG).</p>
+
+    <h2>6. Speicherung auf deinem Gerät</h2>
+    <p>Die App setzt keine Cookies. Sie speichert im Speicher deines Browsers (localStorage), was sie zum Funktionieren braucht. Diese Daten verlassen dein Gerät nicht:</p>
+    <ul>
+      <li>Design und Sprache (<code>theme</code>, <code>lang</code>),</li>
+      <li>dein zuletzt genutzter Standort mit Uhrzeit (<code>last_location</code>) und eine kurze Wetter-Vorgeschichte für diesen Ort (<code>story</code>), damit die App beim schnellen Wiederöffnen dasselbe sagt wie zuvor,</li>
+      <li>eine Zufallszahl, die die Formulierungen abwechselt (<code>phrase_seed</code>),</li>
+      <li>die Kennung zum Abmelden von Push (<code>push_unsub_token</code>),</li>
+      <li>was du schon gesehen oder geschlossen hast: Warnungen, Installationshinweis, Neuigkeiten, Kartenhinweis (<code>dismissed_warnings</code>, <code>install_prompt_seen</code>, <code>update_note_…</code>, <code>map_popup_seen</code>).</li>
+    </ul>
+    <p>Dazu kommen die App-Dateien im Offline-Speicher (Service Worker) und kurzlebige Einträge für die Update-Prüfung (sessionStorage). Löschen kannst du alles, indem du die Website-Daten für gemmaraus.at in deinem Browser löschst oder die App deinstallierst.</p>
+    <p class="muted">Diese Speicherung ist unbedingt erforderlich, um den von dir gewünschten Dienst bereitzustellen, und braucht daher keine Einwilligung (§ 165 Abs. 3 TKG 2021).</p>
+
+    <h2>7. Spenden</h2>
+    <p>Der Spenden-Button führt zu PayPal (PayPal (Europe) S.à r.l. et Cie, S.C.A., Luxemburg). Erst dort gibst du Daten ein; es gilt PayPals Datenschutzerklärung. Wir sehen, was PayPal Empfängern zeigt (üblicherweise Name, E-Mail-Adresse und Betrag), und bewahren es nur so lange auf, wie es gesetzlich nötig ist.</p>
+
+    <h2>8. Kontakt per E-Mail</h2>
+    <p>Schreibst du uns, verwenden wir deine E-Mail-Adresse und Nachricht nur, um dir zu antworten, und löschen sie, wenn die Sache erledigt ist. Unser Postfach wird von Google (Gmail) bereitgestellt. <span class="muted">Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO.</span></p>
+
+    <h2>9. Was wir nicht tun</h2>
+    <ul>
+      <li>Keine Konten, keine Cookies, keine Analyse- oder Werbedienste, kein Tracking über Websites hinweg.</li>
+      <li>Keine Profile und keine automatisierten Entscheidungen über dich (Art. 22 DSGVO).</li>
+      <li>Kein Verkauf oder Verleih von Daten.</li>
+      <li>Unser Server speichert Wetterdaten für 11 feste Punkte in der Stadt – nie deinen Standort.</li>
+    </ul>
+
+    <h2>10. Deine Rechte</h2>
+    <p>Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Datenübertragbarkeit (Art. 15–20 DSGVO) sowie das Recht, einer Verarbeitung auf Grundlage berechtigter Interessen zu widersprechen (Art. 21 DSGVO). Eine Einwilligung kannst du jederzeit widerrufen, ohne dass das die bisherige Verarbeitung unrechtmäßig macht.</p>
+    <p>Da wir nichts speichern, das dich namentlich kennzeichnet, können wir dein Push-Abo nur finden, wenn du uns seine Push-Adresse nennst (Art. 11 DSGVO). Am einfachsten: Glocke ausschalten – das Abo ist dann sofort gelöscht. Für alles andere: <a href="mailto:bestindroid@gmail.com">bestindroid@gmail.com</a>.</p>
+    <p>Du kannst dich außerdem bei der Österreichischen Datenschutzbehörde beschweren: Barichgasse 40–42, 1030 Wien, <a href="https://www.dsb.gv.at" target="_blank" rel="noopener">www.dsb.gv.at</a>.</p>
+
+    <h2>11. Änderungen</h2>
+    <p>Wenn sich die App ändert, passen wir diese Erklärung an. Es gilt die hier veröffentlichte Fassung.</p>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ═════════════════════════════ ENGLISH ═════════════════════════════ -->
+  <section id="en" lang="en">
+    <h1>Privacy Policy</h1>
+    <p class="date">Last updated: 30 September 2026</p>
+
+    <div class="box">
+      <strong>In short</strong>
+      <ul>
+        <li>No account, no cookies, no analytics, no ads.</li>
+        <li>Your location stays on your device. The app downloads the weather for all of Salzburg and picks your spot on the device – our server never receives your coordinates.</li>
+        <li>As with any website, the services that deliver the app (Cloudflare, Railway) and supply the map and radar images (Esri, RainViewer) see your IP address.</li>
+        <li>Only if you turn on notifications do we store your browser's push address – no name, email or location.</li>
+      </ul>
+    </div>
+
+    <h2>1. Controller</h2>
+    <p>Bestin Antu, Salzburg, Austria<br>
+       Email: <a href="mailto:bestindroid@gmail.com">bestindroid@gmail.com</a></p>
+    <p class="muted">Gemma Raus is a private, non-commercial project. No data protection officer is appointed (none is required).</p>
+
+    <h2>2. Opening the app (hosting and delivery)</h2>
+    <p>When you open the app, your IP address, the date and time, the requested address, your browser type and the referring page are necessarily processed. Involved are:</p>
+    <ul>
+      <li><strong>Cloudflare, Inc.</strong> (San Francisco, USA) – routes all requests to our app, protects it from attacks and delivers files faster. If a request fails, your browser may send a technical error report to Cloudflare ("Network Error Logging").</li>
+      <li><strong>Railway Corporation</strong> (San Francisco, USA) – runs our server and database.</li>
+    </ul>
+    <p>Both act as our processors (Art. 28 GDPR). Our server limits how many requests one IP address may make per minute (abuse protection); that counter lives only in memory and expires after about a minute. Our database stores no IP addresses. Railway's request logs, which may contain IP addresses, are deleted after at most 30 days; Cloudflare keeps security and error logs only briefly.</p>
+    <p class="muted">Legal basis: legitimate interest in delivering the app securely and reliably (Art. 6(1)(f) GDPR). Transfers outside the EU: Cloudflare is certified under the EU-U.S. Data Privacy Framework (European Commission adequacy decision); with Railway, the EU Standard Contractual Clauses apply (Decision 2021/914).</p>
+
+    <h2>3. Your location</h2>
+    <p>The app asks for your location only when you tap "Get my location", and only if you allow it in your browser. You can also use the app without it ("Use Salzburg center instead").</p>
+    <p>Your location is processed <strong>on your device</strong>: the app downloads the weather data for all of Salzburg from our server (the same for every user) and picks the point closest to you. Our server does not receive your coordinates.</p>
+    <p>Exception: if our server is unreachable, the app asks the weather services directly – for that request <strong>GeoSphere Austria</strong> (Vienna) and <strong>Open-Meteo</strong> (Switzerland) receive your coordinates and IP address (see section 4).</p>
+    <p>So the app can show weather instantly next time, your last location stays stored in your browser (section 6). You can withdraw location access at any time in your browser or phone settings.</p>
+    <p class="muted">Legal basis: legitimate interest in showing you the weather for the place you ask about (Art. 6(1)(f) GDPR).</p>
+
+    <h2>4. Weather, map and radar services</h2>
+    <p>Your browser loads some data directly from these providers. Like any website request, they see your IP address; for the map, also which map area is loaded (so roughly which area you are looking at).</p>
+    <div class="tbl"><table>
+      <tr><th>Provider</th><th>What for</th><th>Receives</th><th>Transfer</th></tr>
+      <tr><td>Esri (Environmental Systems Research Institute, Inc., USA)</td><td>Base map</td><td>IP address, map area</td><td>EU-U.S. Data Privacy Framework</td></tr>
+      <tr><td>RainViewer (Meteolab Inc., USA)</td><td>Radar images on the map</td><td>IP address, map area</td><td>USA without adequacy decision – see below</td></tr>
+      <tr><td>Open-Meteo (Switzerland)</td><td>Rain in nearby towns; fallback if our server is down</td><td>IP address; in the fallback, your coordinates</td><td>Switzerland: adequacy decision</td></tr>
+      <tr><td>GeoSphere Austria (Vienna)</td><td>Fallback if our server is down</td><td>IP address, your coordinates</td><td>EU – none</td></tr>
+    </table></div>
+    <p>For RainViewer (Meteolab Inc.) there is no adequacy decision and no certification under the Data Privacy Framework. This means US authorities could access this data without you having the same legal remedies as in the EU.</p>
+    <p class="muted">These providers decide on their own processing; their own privacy policies apply. Legal basis for embedding them: legitimate interest in the map, radar and weather data (Art. 6(1)(f) GDPR).</p>
+
+    <h2>5. Push notifications</h2>
+    <p>Only if you tap the bell and agree in your browser. We then store in our database (at Railway):</p>
+    <ul>
+      <li>the push address your browser creates for this, and two keys used to encrypt the messages,</li>
+      <li>a random ID that lets only your browser delete the subscription again,</li>
+      <li>the time you last opened the app.</li>
+    </ul>
+    <p>No name, no email, no location. The alerts cover all of Salzburg and are the same for everyone. The push address is a pseudonymous identifier: we cannot link it to a person.</p>
+    <p>Messages are delivered by your browser's push service – Google (Chrome, Android), Mozilla (Firefox) or Apple (Safari, iPhone), all based in the USA. Your browser chooses the service, not us. The content is end-to-end encrypted; the push service cannot read it. Google and Apple are certified under the EU-U.S. Data Privacy Framework.</p>
+    <p><strong>Deletion:</strong> immediately when you switch the bell off; automatically if you don't open the app for 90 days or the push service reports that the subscription is no longer valid.</p>
+    <p class="muted">Legal basis: your consent (Art. 6(1)(a) GDPR), which you can withdraw at any time. In Austria you can consent yourself from the age of 14 (§ 4(4) DSG).</p>
+
+    <h2>6. Storage on your device</h2>
+    <p>The app sets no cookies. It stores what it needs to work in your browser's storage (localStorage). This data never leaves your device:</p>
+    <ul>
+      <li>theme and language (<code>theme</code>, <code>lang</code>),</li>
+      <li>your last location with its time (<code>last_location</code>) and a short weather history for that place (<code>story</code>), so the app says the same thing when you quickly reopen it,</li>
+      <li>a random number that varies the wording (<code>phrase_seed</code>),</li>
+      <li>the ID for unsubscribing from push (<code>push_unsub_token</code>),</li>
+      <li>what you have already seen or closed: warnings, install hint, release note, map hint (<code>dismissed_warnings</code>, <code>install_prompt_seen</code>, <code>update_note_…</code>, <code>map_popup_seen</code>).</li>
+    </ul>
+    <p>On top of that come the app files in the offline cache (service worker) and short-lived entries for the update check (sessionStorage). You can remove all of it by clearing the site data for gemmaraus.at in your browser or uninstalling the app.</p>
+    <p class="muted">This storage is strictly necessary to provide the service you asked for and therefore needs no consent (§ 165(3) Austrian Telecommunications Act 2021).</p>
+
+    <h2>7. Donations</h2>
+    <p>The donate button leads to PayPal (PayPal (Europe) S.à r.l. et Cie, S.C.A., Luxembourg). You only enter data there; PayPal's privacy policy applies. We see what PayPal shows recipients (usually name, email address and amount) and keep it only as long as legally required.</p>
+
+    <h2>8. Contact by email</h2>
+    <p>If you write to us, we use your email address and message only to reply, and delete them once the matter is closed. Our mailbox is provided by Google (Gmail). <span class="muted">Legal basis: Art. 6(1)(f) GDPR.</span></p>
+
+    <h2>9. What we don't do</h2>
+    <ul>
+      <li>No accounts, no cookies, no analytics or advertising services, no cross-site tracking.</li>
+      <li>No profiling and no automated decisions about you (Art. 22 GDPR).</li>
+      <li>No selling or renting of data.</li>
+      <li>Our server stores weather data for 11 fixed points in the city – never your location.</li>
+    </ul>
+
+    <h2>10. Your rights</h2>
+    <p>You have the right of access, rectification, erasure, restriction of processing and data portability (Art. 15–20 GDPR), and the right to object to processing based on legitimate interests (Art. 21 GDPR). You can withdraw consent at any time; this does not make earlier processing unlawful.</p>
+    <p>Because we store nothing that identifies you by name, we can only find your push subscription if you give us its push address (Art. 11 GDPR). The easiest way: switch the bell off – the subscription is deleted immediately. For anything else: <a href="mailto:bestindroid@gmail.com">bestindroid@gmail.com</a>.</p>
+    <p>You can also lodge a complaint with the Austrian Data Protection Authority: Barichgasse 40–42, 1030 Vienna, <a href="https://www.dsb.gv.at" target="_blank" rel="noopener">www.dsb.gv.at</a>.</p>
+
+    <h2>11. Changes</h2>
+    <p>When the app changes, we update this policy. The version published here applies.</p>
+  </section>
+
+  <div class="back"><a href="/">← Zurück zu Gemma Raus · Back to Gemma Raus</a></div>
+</div>
 </body>
 </html>

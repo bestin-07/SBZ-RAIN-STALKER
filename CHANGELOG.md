@@ -12,6 +12,23 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.49.3] - 2026-09-30 - Gemma Raus just got better: your data, said plainly 🔒
+
+*Our privacy text had fallen behind the app. Parts of it were no longer true, so we rewrote it.*
+
+**What happened**
+
+The app used to load its fonts from Google, which quietly told Google your IP address every time you opened it. And the privacy text still described how the app worked months ago: it said your location goes to a weather service, when these days it normally never leaves your phone at all.
+
+**What's new for you**
+
+- **No more Google:** the fonts now come from our own server. Nothing about how the app looks has changed.
+- **A privacy policy that tells the whole story:** in German and English, it names every company that sees anything (the ones that deliver the app, the map and the radar images, PayPal if you donate), what they see, why, and for how long.
+- **The short version in the app:** the privacy sheet now fits on one screen, six plain sentences, with a link to the full text.
+- **Still no account, no cookies, no tracking:** your location stays on your device, and notifications stay opt-in.
+
+---
+
 ## [2.49.2] - 2026-09-24 - Gemma Raus just got better: say it once 🧹
 
 *One last look at the screen for anything said twice.*
