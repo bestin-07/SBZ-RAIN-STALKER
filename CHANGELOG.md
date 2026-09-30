@@ -12,6 +12,20 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.50.0] - 2026-10-01 - Gemma Raus just got better: when rain is on its way, we say it once and clearly 🌦️
+
+*The other day the app told you rain was coming from the west in 34 minutes, while the rain chart right under it said there was no rain in the next three hours. Both were telling the truth, just from two different sources, and neither said so.*
+
+**What's new for you**
+
+- **A time only when both sources agree:** "rain approaching from the west — reaching you in about 35 min" now appears only when the live radar image sees rain moving in *and* the forecast in the chart shows it too. Then you can plan around it.
+- **Otherwise, we keep watch:** when only the radar image sees rain to the west, the app says "rain to the west — keeping an eye on it", and the chart says the rain is not in the forecast yet. No number we can't back up.
+- **Rain minutes away is never "go":** when rain is due in under ten minutes, the app no longer says GEMMA RAUS with "rain could start any minute". If it's real rain, it says **BLEIB DRIN**; if it's only light, it says **PASST SCHON** — take a jacket.
+- **No more minute-exact guesses:** times are rounded to the nearest 5 minutes.
+- **The countdown actually counts down:** the arrival time ticks down every minute like every other countdown in the app, instead of sitting still until the next refresh.
+
+---
+
 ## [2.49.6] - 2026-09-30 - Gemma Raus just got better: the whole evening at a glance 🖥️
 
 *On a big screen the rain ribbon was a little box you had to drag. Now it uses the room.*

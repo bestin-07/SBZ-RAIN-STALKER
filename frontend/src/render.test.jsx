@@ -418,6 +418,22 @@ for (const lang of ['de', 'en']) {
       expect(stillShown).toContain(esc(t('ribbon_dry_model', { min: 45 })))
     })
 
+    // v2.50.0 — the ribbon draws the FORECAST; when the radar image already tracks rain
+    // moving in, "no rain in 3 h" under that headline read as a contradiction. The label
+    // names both sources instead, even where the dry bracket would otherwise hide it.
+    it('names the radar-image approach instead of claiming no rain', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const times = Array.from({ length: 12 }, (_, i) => now + i * 900)
+      const dryForecast = { times, precips: times.map(() => 0), isNowcast: true, radarUntil: now + 2.66 * 3600 }
+      const html = renderToStaticMarkup(
+        <RainRibbon forecast={dryForecast} theme="light" t={t} unstable={false} modelRainMin={null} approach={{ dir: 'w' }} />)
+      expect(html).toContain(esc(t('ribbon_rv_approach_dir', { dir: t('dir_w') })))
+      expect(html).not.toContain(esc(t('ribbon_dry')))
+      const noDir = renderToStaticMarkup(
+        <RainRibbon forecast={dryForecast} theme="light" t={t} unstable={false} modelRainMin={45} approach={{ dir: null }} />)
+      expect(noDir).toContain(esc(t('ribbon_rv_approach')))
+    })
+
     it('DayStrip renders nothing without data', () => {
       expect(renderToStaticMarkup(<DayStrip daily={null} theme="dark" t={t} lang={lang} />)).toBe('')
     })

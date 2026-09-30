@@ -444,8 +444,17 @@ function slotSourceKey(inRadar) {
 
 // Label priority when the tile row is entirely dry/empty — unchanged from the
 // skyline (this never depended on how the chart drew, only on rbars).
-function dryLabel(t, hasData, unstable, modelRainMin) {
+// v2.50.0: a RainViewer-tracked approach (the headline's "rain moving in from the west")
+// outranks every dry sentence here — this band draws the FORECAST, which runs 15–25 min
+// behind, and "no rain in 3 h" under that headline read as a contradiction. No time in
+// it: the headline already carries the one countdown.
+function dryLabel(t, hasData, unstable, modelRainMin, approach) {
   if (!hasData) return t('ribbon_wait')
+  if (approach) {
+    return approach.dir
+      ? t('ribbon_rv_approach_dir', { dir: t('dir_' + approach.dir) })
+      : t('ribbon_rv_approach')
+  }
   if (modelRainMin != null) {
     if (modelRainMin >= 90) {
       const h = Math.round(modelRainMin / 30) / 2
@@ -467,7 +476,7 @@ function modelPeakAt(mTimes, mPrecips, t0, t1) {
   return best
 }
 
-export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin, code }) {
+export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin, code, approach = null }) {
   const scrollRef = useRef(null)
   const [scrollX, setScrollX] = useState(0)
   // v2.39.6, kept and widened (v3.0 — "emphasise the fade" ask): the fade is
@@ -561,7 +570,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
   const dryRun = dryRunIn(rbars, splitI - 1)
   const hasBracket = !!dryRun
   const traceOnly = allDry && rslots.some(s => s.p > 0) && forecast?.tracePhantom !== true
-  const redundantWithBracket = hasBracket && modelRainMin == null && !unstable
+  const redundantWithBracket = hasBracket && modelRainMin == null && !unstable && !approach
   const showDryLabel = (allDry || !hasData) && !redundantWithBracket
 
   const contentW = rbars.length * TILE_W
@@ -774,7 +783,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
               {showDryLabel && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
-                    {traceOnly ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin)}
+                    {traceOnly && !approach ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin, approach)}
                   </span>
                 </div>
               )}
@@ -838,7 +847,7 @@ export default function RainRibbon({ forecast, theme, t, unstable, modelRainMin,
             {showDryLabel && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <span className="font-mono text-xs text-muted bg-bg/70 px-2 py-0.5 rounded">
-                  {traceOnly ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin)}
+                  {traceOnly && !approach ? t('ribbon_trace_only') : dryLabel(t, hasData, unstable, modelRainMin, approach)}
                 </span>
               </div>
             )}

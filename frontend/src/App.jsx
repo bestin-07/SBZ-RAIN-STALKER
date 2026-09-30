@@ -652,7 +652,7 @@ export default function App() {
       code: data?.current?.weather_code ?? null,
     }
     return getStatus(effectivePrecip, gaps, weather, t, nowSec,
-      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, downpourSoonWideMin: firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW), windowWetMm: windowWetMm(nowcast, nowSec, GO_MIN_WINDOW), noUsableWindow: !usableWindow && drizzleDay == null, gaugeWet: stationData !== null && stationPrecip >= DRY_THRESHOLD, nowcastBlind: !!nowcast && rawNowSlot < DRY_THRESHOLD && rvPrecip >= DRY_THRESHOLD, drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
+      { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain: false, maxSoon, downpourSoonMin, downpourSoonWideMin: firstDownpourMin(nowcast, nowSec, GO_MIN_WINDOW), windowWetMm: windowWetMm(nowcast, nowSec, GO_MIN_WINDOW), noUsableWindow: !usableWindow && drizzleDay == null, gaugeWet: stationData !== null && stationPrecip >= DRY_THRESHOLD, nowcastBlind: !!nowcast && rawNowSlot < DRY_THRESHOLD && rvPrecip >= DRY_THRESHOLD, drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachAt: rvApproachMin != null ? nowSec + rvApproachMin * 60 : null, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM })
   }, [t])
 
   // Compute status for every surrounding town + Salzburg centre → colours the map
@@ -1016,7 +1016,7 @@ export default function App() {
           wind: data?.current?.wind_speed_10m ?? null,
           code: data?.current?.weather_code ?? null,
         }
-        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !usableWindow && drizzleDay == null, gaugeWet: stationData !== null && stationPrecip >= DRY_THRESHOLD, nowcastBlind: !!nowcast && rawNowSlot < DRY_THRESHOLD && rvPrecip >= DRY_THRESHOLD, showersAround: areaResult?.status === 'fulfilled' && Array.isArray(areaResult.value) && areaResult.value.some(a => a.code != null && a.code >= 80), drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, wetGround: lastWetAt > 0 && (nowMs - lastWetAt) < WET_GROUND_MS, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
+        const trendNow = { nextRainAt, dryEndsOpen, rvRainActive: rvPrecip >= DRY_THRESHOLD || drizzleSurfaced, rainProb, recentRain, maxSoon, downpourSoonMin, downpourSoonWideMin, windowWetMm: windowWet, noUsableWindow: !usableWindow && drizzleDay == null, gaugeWet: stationData !== null && stationPrecip >= DRY_THRESHOLD, nowcastBlind: !!nowcast && rawNowSlot < DRY_THRESHOLD && rvPrecip >= DRY_THRESHOLD, showersAround: areaResult?.status === 'fulfilled' && Array.isArray(areaResult.value) && areaResult.value.some(a => a.code != null && a.code >= 80), drizzleDayMin: drizzleDay, easeSoonMin: nowcast ? easesToGoableMin(nowcast.times, nowcast.precips, nowSec) : null, easeAfterRain: nowcast ? easeFollowsRain(nowcast.times, nowcast.precips, nowSec) : false, wetGround: lastWetAt > 0 && (nowMs - lastWetAt) < WET_GROUND_MS, modelRainAt, modelEaseAt: modelEase, rvApproachMin, rvApproachAt: rvApproachMin != null ? nowSec + rvApproachMin * 60 : null, rvApproachDir, rvNearbyDir, traceEcho: !phantomTrace && hasTraceEcho(rawNowSlot), traceAheadMin: traceAheadM, heldStuck: settledHold.holding, releaseOk }
 
         // Resolve the verdict here (not in render) purely so we know whether to keep
         // carrying the hold. getStatus is pure, so the render below recomputes the
@@ -1499,7 +1499,7 @@ export default function App() {
           </div>
           {dayTab === 'now' ? (
             <>
-              <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} code={currentWeather?.code ?? null} />
+              <RainRibbon forecast={forecast} theme={theme} t={t} unstable={capeUnstable} modelRainMin={modelRainMin} code={currentWeather?.code ?? null} approach={trend.rvApproachAt != null ? { dir: trend.rvApproachDir ?? null } : null} />
               <RadarMap location={location} areaPrecip={areaPrecip} areaStatus={areaStatus} userStatus={status} theme={theme} t={t} lang={lang} onRelocate={relocate} relocating={upgradingLocation} computeStatusAt={computeStatusAt} expandAboveRef={tabsRef} />
             </>
           ) : (

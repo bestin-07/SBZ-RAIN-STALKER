@@ -8,7 +8,7 @@
 // Run: npm test   (vitest)
 import { describe, it, expect } from 'vitest'
 import {
-  detectGaps, getStatus, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
+  detectGaps, getStatus, liveApproachMin, firstDownpourMin, surfaceDrizzle, isUnsettled, modelNextRainAt,
   modelNowValue, MODEL_NOW_CAP, MODEL_HEAVY_PASS, nowcastNowSlot, gaugeSlotValue, GAUGE_SLOT_SCALE,
   aromeSlotSeries, modelsAgree, MODEL_AGREE_FACTOR, probAt, radarSpanLabel,
   localGauge, GAUGE_OWN_KM, gaugeFresh, GAUGE_MAX_AGE_MIN, blendNow, nearestCellSeries, drizzleOnlyMin, easeFollowsRain, holdReadings,
@@ -128,10 +128,12 @@ describe('getStatus — GO (GEMMA RAUS)', () => {
     expect(s.sub).toBe('s_clear_hours')
   })
 
-  it('rain in 7 min (confident) → "any minute", NO false-precise number', () => {
+  // INTENT CHANGE (v2.50.0): rain under 10 min is no longer GEMMA RAUS + "any minute"
+  // (go and don't-go in one breath) — see the imminent-rain block at the end of this file.
+  it('rain in 7 min (confident) → not GEMMA RAUS, and still no false-precise number', () => {
     const s = getStatus(0, [], null, makeT(), NOON, { nextRainAt: NOON + 7 * 60, rainProb: 80 })
-    expect(s.type).toBe('go')
-    expect(s.sub).toBe('s_rain_any')
+    expect(s.type).not.toBe('go')
+    expect(s.sub).toBe('s_imminent_light')
   })
 
   it('rain in 47 min (confident) → "about X min" ROUNDED to nearest 5 (45)', () => {
@@ -1483,34 +1485,58 @@ describe('model second-opinion — never claim an all-clear the model contradict
 })
 
 describe('RainViewer approach — the "blue on the map while the app said dry" guard', () => {
-  it('RV forecast frames show echo arriving in ~20 min + GeoSphere silent → ETA shown', () => {
-    const t = makeT()
-    const s = getStatus(0, [], null, t, NOON,
+  // INTENT CHANGE (v2.50.0): the tracked approach no longer shows a countdown on its own.
+  // Live report: "rain in 34 min" over a ribbon of empty tiles. The time appears only
+  // when the forecast also shows rain within FAR_RAIN_MIN; until then the echo is still
+  // NAMED ("keeping an eye on it") — never dropped to an all-clear.
+  it('echo moving in + forecast silent → named, no countdown, never an all-clear', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
       { dryEndsOpen: true, rvApproachMin: 20 })
     expect(s.type).toBe('go')
-    expect(s.sub).toBe('s_rv_approach')
-    expect(t.varsFor('s_rv_approach').min).toBe(20)      // real ETA, not a generic "~30"
-    expect(s.notice.sub).toBe('n_rv_approach')
-    expect(t.varsFor('n_rv_approach').min).toBe(20)
+    expect(s.sub).toBe('s_rv_watch')
+    expect(s.notice.sub).toBe('n_rv_watch')
   })
 
-  it('an early-arriving cell (~10 min, first frame) is not missed', () => {
+  it('echo moving in + forecast rain inside 90 min → countdown, the sooner of the two', () => {
     const t = makeT()
     const s = getStatus(0, [], null, t, NOON,
-      { dryEndsOpen: true, rvApproachMin: 10 })
+      { rvApproachMin: 20, nextRainAt: NOON + 50 * 60, rainProb: 80 })
+    expect(s.sub).toBe('s_rv_approach')
+    expect(t.varsFor('s_rv_approach').min).toBe(20)      // tracked leads the late-issued forecast
+    expect(s.notice.sub).toBe('n_rv_approach')
+  })
+
+  it('an early-arriving cell (~10 min) is not missed once confirmed', () => {
+    const t = makeT()
+    getStatus(0, [], null, t, NOON, { rvApproachMin: 10, nextRainAt: NOON + 30 * 60 })
     expect(t.varsFor('s_rv_approach').min).toBe(10)
   })
 
-  it('outranks the model second-opinion (observed echo beats expectation)', () => {
+  it('the unconfirmed watch still outranks the model second-opinion', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
       { dryEndsOpen: true, rvApproachMin: 20, modelRainAt: NOON + 45 * 60 })
-    expect(s.sub).toBe('s_rv_approach')
+    expect(s.sub).toBe('s_rv_watch')
   })
 
-  it('yields to a NEARER GeoSphere countdown (more precise timing wins)', () => {
+  it('a NEARER forecast onset sets the time (sooner of the two wins)', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { nextRainAt: NOON + 20 * 60, rainProb: 80, rvApproachMin: 40 })
+    expect(s.sub).toBe('s_rv_approach')
+    expect(t.varsFor('s_rv_approach').min).toBe(20)
+  })
+
+  it('forecast rain beyond 90 min does not confirm — the forecast hours countdown is unaffected by a watch', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
-      { nextRainAt: NOON + 20 * 60, rainProb: 80, rvApproachMin: 20 })
-    expect(s.sub).toBe('s_rain_soon')
+      { nextRainAt: NOON + 150 * 60, rainProb: 80, rvApproachMin: 30, rvApproachDir: 'w' })
+    expect(s.sub).toBe('s_rv_nearby')                    // the nearer, observed echo is named
+  })
+
+  it('a confirmed approach at night keeps its countdown; an unconfirmed one is still named', () => {
+    const c = getStatus(0, [], null, makeT(), NIGHT, { rvApproachMin: 20, nextRainAt: NIGHT + 30 * 60 })
+    expect(c.sub).toBe('s_rv_approach')
+    const w = getStatus(0, [], null, makeT(), NIGHT, { dryEndsOpen: true, rvApproachMin: 20 })
+    expect(w.sub).toBe('s_rv_watch')
   })
 
   it('downpour warning still outranks everything (fallback sub path, no wide value)', () => {
@@ -1632,19 +1658,22 @@ describe('ringDirection — dominant compass sector from wet ring points', () =>
 })
 
 describe('getStatus — directional approach + nearby watch (v2.4)', () => {
-  it('approach WITH direction → "rain moving in from the west — about 20 min out"', () => {
+  it('confirmed approach WITH direction → "rain approaching from the west — about 20 min"', () => {
     const t = makeT()
     const s = getStatus(0, [], null, t, NOON,
-      { dryEndsOpen: true, rvApproachMin: 20, rvApproachDir: 'w' })
+      { rvApproachMin: 20, rvApproachDir: 'w', nextRainAt: NOON + 35 * 60 })
     expect(s.sub).toBe('s_rv_approach_dir')
     expect(t.varsFor('s_rv_approach_dir').min).toBe(20)
     expect(t.varsFor('s_rv_approach_dir').dir).toBe('dir_w')   // translated direction word
     expect(s.notice.sub).toBe('n_rv_approach_dir')
   })
-  it('approach WITHOUT a coherent direction → plain approach wording (unchanged)', () => {
-    const s = getStatus(0, [], null, makeT(), NOON,
-      { dryEndsOpen: true, rvApproachMin: 20 })
-    expect(s.sub).toBe('s_rv_approach')
+  it('unconfirmed approach WITH direction → the nearby "keeping an eye on it" wording', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, rvApproachMin: 20, rvApproachDir: 'w' })
+    expect(s.sub).toBe('s_rv_nearby')
+    expect(t.varsFor('s_rv_nearby').dir).toBe('dir_w')
+    expect(s.notice.sub).toBe('n_rv_nearby')
   })
   it('NEARBY (echo ~15km out, no arrival ETA) → "keeping an eye on it" lead', () => {
     const t = makeT()
@@ -1665,9 +1694,9 @@ describe('getStatus — directional approach + nearby watch (v2.4)', () => {
       { dryEndsOpen: true, rvNearbyDir: 'w', traceEcho: true })
     expect(s.sub).toBe('s_trace_now')
   })
-  it('an arrival ETA OUTRANKS nearby (approach is the stronger claim)', () => {
+  it('a confirmed arrival OUTRANKS nearby (approach is the stronger claim)', () => {
     const s = getStatus(0, [], null, makeT(), NOON,
-      { dryEndsOpen: true, rvApproachMin: 25, rvApproachDir: 'w', rvNearbyDir: 'w' })
+      { rvApproachMin: 25, rvApproachDir: 'w', rvNearbyDir: 'w', nextRainAt: NOON + 40 * 60 })
     expect(s.sub).toBe('s_rv_approach_dir')
   })
   it('nearby suppressed at night (no "keep an eye on it" at 3am)', () => {
@@ -1735,10 +1764,13 @@ describe('getStatus — trace echo acknowledgment (wording only, GEMMA RAUS stay
     expect(s.sub).toBe('s_downpour_soon')
   })
 
-  it('RV approach still outranks trace echo', () => {
-    const s = getStatus(0, [], null, makeT(), NOON,
+  it('RV approach still outranks trace echo — confirmed or only watched', () => {
+    const w = getStatus(0, [], null, makeT(), NOON,
       { dryEndsOpen: true, traceEcho: true, rvApproachMin: 15 })
-    expect(s.sub).toBe('s_rv_approach')
+    expect(w.sub).toBe('s_rv_watch')
+    const c = getStatus(0, [], null, makeT(), NOON,
+      { traceEcho: true, rvApproachMin: 15, nextRainAt: NOON + 30 * 60 })
+    expect(c.sub).toBe('s_rv_approach')
   })
 })
 
@@ -2877,5 +2909,129 @@ describe('holdReadings — popup wording pin', () => {
     const s = getStatus(0.05, [], {}, k => k, NOON, { heldStuck: true })
     expect(s.type).toBe('stuck')
     expect(s.notice.head).toBe('n_easing')
+  })
+})
+
+// v2.50.0 — live report: GEMMA RAUS with "rain coming in from the west — could reach you
+// in about 34 min" over a ribbon reading "radar sees no rain in the next 3 h". Two radars,
+// both called "radar", and an ETA precise to the minute from a cell 10–25 km away.
+// Rule: a countdown only when the forecast agrees; rounded like every other countdown;
+// counting down on the minute tick.
+describe('approach wording (v2.50.0) — a time only when the ribbon agrees', () => {
+  it('replays the incident: forecast dry → "rain to the west, keeping an eye on it", no number', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { dryEndsOpen: true, rvApproachMin: 34, rvApproachAt: NOON + 34 * 60, rvApproachDir: 'w' })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_rv_nearby')
+    expect(t.varsFor('s_rv_nearby').dir).toBe('dir_w')
+    expect(s.moto).toBe(true)                            // 34 ≥ 30, the glance still counts it
+  })
+  it('same incident once the forecast shows it: rounded to "about 35", direction kept', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { rvApproachMin: 34, rvApproachAt: NOON + 34 * 60, rvApproachDir: 'w', nextRainAt: NOON + 55 * 60, rainProb: 70 })
+    expect(s.sub).toBe('s_rv_approach_dir')
+    expect(t.varsFor('s_rv_approach_dir').min).toBe(35)
+    expect(t.varsFor('n_rv_approach_dir').min).toBe(35)
+  })
+  it('counts down on the minute tick between refreshes (arrival time, not frozen minutes)', () => {
+    const t = makeT()
+    const tr = { rvApproachMin: 34, rvApproachAt: NOON + 34 * 60, rvApproachDir: 'w', nextRainAt: NOON + 55 * 60 }
+    getStatus(0, [], null, t, NOON + 10 * 60, tr)
+    expect(t.varsFor('s_rv_approach_dir').min).toBe(25)      // 24 min left → about 25
+  })
+  // Under 10 min the imminent rule owns the verdict (see below); the approach only
+  // lends its direction.
+  it('under 10 min: no countdown number — the imminent rule takes over, with direction', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { rvApproachMin: 7, rvApproachAt: NOON + 7 * 60, rvApproachDir: 'nw', nextRainAt: NOON + 25 * 60, maxSoon: 0.3 })
+    expect(s.type).toBe('light')
+    expect(s.sub).toBe('s_imminent_light_dir')
+  })
+  it('a lapsed arrival is still "any minute" until the next refresh — never dropped', () => {
+    const s = getStatus(0, [], null, makeT(), NOON + 45 * 60,
+      { rvApproachMin: 34, rvApproachAt: NOON + 34 * 60, nextRainAt: NOON + 60 * 60, maxSoon: 0.8 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('s_imminent_stuck')
+  })
+  it('the motorbike glance reads the live value, confirmed or not', () => {
+    const tr = { dryEndsOpen: true, rvApproachMin: 34, rvApproachAt: NOON + 34 * 60 }
+    expect(getStatus(0, [], null, makeT(), NOON, tr).moto).toBe(true)            // 34 ≥ 30
+    expect(getStatus(0, [], null, makeT(), NOON + 10 * 60, tr).moto).toBe(false) // 24 < 30
+  })
+  it('liveApproachMin: arrival time wins, minutes are the fallback, null stays null', () => {
+    expect(liveApproachMin({ rvApproachAt: NOON + 600, rvApproachMin: 99 }, NOON)).toBe(10)
+    expect(liveApproachMin({ rvApproachAt: NOON - 600 }, NOON)).toBe(0)
+    expect(liveApproachMin({ rvApproachMin: 20 }, NOON)).toBe(20)
+    expect(liveApproachMin({}, NOON)).toBeNull()
+  })
+})
+
+// v2.50.0 — maintainer: "GEMMA RAUS with 'rain any minute' — make sure this won't happen,
+// it has to be BLEIB DRIN or GO ANYWAY". Under RAIN_SHOW_MIN there is no usable time left,
+// so the state follows the rain about to arrive.
+describe('imminent rain (v2.50.0) — never GEMMA RAUS with rain minutes away', () => {
+  it('real rain (≥ LIGHT_MAX in the next 45 min) in 5 min → BLEIB DRIN', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON, { nextRainAt: NOON + 5 * 60, rainProb: 80, maxSoon: 0.9 })
+    expect(s.type).toBe('stuck')
+    expect(s.headline).toBe('STUCK')
+    expect(s.sub).toBe('s_imminent_stuck')
+    expect(s.moto).toBe(false)
+    expect(s.notice).toEqual({ head: 'n_rain_soon', sub: 'n_imminent_stuck' })
+  })
+  it('light rain in 5 min → GO ANYWAY with a jacket', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { nextRainAt: NOON + 5 * 60, rainProb: 80, maxSoon: 0.3 })
+    expect(s.type).toBe('light')
+    expect(s.headline).toBe('LIGHT_RAIN')
+    expect(s.sub).toBe('s_imminent_light')
+    expect(s.notice.sub).toBe('n_imminent_light')
+  })
+  it('exactly LIGHT_MAX counts as real rain', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { nextRainAt: NOON + 5 * 60, rainProb: 80, maxSoon: LIGHT_MAX })
+    expect(s.type).toBe('stuck')
+  })
+  it('intensity unknown (no nowcast) → GO ANYWAY, never GEMMA RAUS', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { nextRainAt: NOON + 5 * 60, rainProb: 80 })
+    expect(s.type).toBe('light')
+  })
+  it('rain back after a short break ("rain back shortly") converts too', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { nextRainAt: NOON + 5 * 60, rainProb: 80, recentRain: true, maxSoon: 0.7 })
+    expect(s.type).toBe('stuck')
+  })
+  it('a confirmed approach under 10 min converts and names the direction', () => {
+    const t = makeT()
+    const s = getStatus(0, [], null, t, NOON,
+      { rvApproachMin: 6, rvApproachDir: 'w', nextRainAt: NOON + 40 * 60, rainProb: 30, maxSoon: 1.0 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).toBe('s_imminent_stuck_dir')
+    expect(t.varsFor('s_imminent_stuck_dir').dir).toBe('dir_w')
+  })
+  it('an UNCONFIRMED approach under 10 min stays a watch, no conversion (forecast sees nothing)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { dryEndsOpen: true, rvApproachMin: 5, rvApproachDir: 'w' })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_rv_nearby')
+  })
+  it('low-probability forecast onset alone does NOT convert (the virga guard)', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { nextRainAt: NOON + 5 * 60, rainProb: 30, maxSoon: 0.4 })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_rain_maybe')
+  })
+  it('10 min or more away → unchanged GEMMA RAUS with a countdown', () => {
+    const s = getStatus(0, [], null, makeT(), NOON, { nextRainAt: NOON + 12 * 60, rainProb: 80, maxSoon: 0.9 })
+    expect(s.type).toBe('go')
+    expect(s.sub).toBe('s_rain_soon')
+  })
+  it('applies at night too (rain in 5 min at 3 am is not a "stay cozy, later" moment)', () => {
+    const s = getStatus(0, [], null, makeT(), NIGHT, { nextRainAt: NIGHT + 5 * 60, rainProb: 80, maxSoon: 0.9 })
+    expect(s.type).toBe('stuck')
+  })
+  it('a downpour still takes the existing usable-window path', () => {
+    const s = getStatus(0, [], null, makeT(), NOON,
+      { nextRainAt: NOON + 5 * 60, rainProb: 80, maxSoon: 2.0, downpourSoonMin: 5, downpourSoonWideMin: 5 })
+    expect(s.type).toBe('stuck')
+    expect(s.sub).not.toMatch(/^s_imminent/)
   })
 })

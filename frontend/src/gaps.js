@@ -1099,6 +1099,26 @@ function breakSub(firstGap, nowSec, t) {
 // so the popup renderer can pick it while the banner keeps headline/sub.
 // `barely`: the GO state reached via the 0.1–0.2 band (v2.20.0) — the gauge is
 // measuring drizzle. The banner already says so; the popup must not say "Dry".
+// v2.50.0 — the tracked approach (trackApproach) arrives in `trend` as an ARRIVAL TIME
+// (`rvApproachAt`), so the countdown ticks down between the 5-min refreshes like every
+// other one; `rvApproachMin` (minutes at load) is the fallback for a trend without it.
+// Past the arrival it holds at 0 ("any minute") until the next refresh re-tracks it —
+// never dropped, a lapsed ETA is still echo we saw coming.
+export function liveApproachMin(trend, nowSec) {
+  if (typeof trend?.rvApproachAt === 'number') {
+    return Math.max(0, Math.round((trend.rvApproachAt - nowSec) / 60))
+  }
+  return trend?.rvApproachMin ?? null
+}
+
+// The approach sentence, rounded to 5 like every other countdown (v2.50.0) — a time
+// worked out from a cell 10–25 km away over a few radar images is never minute-exact,
+// and "34 min" read as if it were. Under RAIN_SHOW_MIN the imminent rule in getStatus
+// takes over (BLEIB DRIN / GO ANYWAY), so this only ever sees ≥ 10 min.
+function approachText(prefix, min, dir, t) {
+  return t(prefix + (dir ? '_dir' : ''), { min: Math.max(RAIN_SHOW_MIN, Math.round(min / 5) * 5), dir: dir ? t('dir_' + dir) : undefined })
+}
+
 function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t, barely = false) {
   const head = type === 'go' ? t(barely ? 'n_barely' : 'n_dry')
     : type === 'light' ? t('n_light') : t('n_raining')
@@ -1106,10 +1126,10 @@ function noticeFor(type, currentPrecip, firstGap, trend, nowSec, t, barely = fal
   if ((type === 'go' || type === 'light') && trend.downpourSoonMin != null) {
     sub = t('n_downpour_soon', { min: trend.downpourSoonMin })
   } else if (type === 'go') {
-    if (trend.rvApproachMin != null && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
-      sub = trend.rvApproachDir
-        ? t('n_rv_approach_dir', { min: trend.rvApproachMin, dir: t('dir_' + trend.rvApproachDir) })
-        : t('n_rv_approach', { min: trend.rvApproachMin })
+    if (trend.approachConfirmedMin != null) {
+      sub = approachText('n_rv_approach', trend.approachConfirmedMin, trend.rvApproachDir, t)
+    } else if (trend.approachWatch) {
+      sub = trend.rvApproachDir ? t('n_rv_nearby', { dir: t('dir_' + trend.rvApproachDir) }) : t('n_rv_watch')
     } else if (trend.dryEndsOpen && trend.traceEcho) {
       if (trend.modelRainAt) {
         const m = Math.max(0, Math.round((trend.modelRainAt - nowSec) / 60))
@@ -1176,6 +1196,30 @@ export function getStatus(
 ) {
   if (currentPrecip === null) {
     return { type: 'loading', headline: t('checking'), sub: t('reading_sky'), weather: null, moto: false }
+  }
+
+  // v2.50.0: the approach ETA counts down from its arrival time on the per-minute tick.
+  // Normalised once here so the sub, the popup notice, the motorbike glance and the
+  // rain-in-sight gate all read the same live number.
+  // Then the CONFIRMATION rule: a tracked approach gets a countdown only when the
+  // forecast (the ribbon) also shows real rain within FAR_RAIN_MIN — otherwise the
+  // headline said "rain in 34 min" over a ribbon of empty tiles. The time shown is the
+  // SOONER of the two: the forecast is issued 15–25 min late, so its onset trails the
+  // tracked one, and taking it alone would build that delay in. Unconfirmed, the echo
+  // is still named ("rain to the west — keeping an eye on it", `approachWatch`) in the
+  // approach's own slot — no night or dryEndsOpen gate, so it can never fall through
+  // to an all-clear — and rvApproachMin still feeds the motorbike glance and the
+  // rain-in-sight gate.
+  if (trend.rvApproachAt != null || trend.rvApproachMin != null) {
+    const apMin = liveApproachMin(trend, nowSec)
+    const ribbonMin = trend.nextRainAt ? Math.max(0, Math.round((trend.nextRainAt - nowSec) / 60)) : null
+    const confirmed = apMin != null && ribbonMin != null && ribbonMin < FAR_RAIN_MIN
+    trend = {
+      ...trend,
+      rvApproachMin: apMin,
+      approachConfirmedMin: confirmed ? Math.min(apMin, ribbonMin) : null,
+      approachWatch: !confirmed && apMin != null,
+    }
   }
 
   // Browser-local clock: 00:00–04:59 (12am–5am) → cozy night sub-lines (headline
@@ -1292,6 +1336,34 @@ export function getStatus(
     }
   }
 
+  // ---- Dry now, but rain starts any minute (v2.50.0) ----
+  // GEMMA RAUS under "rain could start any minute" told you to go and not to go in one
+  // breath. Under RAIN_SHOW_MIN there is no usable time left, so the STATE follows the
+  // rain that is about to arrive: real rain (≥ LIGHT_MAX in the next 45 min of the
+  // filtered forecast, `maxSoon`) → BLEIB DRIN; lighter, or intensity unknown → GO
+  // ANYWAY with a jacket. Onset from the forecast (`nextRainAt`) or from a CONFIRMED
+  // tracked approach (both instruments agree, above). A low-probability forecast onset
+  // alone does not convert — that is the virga over-read the softener exists for — but a
+  // confirmed approach does. Downpours never get here: goWindowTooShort escalated them.
+  if ((isDry || gapNow) && trend.downpourSoonMin == null) {
+    const lowConf = trend.rainProb != null && trend.rainProb < RAIN_PROB_MIN
+    const fromForecast = trend.nextRainAt && !lowConf && trend.nextRainAt - nowSec < RAIN_SHOW_MIN * 60
+    const fromApproach = trend.approachConfirmedMin != null && trend.approachConfirmedMin < RAIN_SHOW_MIN
+    if (fromForecast || fromApproach) {
+      const heavy = typeof trend.maxSoon === 'number' && trend.maxSoon >= LIGHT_MAX
+      const dir = trend.approachConfirmedMin != null ? trend.rvApproachDir : null
+      const key = (heavy ? 's_imminent_stuck' : 's_imminent_light') + (dir ? '_dir' : '')
+      return {
+        type: heavy ? 'stuck' : 'light',
+        headline: t(heavy ? 'STUCK' : 'LIGHT_RAIN'),
+        sub: t(key, { dir: dir ? t('dir_' + dir) : undefined }),
+        weather: weatherNote,
+        moto: false,
+        notice: { head: t('n_rain_soon'), sub: t(heavy ? 'n_imminent_stuck' : 'n_imminent_light') },
+      }
+    }
+  }
+
   // ---- Dry now: narrate the incoming rain ----
   if (isDry || gapNow) {
     let sub
@@ -1299,15 +1371,20 @@ export function getStatus(
       // Radar shows a real downpour imminent — warn even though it's dry NOW, so
       // "go" doesn't walk you into a soaking. Top priority over the calm dry subs.
       sub = t('s_downpour_soon', { min: trend.downpourSoonMin })
-    } else if (trend.rvApproachMin != null && (!trend.nextRainAt || trend.nextRainAt - nowSec > 45 * 60)) {
-      // A RainViewer forecast frame shows OBSERVED echo arriving at this pixel in
-      // ~N min while the (higher-latency) GeoSphere timeline still claims nothing
-      // near. Freshest radar wins, WITH a real ETA (all frames sampled): the "rain
-      // was visibly blue on the map while the app said dry" case. Yields to a
-      // nearer GeoSphere countdown.
+    } else if (trend.approachConfirmedMin != null) {
+      // v2.50.0: tracked echo moving in (trackApproach) AND the forecast shows rain
+      // within FAR_RAIN_MIN — two instruments agree, so name the direction and give
+      // the sooner time with confidence. Outranks the plain forecast countdown and its
+      // probability softener: the softener guards against a virga over-read, and an
+      // echo observed moving in is exactly the corroboration it was waiting for.
+      sub = approachText('s_rv_approach', trend.approachConfirmedMin, trend.rvApproachDir, t)
+    } else if (trend.approachWatch) {
+      // v2.50.0: echo tracked moving in, but the forecast doesn't show it yet — name it
+      // without a time. A countdown here was the "rain in 34 min" over a ribbon of empty
+      // tiles; the ribbon's own label says the forecast hasn't caught up.
       sub = trend.rvApproachDir
-        ? t('s_rv_approach_dir', { min: trend.rvApproachMin, dir: t('dir_' + trend.rvApproachDir) })
-        : t('s_rv_approach', { min: trend.rvApproachMin })
+        ? t('s_rv_nearby', { dir: t('dir_' + trend.rvApproachDir) })
+        : t('s_rv_watch')
     } else if (trend.dryEndsOpen && trend.traceEcho) {
       // Real, patchy light echo below our reporting cutoff (hasTraceEcho) — DRY_
       // THRESHOLD is a reporting line, not a physical one. Radar's own 3h timeline
