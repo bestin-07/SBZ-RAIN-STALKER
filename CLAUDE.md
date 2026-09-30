@@ -744,6 +744,7 @@ Warning-banner accents (`--c-uv/warn/alert`) and `--c-muted` are likewise darken
 | `frontend/src/components/SkyLine.jsx` | Sky line: weather-code glyph, condition word, temp, wind |
 | `frontend/src/components/DayStrip.jsx` | Five-day outlook (display only, never a verdict) |
 | `frontend/src/components/WeatherGlyph.jsx` | Drawn weather-code glyphs, theme-tokened |
+| `frontend/src/sky.js` | Sun and moon (v2.49.4): real Salzburg sunrise/sunset for any moment (`sunTimes`, `isNight` — drives every sun↔moon switch; no fixed-hour fallback) and the moon's phase and drawn shape (`moonPhase`, `moonPath`, used by `MoonShape` in WeatherGlyph.jsx). Pure, tested in `sky.test.js` against Open-Meteo's own sun times |
 | `frontend/src/nowcastMap.js` | The expanded map's forecast frames: RainViewer-ramp colours (`nowcastRgba`), raster shape check, which steps the slider shows (v2.47.1) |
 | `frontend/src/components/RadarMap.jsx` | Leaflet base map + RainViewer overlay + nearby-town precip dots + "recenter on me" `flyTo` button + (expanded only) the v2.44.0 past/future time-scrubber |
 | `frontend/src/components/InfoPanel.jsx` | Guide (incl. the v2.30 blocks + drawn ribbon/day examples) + about + data sources |

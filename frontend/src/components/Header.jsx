@@ -3,6 +3,7 @@ import { useFitText } from '../useFitText'
 import { formatClock } from '../time'
 import WeatherGlyph from './WeatherGlyph'
 import { weatherGroup } from '../gaps'
+import { isNight } from '../sky'
 
 // v2.48.1 — the sky glance, moved here from its own chip row above the headline (whose
 // condition word only repeated the verdict). Rain-family codes draw as plain cloud, as
@@ -20,7 +21,9 @@ export function SkyGlance({ weather, className = '', compact = false }) {
   if (grp == null && temp === null) return null
   return (
     <span className={'items-center gap-1 font-mono text-xs text-muted tabular-nums ' + className}>
-      {grp != null && <WeatherGlyph code={code} size={16} />}
+      {/* v2.49.4 — a clear night draws the moon (in its real phase), switched at the real
+          Salzburg sunset/sunrise. It used to be a sun at any hour. */}
+      {grp != null && <WeatherGlyph code={code} size={16} night={isNight(Date.now() / 1000)} />}
       {temp !== null && <span className="text-primary font-bold">{temp}°</span>}
       {wind !== null && !compact && <span>· {wind} km/h</span>}
     </span>

@@ -16,6 +16,7 @@ import DayStrip from './components/DayStrip'
 import GapBanner, { SourceLine } from './components/GapBanner'
 import RainRibbon, { dryRunIn, MIN_BRACKET_BARS, confidencePct, bucketMixed, drySkyVariant } from './components/RainRibbon'
 import InfoPanel from './components/InfoPanel'
+import WeatherGlyph from './components/WeatherGlyph'
 import { translations } from './i18n'
 
 // React escapes text when it serialises; assertions have to compare like with like.
@@ -232,13 +233,36 @@ for (const lang of ['de', 'en']) {
     // every tile said nothing (live screenshot).
     // v2.48.1 — live screenshot: a bright gold sun on a dry 15-min gap inside a
     // rainstorm, while the sky said "Cloudy" for the same code.
+    // v2.49.4 INTENT CHANGE — day/night is now the real Salzburg sunrise/sunset at the
+    // tile's own time (sky.js), not today's served sunrise/sunset: tiles past midnight
+    // used to stay "night" until the end of the ribbon.
     it('a dry tile draws a sun/moon only under a clear or partly clear code', () => {
-      const noon = Math.floor(new Date('2026-09-24T13:00:00+02:00').getTime() / 1000)
-      for (const code of [0, 1, 2]) expect(drySkyVariant(noon, code, noon - 6 * 3600, noon + 6 * 3600)).toBe('sun')
-      expect(drySkyVariant(noon, 1, noon - 12 * 3600, noon - 1)).toBe('moon')
+      const at = iso => Math.floor(new Date(iso).getTime() / 1000)
+      const noon = at('2026-09-24T13:00:00+02:00')
+      for (const code of [0, 1, 2]) expect(drySkyVariant(noon, code)).toBe('sun')
+      expect(drySkyVariant(at('2026-09-24T23:00:00+02:00'), 1)).toBe('moon')
       for (const code of [3, 45, 53, 61, 63, 73, 81, 95, null]) {
-        expect(drySkyVariant(noon, code, noon - 6 * 3600, noon + 6 * 3600)).toBe('cloud')
+        expect(drySkyVariant(noon, code)).toBe('cloud')
       }
+    })
+
+    it('a ribbon crossing midnight turns back into a sun after the NEXT sunrise', () => {
+      const at = iso => Math.floor(new Date(iso).getTime() / 1000)
+      expect(drySkyVariant(at('2026-09-30T18:40:00+02:00'), 0)).toBe('sun')   // sunset 18:49
+      expect(drySkyVariant(at('2026-09-30T19:00:00+02:00'), 0)).toBe('moon')
+      expect(drySkyVariant(at('2026-10-01T02:00:00+02:00'), 0)).toBe('moon')
+      expect(drySkyVariant(at('2026-10-01T07:30:00+02:00'), 0)).toBe('sun')   // sunrise 07:07
+    })
+
+    it('the header glyph is the moon in its real phase at night, the sun by day', () => {
+      const ts = Math.floor(new Date('2026-09-30T22:00:00+02:00').getTime() / 1000)   // waning gibbous
+      const glyph = night => renderToStaticMarkup(<WeatherGlyph code={0} night={night} ts={ts} />)
+      expect(glyph(false)).toContain('M12 2.6v2.2')             // the sun's rays
+      expect(glyph(true)).not.toContain('M12 2.6v2.2')
+      expect(glyph(true)).toContain('d="M12 4.4A7.6 7.6 0 0 0 12 19.6')   // waning: lit limb on the LEFT
+      // a thick cloud has no sun and no moon, day or night
+      expect(renderToStaticMarkup(<WeatherGlyph code={3} night ts={ts} />))
+        .toBe(renderToStaticMarkup(<WeatherGlyph code={3} ts={ts} />))
     })
 
     it('rings a forecast tile only when the other model would draw a different tile', () => {

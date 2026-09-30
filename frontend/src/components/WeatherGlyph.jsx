@@ -1,4 +1,5 @@
 import { weatherGroup } from '../gaps'
+import { moonPhase, moonPath } from '../sky'
 
 // Drawn weather-code glyphs (v2.30). Deliberately NOT emoji: the emoji sets for
 // ⛈/🌦/🌧 diverge badly across iOS and Android builds — some render a flat
@@ -78,9 +79,37 @@ const SHAPES = {
   ),
 }
 
+// The moon as it actually looks tonight (v2.49.4): the lit part drawn in its real
+// phase — crescent, half, gibbous, full — over a faint full disc, so even a thin
+// crescent or a new moon still reads as "the moon". Shared with the ribbon's dry tiles.
+export function MoonShape({ ts, cx = 12, cy = 12, r = 8, color = 'currentColor' }) {
+  const d = moonPath(moonPhase(Number.isFinite(ts) ? ts : Date.now() / 1000), cx, cy, r)
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={r} fill={color} fillOpacity="0.16" stroke={color} strokeOpacity="0.45" strokeWidth="0.9" />
+      {d && <path d={d} fill={color} stroke="none" />}
+    </g>
+  )
+}
+
+// Night versions of the two sun glyphs. Only these two change at night: the other
+// groups carry no sun (and `showers`, which does, never reaches the night glance —
+// SkyGlance draws rain-family codes as plain cloud).
+const NIGHT = {
+  clear: ts => <MoonShape ts={ts} cx={12} cy={12} r={7.6} color="var(--c-go)" />,
+  partly: ts => (
+    <g>
+      <MoonShape ts={ts} cx={8.6} cy={8.2} r={4.4} color="var(--c-go)" />
+      <path d="M7.4 19.4h9.9a3.3 3.3 0 0 0 .3-6.6 4.8 4.8 0 0 0-9.2.9 3 3 0 0 0-1 5.7Z" stroke="var(--c-muted)" {...P} />
+    </g>
+  ),
+}
+
 // `code` is a raw WMO weather code; an unknown or missing one renders nothing at
 // all rather than a guessed glyph — a wrong sky icon is worse than no sky icon.
-export default function WeatherGlyph({ code, size = 22, label = null }) {
+// `night` swaps the sun for the moon in its real phase at `ts` (default: now). Only the
+// right-now glance passes it; the five-day strip shows DAY forecasts and keeps the sun.
+export default function WeatherGlyph({ code, size = 22, label = null, night = false, ts }) {
   const group = weatherGroup(code)
   if (!group) return null
   return (
@@ -94,7 +123,7 @@ export default function WeatherGlyph({ code, size = 22, label = null }) {
       aria-hidden={label ? undefined : 'true'}
       focusable="false"
     >
-      {SHAPES[group]}
+      {night && NIGHT[group] ? NIGHT[group](ts) : SHAPES[group]}
     </svg>
   )
 }

@@ -12,6 +12,18 @@ previous tag (see CLAUDE.md → **Versioning & rollback**).
 
 ---
 
+## [2.49.4] - 2026-09-30 - Gemma Raus just got better: the real moon 🌖
+
+*The moon now looks like the one outside your window, and it rises at the right time.*
+
+**What's new for you**
+
+- **Sun and moon on time:** the switch happens at Salzburg's real sunset and sunrise, every day of the year. Before, a clear evening could still show a sun at the top of the screen, and the hours after midnight on the rain chart stayed moons even after the next sunrise.
+- **The moon in its real phase:** crescent, half, gibbous or full, lit on the side you actually see it from Salzburg. Tonight it's a waning gibbous.
+- **One address to reach us:** write to contact@gemmaraus.at.
+
+---
+
 ## [2.49.3] - 2026-09-30 - Gemma Raus just got better: your data, said plainly 🔒
 
 *Our privacy text had fallen behind the app. Parts of it were no longer true, so we rewrote it.*
